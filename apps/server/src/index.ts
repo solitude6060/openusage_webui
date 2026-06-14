@@ -290,7 +290,9 @@ async function serveFrontend(
   }
 
   const requestedPath = url.pathname === "/" ? "/index.html" : safeDecodePath(url.pathname);
-  const safePath = normalize(requestedPath).replace(/^(\.\.(\/|\\|$))+/, "");
+  const safePath = normalize(requestedPath)
+    .replace(/^[/\\]+/, "")
+    .replace(/^(\.\.(\/|\\|$))+/, "");
   const filePath = join(webDist, safePath);
   const target = isExistingFile(filePath) ? filePath : indexPath;
   return new Response(Bun.file(target), {

@@ -55,4 +55,5 @@ All critical, high, and medium findings must be fixed or explicitly triaged befo
 ## Review-Fix Coverage
 
 - Missing frontend builds now emit a structured `frontend_build_missing` server log before returning JSON error output.
-- Static production tests cover `/`, SPA routes, asset MIME types, and path traversal attempts staying inside the built frontend directory.
+- Static production serving now normalizes requested paths to relative dist paths before joining.
+- Static production tests cover `/`, SPA routes, asset MIME types, and encoded path traversal attempts staying inside the built frontend directory.

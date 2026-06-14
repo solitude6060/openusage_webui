@@ -237,7 +237,9 @@ describe("WebUI API", () => {
         distDir,
       );
 
-      const response = await productionHandler(new Request("http://127.0.0.1:6736/../outside.txt"));
+      const response = await productionHandler(
+        new Request("http://127.0.0.1:6736/..%2foutside.txt"),
+      );
       const body = await response.text();
 
       expect(response.status).toBe(200);
