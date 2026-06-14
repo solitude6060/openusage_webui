@@ -1,0 +1,10 @@
+{
+  "name": "@openusage-webui/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun src/dev.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "start": "bun src/index.ts"
+  }
+}
