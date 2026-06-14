@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequestHandler } from "../src/index";
@@ -150,5 +150,74 @@ describe("WebUI API", () => {
         { providerId: "manual", ok: true, records: 0 },
       ],
     });
+  });
+
+  test("serves built frontend index for production SPA routes", async () => {
+    const distDir = mkdtempSync(join(tmpdir(), "openusage-webui-dist-test-"));
+    try {
+      writeFileSync(join(distDir, "index.html"), "<!doctype html><title>OpenUsage Phase 3</title>");
+      const productionHandler = createRequestHandler(
+        storage,
+        { host: "127.0.0.1", port: 6736 },
+        undefined,
+        [],
+        distDir,
+      );
+
+      const response = await productionHandler(new Request("http://127.0.0.1:6736/dashboard"));
+      const body = await response.text();
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe("text/html");
+      expect(body).toContain("OpenUsage Phase 3");
+    } finally {
+      rmSync(distDir, { recursive: true, force: true });
+    }
+  });
+
+  test("serves built frontend assets with content types", async () => {
+    const distDir = mkdtempSync(join(tmpdir(), "openusage-webui-dist-test-"));
+    try {
+      mkdirSync(join(distDir, "assets"));
+      writeFileSync(join(distDir, "index.html"), "<!doctype html>");
+      writeFileSync(join(distDir, "assets", "app.css"), "body { color: black; }");
+      const productionHandler = createRequestHandler(
+        storage,
+        { host: "127.0.0.1", port: 6736 },
+        undefined,
+        [],
+        distDir,
+      );
+
+      const response = await productionHandler(new Request("http://127.0.0.1:6736/assets/app.css"));
+      const body = await response.text();
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe("text/css");
+      expect(body).toContain("color: black");
+    } finally {
+      rmSync(distDir, { recursive: true, force: true });
+    }
+  });
+
+  test("returns a clear error when built frontend is missing", async () => {
+    const distDir = mkdtempSync(join(tmpdir(), "openusage-webui-dist-test-"));
+    try {
+      const productionHandler = createRequestHandler(
+        storage,
+        { host: "127.0.0.1", port: 6736 },
+        undefined,
+        [],
+        distDir,
+      );
+
+      const response = await productionHandler(new Request("http://127.0.0.1:6736/dashboard"));
+      const body = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(body.error.code).toBe("FRONTEND_BUILD_MISSING");
+    } finally {
+      rmSync(distDir, { recursive: true, force: true });
+    }
   });
 });

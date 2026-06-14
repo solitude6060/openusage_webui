@@ -48,6 +48,8 @@ bun run build:webui
 bun run start:webui
 ```
 
+`start:webui` 會用同一個本機 server 服務已 build 的 frontend 和 API。如果 frontend build 產物不存在，server 會回傳明確的本機錯誤，而不是空白頁。
+
 ## 安全性
 
 Server 預設只綁定 `127.0.0.1`。
