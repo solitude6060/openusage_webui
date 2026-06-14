@@ -48,6 +48,7 @@ export async function startServer(options: {
   const server = Bun.serve({
     hostname: host,
     port,
+    idleTimeout: 120,
     fetch: handleRequest,
   });
 

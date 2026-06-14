@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { CcusageProvider, type CcusageCommandRunner } from "../src/providers/ccusage";
+import {
+  CcusageProvider,
+  runCcusageCommand,
+  type CcusageCommandRunner,
+} from "../src/providers/ccusage";
 
 function makeRunner(
   handler: CcusageCommandRunner,
@@ -96,8 +100,31 @@ describe("CcusageProvider", () => {
   });
 
   test("default command runner times out instead of hanging", async () => {
-    const provider = new CcusageProvider(async () => new Promise(() => undefined));
+    const provider = new CcusageProvider(
+      async () => new Promise(() => undefined),
+      { commandTimeoutMs: 5 },
+    );
 
     await expect(provider.detect()).resolves.toBe(false);
+  });
+
+  test("default command runner handles missing executables", async () => {
+    await expect(runCcusageCommand("openusage-missing-ccusage-runner", [])).resolves.toEqual({
+      ok: false,
+      stdout: "",
+      stderr: expect.any(String),
+    });
+  });
+
+  test("valid empty JSON returns no records without raw fallback", async () => {
+    const { runner } = makeRunner(async (_command, args) => {
+      if (args.includes("--help")) {
+        return { ok: true, stdout: "Usage: ccusage", stderr: "" };
+      }
+      return { ok: true, stdout: JSON.stringify({ daily: [] }), stderr: "" };
+    });
+    const provider = new CcusageProvider(runner);
+
+    await expect(provider.refresh()).resolves.toEqual([]);
   });
 });

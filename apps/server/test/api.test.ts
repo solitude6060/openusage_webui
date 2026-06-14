@@ -115,4 +115,40 @@ describe("WebUI API", () => {
       { providerId: "minimax", ok: true, records: 0 },
     ]);
   });
+
+  test("refresh all isolates provider-level failures", async () => {
+    handleRequest = createRequestHandler(storage, {
+      host: "127.0.0.1",
+      port: 6736,
+    }, undefined, [
+      {
+        id: "ccusage",
+        name: "ccusage",
+        detect: async () => false,
+        refresh: async () => {
+          throw new Error("ccusage unavailable");
+        },
+      },
+      {
+        id: "manual",
+        name: "Manual",
+        detect: async () => true,
+        refresh: async () => [],
+      },
+    ]);
+
+    const response = await handleRequest(new Request("http://127.0.0.1:6736/api/providers/refresh", {
+      method: "POST",
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      ok: true,
+      results: [
+        { providerId: "ccusage", ok: false, error: "ccusage unavailable" },
+        { providerId: "manual", ok: true, records: 0 },
+      ],
+    });
+  });
 });

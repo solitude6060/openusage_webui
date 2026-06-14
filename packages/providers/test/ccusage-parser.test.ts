@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   createRawCcusageRecord,
   normalizeCcusageRecords,
+  parseCcusageRecords,
 } from "../src/providers/ccusage-parser";
 
 describe("ccusage parser", () => {
@@ -95,6 +96,31 @@ describe("ccusage parser", () => {
     expect(second.id).toBe(first.id);
   });
 
+  test("uses stable ids when daily aggregate totals grow", () => {
+    const morning = normalizeCcusageRecords(
+      JSON.stringify([{ date: "20260222", source: "Codex", totalTokens: 100, costUSD: 0.5 }]),
+      "daily",
+    )[0];
+    const afternoon = normalizeCcusageRecords(
+      JSON.stringify([{ date: "20260222", source: "Codex", totalTokens: 250, costUSD: 1.25 }]),
+      "daily",
+    )[0];
+
+    expect(afternoon.id).toBe(morning.id);
+    expect(afternoon.totalTokens).toBe(250);
+  });
+
+  test("distinguishes valid empty JSON from parse failure", () => {
+    expect(parseCcusageRecords(JSON.stringify({ daily: [] }), "daily")).toEqual({
+      parsed: true,
+      records: [],
+    });
+    expect(parseCcusageRecords("not json", "daily")).toEqual({
+      parsed: false,
+      records: [],
+    });
+  });
+
   test("maps known tool names and leaves unknown aggregates as ccusage", () => {
     const records = normalizeCcusageRecords(
       JSON.stringify({
@@ -128,5 +154,6 @@ describe("ccusage parser", () => {
       command: "daily",
       stdout: "daily table output",
     });
+    expect(createRawCcusageRecord("daily table output changed", "daily").id).toBe(fallback.id);
   });
 });

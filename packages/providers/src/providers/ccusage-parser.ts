@@ -4,19 +4,27 @@ import type { ProviderId, UsageRecord } from "../../../core/src/types";
 type JsonObject = Record<string, unknown>;
 
 export function normalizeCcusageRecords(stdout: string, command: string): UsageRecord[] {
+  return parseCcusageRecords(stdout, command).records;
+}
+
+export function parseCcusageRecords(
+  stdout: string,
+  command: string,
+): { parsed: boolean; records: UsageRecord[] } {
   const parsed = parseCcusageOutput(stdout);
-  if (!parsed) {
-    return [];
+  if (!parsed.ok) {
+    return { parsed: false, records: [] };
   }
 
-  const rows = extractRows(parsed);
-  return rows
+  const rows = extractRows(parsed.value);
+  const records = rows
     .map((row) => normalizeRow(row, command))
     .filter((record): record is UsageRecord => record !== null);
+  return { parsed: true, records };
 }
 
 export function createRawCcusageRecord(stdout: string, command: string): UsageRecord {
-  const startedAt = new Date().toISOString();
+  const startedAt = startOfTodayIso();
   return {
     id: stableUsageId({
       providerId: "ccusage",
@@ -24,7 +32,7 @@ export function createRawCcusageRecord(stdout: string, command: string): UsageRe
       startedAt,
       totalTokens: 0,
       costUsd: 0,
-      rawKey: stdout,
+      command,
     }),
     providerId: "ccusage",
     tool: `ccusage ${command}`,
@@ -63,7 +71,7 @@ function normalizeRow(row: JsonObject, command: string): UsageRecord | null {
       startedAt,
       totalTokens: totalTokens ?? 0,
       costUsd: costUsd ?? 0,
-      rawKey: JSON.stringify(row),
+      command,
     }),
     providerId,
     tool: tool ?? "ccusage",
@@ -83,15 +91,15 @@ function normalizeRow(row: JsonObject, command: string): UsageRecord | null {
   };
 }
 
-function parseCcusageOutput(stdout: string): unknown | null {
+function parseCcusageOutput(stdout: string): { ok: true; value: unknown } | { ok: false } {
   const jsonText = extractLastJsonValue(stdout);
   if (!jsonText) {
-    return null;
+    return { ok: false };
   }
   try {
-    return JSON.parse(jsonText);
+    return { ok: true, value: JSON.parse(jsonText) };
   } catch {
-    return null;
+    return { ok: false };
   }
 }
 
@@ -200,6 +208,9 @@ function textField(row: JsonObject, keys: string[]): string | undefined {
 function numberField(row: JsonObject, keys: string[]): number | undefined {
   for (const key of keys) {
     const value = row[key];
+    if (value === null || value === undefined) {
+      continue;
+    }
     const number = Number(value);
     if (Number.isFinite(number)) {
       return number;
@@ -215,7 +226,7 @@ function stableUsageId(input: {
   startedAt: string;
   totalTokens: number;
   costUsd: number;
-  rawKey: string;
+  command: string;
 }): string {
   return createHash("sha256")
     .update(
@@ -224,12 +235,15 @@ function stableUsageId(input: {
         input.tool ?? "",
         input.model ?? "",
         input.startedAt,
-        String(input.totalTokens),
-        String(input.costUsd),
-        input.rawKey,
+        input.command,
       ].join("|"),
     )
     .digest("hex");
+}
+
+function startOfTodayIso(): string {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
 }
 
 function isObject(value: unknown): value is JsonObject {
