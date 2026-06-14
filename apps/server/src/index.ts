@@ -30,6 +30,7 @@ export async function startServer(options: {
   host?: string;
   port?: number;
   devFrontendUrl?: string;
+  frontendDistPath?: string;
   providers?: UsageProvider[];
 } = {}) {
   const host = options.host ?? process.env.OPENUSAGE_WEBUI_HOST ?? DEFAULT_HOST;
@@ -43,6 +44,7 @@ export async function startServer(options: {
     { host, port },
     options.devFrontendUrl,
     providers,
+    options.frontendDistPath,
   );
 
   const server = Bun.serve({
@@ -68,6 +70,7 @@ export function createRequestHandler(
   serverInfo: { host: string; port: number },
   devFrontendUrl?: string,
   providers: UsageProvider[] = getProviders(),
+  frontendDistPath?: string,
 ): (request: Request) => Promise<Response> {
   return async (request) => {
     if (!isAllowedHost(request.headers.get("host"), serverInfo.port)) {
@@ -79,7 +82,7 @@ export function createRequestHandler(
       if (url.pathname.startsWith("/api/")) {
         return await handleApi(request, url, storage, serverInfo, providers);
       }
-      return await serveFrontend(request, url, devFrontendUrl);
+      return await serveFrontend(request, url, devFrontendUrl, frontendDistPath);
     } catch (error) {
       if (error instanceof HttpError) {
         return jsonError(error.code, error.message, error.status);
@@ -259,6 +262,7 @@ async function serveFrontend(
   request: Request,
   url: URL,
   devFrontendUrl?: string,
+  frontendDistPath?: string,
 ): Promise<Response> {
   if (devFrontendUrl) {
     const proxyUrl = new URL(url.pathname + url.search, devFrontendUrl);
@@ -269,11 +273,28 @@ async function serveFrontend(
     });
   }
 
-  const webDist = join(import.meta.dir, "../../web/dist");
+  const webDist = frontendDistPath ?? join(import.meta.dir, "../../web/dist");
+  const indexPath = join(webDist, "index.html");
+  if (!isExistingFile(indexPath)) {
+    console.log(
+      JSON.stringify({
+        event: "frontend_build_missing",
+        expectedPath: indexPath,
+      }),
+    );
+    throw new HttpError(
+      "FRONTEND_BUILD_MISSING",
+      "Frontend build is missing. Run bun run build:webui before start:webui.",
+      500,
+    );
+  }
+
   const requestedPath = url.pathname === "/" ? "/index.html" : safeDecodePath(url.pathname);
-  const safePath = normalize(requestedPath).replace(/^(\.\.(\/|\\|$))+/, "");
+  const safePath = normalize(requestedPath)
+    .replace(/^[/\\]+/, "")
+    .replace(/^(\.\.(\/|\\|$))+/, "");
   const filePath = join(webDist, safePath);
-  const target = isExistingFile(filePath) ? filePath : join(webDist, "index.html");
+  const target = isExistingFile(filePath) ? filePath : indexPath;
   return new Response(Bun.file(target), {
     headers: {
       "content-type": contentType(target),
@@ -312,8 +333,14 @@ function numberOrUndefined(value: unknown): number | undefined {
 function contentType(pathname: string): string {
   if (pathname.endsWith(".js")) return "text/javascript";
   if (pathname.endsWith(".css")) return "text/css";
+  if (pathname.endsWith(".json")) return "application/json";
   if (pathname.endsWith(".svg")) return "image/svg+xml";
   if (pathname.endsWith(".png")) return "image/png";
+  if (pathname.endsWith(".jpg") || pathname.endsWith(".jpeg")) return "image/jpeg";
+  if (pathname.endsWith(".webp")) return "image/webp";
+  if (pathname.endsWith(".ico")) return "image/x-icon";
+  if (pathname.endsWith(".woff2")) return "font/woff2";
+  if (pathname.endsWith(".woff")) return "font/woff";
   return "text/html";
 }
 

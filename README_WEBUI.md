@@ -48,6 +48,8 @@ bun run build:webui
 bun run start:webui
 ```
 
+`start:webui` serves the built frontend and API from the same local server. If the frontend build is missing, the server returns a clear local error instead of serving an empty page.
+
 ## Security
 
 The server binds to 127.0.0.1 by default.
