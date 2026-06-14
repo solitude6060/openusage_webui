@@ -3,16 +3,24 @@
   "private": true,
   "version": "0.6.27",
   "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "vite",
+    "dev:webui": "bun run --cwd apps/server dev",
     "build": "tsc && vite build",
+    "build:webui": "bun run --cwd apps/web build && bun run --cwd apps/server build",
     "build:release": "./scripts/build-release.sh",
     "ccusage:bump": "bun ./scripts/bump-ccusage-version.mjs",
     "bundle:plugins": "bun copy-bundled.cjs",
     "preview": "vite preview",
     "test": "vitest",
+    "test:webui": "bun test packages/storage/test packages/providers/test apps/server/test",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest run --coverage.enabled",
+    "start:webui": "bun run --cwd apps/server start",
     "tauri": "tauri"
   },
   "dependencies": {

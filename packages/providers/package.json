@@ -1,0 +1,8 @@
+{
+  "name": "@openusage-webui/providers",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@openusage-webui/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json && vite build",
+    "preview": "vite preview"
+  }
+}
