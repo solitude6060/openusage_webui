@@ -54,6 +54,6 @@ The server binds to 127.0.0.1 by default.
 No telemetry.
 No cloud upload.
 
-## Phase 1 Notes
+## ccusage Notes
 
-Manual entries and MiniMax settings are implemented. ccusage is listed as a provider, but automatic ccusage refresh and parsing are reserved for Phase 2.
+Manual entries and MiniMax settings are implemented. ccusage refresh attempts `bunx ccusage` first and then `npx ccusage`, using JSON output when available. If ccusage returns non-JSON output, the WebUI stores a raw fallback record instead of brittle table parsing.

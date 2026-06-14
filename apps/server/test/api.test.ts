@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequestHandler } from "../src/index";
 import { SqliteStorage } from "../../../packages/storage/src/index";
+import type { UsageProvider } from "../../../packages/providers/src/index";
 
 let dataDir: string;
 let previousDataDir: string | undefined;
@@ -16,10 +17,30 @@ beforeEach(async () => {
   process.env.OPENUSAGE_WEBUI_DIR = dataDir;
   storage = new SqliteStorage();
   await storage.init();
+  const providers: UsageProvider[] = [
+    {
+      id: "ccusage",
+      name: "ccusage",
+      detect: async () => true,
+      refresh: async () => [],
+    },
+    {
+      id: "manual",
+      name: "Manual",
+      detect: async () => true,
+      refresh: async () => [],
+    },
+    {
+      id: "minimax",
+      name: "MiniMax",
+      detect: async () => true,
+      refresh: async () => [],
+    },
+  ];
   handleRequest = createRequestHandler(storage, {
     host: "127.0.0.1",
     port: 6736,
-  });
+  }, undefined, providers);
 });
 
 afterEach(() => {
@@ -81,7 +102,7 @@ describe("WebUI API", () => {
     expect(body.error.code).toBe("BAD_REQUEST");
   });
 
-  test("refresh all treats deferred ccusage as a neutral no-op", async () => {
+  test("refresh all returns per-provider results", async () => {
     const response = await handleRequest(new Request("http://127.0.0.1:6736/api/providers/refresh", {
       method: "POST",
     }));

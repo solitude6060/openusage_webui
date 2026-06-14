@@ -6,6 +6,7 @@ import {
   SqliteStorage,
 } from "../../../packages/storage/src/index";
 import { createManualUsageRecord, getProviders } from "../../../packages/providers/src/index";
+import type { UsageProvider } from "../../../packages/providers/src/index";
 
 const VERSION = "0.1.0";
 const DEFAULT_HOST = "127.0.0.1";
@@ -29,13 +30,20 @@ export async function startServer(options: {
   host?: string;
   port?: number;
   devFrontendUrl?: string;
+  providers?: UsageProvider[];
 } = {}) {
   const host = options.host ?? process.env.OPENUSAGE_WEBUI_HOST ?? DEFAULT_HOST;
   const port = options.port ?? Number(process.env.OPENUSAGE_WEBUI_PORT ?? DEFAULT_PORT);
+  const providers = options.providers ?? getProviders();
   const storage = new SqliteStorage();
   await storage.init();
-  await seedProviderStatus(storage);
-  const handleRequest = createRequestHandler(storage, { host, port }, options.devFrontendUrl);
+  await seedProviderStatus(storage, providers);
+  const handleRequest = createRequestHandler(
+    storage,
+    { host, port },
+    options.devFrontendUrl,
+    providers,
+  );
 
   const server = Bun.serve({
     hostname: host,
@@ -58,6 +66,7 @@ export function createRequestHandler(
   storage: SqliteStorage,
   serverInfo: { host: string; port: number },
   devFrontendUrl?: string,
+  providers: UsageProvider[] = getProviders(),
 ): (request: Request) => Promise<Response> {
   return async (request) => {
     if (!isAllowedHost(request.headers.get("host"), serverInfo.port)) {
@@ -67,7 +76,7 @@ export function createRequestHandler(
     const url = new URL(request.url);
     try {
       if (url.pathname.startsWith("/api/")) {
-        return await handleApi(request, url, storage, serverInfo);
+        return await handleApi(request, url, storage, serverInfo, providers);
       }
       return await serveFrontend(request, url, devFrontendUrl);
     } catch (error) {
@@ -85,6 +94,7 @@ async function handleApi(
   url: URL,
   storage: SqliteStorage,
   serverInfo: { host: string; port: number },
+  providers: UsageProvider[],
 ): Promise<Response> {
   if (request.method === "GET" && url.pathname === "/api/health") {
     return json({
@@ -102,14 +112,14 @@ async function handleApi(
   }
 
   if (request.method === "POST" && url.pathname === "/api/providers/refresh") {
-    const results = await refreshProviders(storage);
+    const results = await refreshProviders(storage, providers);
     return json({ ok: true, results });
   }
 
   const providerRefreshMatch = url.pathname.match(/^\/api\/providers\/([^/]+)\/refresh$/);
   if (request.method === "POST" && providerRefreshMatch) {
     const providerId = parseProviderId(providerRefreshMatch[1]);
-    const results = await refreshProviders(storage, providerId);
+    const results = await refreshProviders(storage, providers, providerId);
     return json({ ok: true, results });
   }
 
@@ -168,11 +178,14 @@ async function handleApi(
   );
 }
 
-async function seedProviderStatus(storage: SqliteStorage): Promise<void> {
+async function seedProviderStatus(
+  storage: SqliteStorage,
+  providers: UsageProvider[],
+): Promise<void> {
   const existing = new Map(
     (await storage.listProviderStatus()).map((status) => [status.providerId, status]),
   );
-  for (const provider of getProviders()) {
+  for (const provider of providers) {
     if (existing.has(provider.id)) {
       continue;
     }
@@ -188,15 +201,16 @@ async function seedProviderStatus(storage: SqliteStorage): Promise<void> {
 
 async function refreshProviders(
   storage: SqliteStorage,
+  providers: UsageProvider[],
   providerId?: ProviderId,
 ): Promise<RefreshResult[]> {
-  const providers = getProviders().filter((provider) => !providerId || provider.id === providerId);
-  if (providerId && providers.length === 0) {
+  const refreshableProviders = providers.filter((provider) => !providerId || provider.id === providerId);
+  if (providerId && refreshableProviders.length === 0) {
     return [{ providerId, ok: false, error: "Provider is not refreshable yet" }];
   }
 
   const results: RefreshResult[] = [];
-  for (const provider of providers) {
+  for (const provider of refreshableProviders) {
     console.log(JSON.stringify({ event: "provider_refresh_started", providerId: provider.id }));
     try {
       const detected = await provider.detect();
