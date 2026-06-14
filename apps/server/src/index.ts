@@ -276,6 +276,12 @@ async function serveFrontend(
   const webDist = frontendDistPath ?? join(import.meta.dir, "../../web/dist");
   const indexPath = join(webDist, "index.html");
   if (!isExistingFile(indexPath)) {
+    console.log(
+      JSON.stringify({
+        event: "frontend_build_missing",
+        expectedPath: indexPath,
+      }),
+    );
     throw new HttpError(
       "FRONTEND_BUILD_MISSING",
       "Frontend build is missing. Run bun run build:webui before start:webui.",
@@ -325,8 +331,14 @@ function numberOrUndefined(value: unknown): number | undefined {
 function contentType(pathname: string): string {
   if (pathname.endsWith(".js")) return "text/javascript";
   if (pathname.endsWith(".css")) return "text/css";
+  if (pathname.endsWith(".json")) return "application/json";
   if (pathname.endsWith(".svg")) return "image/svg+xml";
   if (pathname.endsWith(".png")) return "image/png";
+  if (pathname.endsWith(".jpg") || pathname.endsWith(".jpeg")) return "image/jpeg";
+  if (pathname.endsWith(".webp")) return "image/webp";
+  if (pathname.endsWith(".ico")) return "image/x-icon";
+  if (pathname.endsWith(".woff2")) return "font/woff2";
+  if (pathname.endsWith(".woff")) return "font/woff";
   return "text/html";
 }
 

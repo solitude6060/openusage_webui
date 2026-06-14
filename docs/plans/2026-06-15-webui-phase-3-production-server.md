@@ -43,12 +43,16 @@ All critical, high, and medium findings must be fixed or explicitly triaged befo
 
 ## Verification Log
 
-- `bun test apps/server/test/api.test.ts`: passed, 9 tests.
-- `bun run test:webui`: passed, 37 tests.
+- `bun test apps/server/test/api.test.ts`: passed, 12 tests.
+- `bun run test:webui`: passed, 40 tests.
 - `bun run build:webui`: passed.
 - `bun run start:webui` smoke on `127.0.0.1:6736` with `OPENUSAGE_WEBUI_DIR=/tmp/openusage-webui-phase3-smoke`:
   - `GET /api/health`: `200`, JSON ok.
-  - `HEAD /dashboard`: `200`, `text/html`.
-  - `GET /dashboard`: `200`, built `index.html` with `OpenUsage WebUI` title.
+  - `GET /dashboard`: `200`, `text/html`, built `index.html`.
   - `GET /assets/index-Bk9lO7YM.css`: `200`, `text/css`.
 - Post-smoke check: no listener remains on `127.0.0.1:6736`.
+
+## Review-Fix Coverage
+
+- Missing frontend builds now emit a structured `frontend_build_missing` server log before returning JSON error output.
+- Static production tests cover `/`, SPA routes, asset MIME types, and path traversal attempts staying inside the built frontend directory.
