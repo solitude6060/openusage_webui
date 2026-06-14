@@ -54,6 +54,6 @@ Server 預設只綁定 `127.0.0.1`。
 沒有 telemetry。
 不會上傳資料到 cloud。
 
-## Phase 1 狀態
+## ccusage 狀態
 
-手動 entries 和 MiniMax settings 已實作。`ccusage` 目前只會列為 provider，自動 refresh 和 parsing 會在 Phase 2 實作。
+手動 entries 和 MiniMax settings 已實作。`ccusage` refresh 會先嘗試 `bunx ccusage`，再嘗試 `npx ccusage`，並在 JSON output 可用時做 normalize。如果 ccusage 只回傳非 JSON output，WebUI 會儲存 raw fallback record，不做脆弱的表格 parsing。
