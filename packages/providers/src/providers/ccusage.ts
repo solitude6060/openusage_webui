@@ -44,6 +44,7 @@ export class CcusageProvider implements UsageProvider {
     }
 
     let sawStructuredOutput = false;
+    let unmappedStructuredOutput: UsageRecord | null = null;
     for (const command of REFRESH_COMMANDS) {
       const result = await this.runWithTimeout(runner, ["ccusage", command, "--json"]);
       if (!result.ok) {
@@ -59,8 +60,20 @@ export class CcusageProvider implements UsageProvider {
       if (!parsed.parsed && result.stdout.trim()) {
         return [createRawCcusageRecord(result.stdout, command)];
       }
+      if (
+        parsed.parsed &&
+        parsed.rowCount > 0 &&
+        records.length === 0 &&
+        result.stdout.trim() &&
+        !unmappedStructuredOutput
+      ) {
+        unmappedStructuredOutput = createRawCcusageRecord(result.stdout, command);
+      }
     }
 
+    if (unmappedStructuredOutput) {
+      return [unmappedStructuredOutput];
+    }
     if (sawStructuredOutput) {
       return [];
     }

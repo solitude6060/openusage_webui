@@ -25,12 +25,15 @@
 | `detect()` then `refresh()` repeats runner probes. | `claude` | Medium | Server refresh calls `detect()` before `refresh()`, and provider `refresh()` called `findRunner()` again. | Fixed by consuming the runner discovered by `detect()` for the next refresh. |
 | Compact monthly dates like `YYYYMM` parse incorrectly. | `agy` | Medium | `Date.parse("202602")` produced an unintended extended year instead of February 2026. | Fixed with explicit compact-month parsing. |
 | JSON extraction fails when valid JSON is followed by command noise. | `agy` | Low | Parser only tried whole suffixes from bracket positions. | Fixed with balanced JSON extraction. |
+| Valid JSON rows that do not normalize are silently dropped. | `claude` | Medium | `parseCcusageRecords` returned `parsed=true` with zero records, causing refresh to return empty success. | Fixed by tracking parsed row count and falling back to a raw record when structured rows cannot normalize. |
+| JSON extraction can select JSON-looking package-manager metadata before the real payload. | `claude-mm` | Medium | A leading JSON-looking banner such as `{}` could be selected before the real ccusage payload. | Fixed by selecting the last complete non-nested JSON payload. |
 | Stable ID helper still accepted unused total/cost fields. | `claude` | Low | Totals/cost were intentionally excluded from the hash but still present in the helper input type. | Fixed by removing dead parameters. |
 | Real ccusage row shape is unconfirmed. | `claude` | Medium follow-up | Live successful ccusage JSON import was not available in this environment. | Deferred to Phase 2 live-fixture follow-up; generic `ccusage` attribution remains safe fallback. |
 
 ## Verification
 
 - `bun test packages/providers/test/ccusage-provider.test.ts`: passed, 11 tests.
+- `bun test packages/providers/test/ccusage-parser.test.ts packages/providers/test/ccusage-provider.test.ts`: passed, 21 tests.
 - `bun run test:webui`: passed, 32 tests.
 - `bun run build:webui`: passed.
 - Local smoke on `http://127.0.0.1:6736`: `GET /api/health` returned ok; `POST /api/providers/refresh` returned provider-level ccusage error with manual/minimax success.

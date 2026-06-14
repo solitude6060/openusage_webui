@@ -14,11 +14,13 @@ Phase 2 ccusage refresh had correct API-level behavior, but re-review and smoke 
 | Duplicate detection | Reuse the runner found by `detect()` for the next `refresh()` call. | `refresh reuses the runner found by detect` |
 | Monthly parsing | Parse compact month strings like `202602` as the first day of that month. | `parses compact monthly dates` |
 | Noisy JSON output | Extract balanced JSON from output with leading or trailing command noise. | `parses JSON output with trailing command noise` |
+| Multiple JSON-like fragments | Select the last complete non-nested JSON payload so package-manager metadata cannot hide the real ccusage output. | `uses the last complete JSON payload after JSON-looking noise` |
+| Structured unmapped output | Preserve valid JSON rows that fail normalization as a raw fallback instead of reporting an empty success. | `structured rows that cannot normalize fall back to raw output` |
 | Stable ID helper cleanup | Removed dead `totalTokens` and `costUsd` helper inputs from the stable ID hash builder. | Covered by stable ID tests |
 
 ## Verification
 
-- `bun test packages/providers/test/ccusage-parser.test.ts packages/providers/test/ccusage-provider.test.ts`: passed, 19 tests.
+- `bun test packages/providers/test/ccusage-parser.test.ts packages/providers/test/ccusage-provider.test.ts`: passed, 21 tests.
 - `bun run test:webui`: passed, 32 tests.
 - `bun run build:webui`: passed.
 - Local smoke used `OPENUSAGE_WEBUI_DIR=/tmp/openusage-webui-phase2-smoke` and confirmed provider-level ccusage failure does not break manual/minimax refresh.

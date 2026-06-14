@@ -113,10 +113,12 @@ describe("ccusage parser", () => {
   test("distinguishes valid empty JSON from parse failure", () => {
     expect(parseCcusageRecords(JSON.stringify({ daily: [] }), "daily")).toEqual({
       parsed: true,
+      rowCount: 0,
       records: [],
     });
     expect(parseCcusageRecords("not json", "daily")).toEqual({
       parsed: false,
+      rowCount: 0,
       records: [],
     });
   });
@@ -163,6 +165,27 @@ describe("ccusage parser", () => {
 
     expect(records).toHaveLength(1);
     expect(records[0]?.providerId).toBe("codex");
+  });
+
+  test("uses the last complete JSON payload after JSON-looking noise", () => {
+    const records = normalizeCcusageRecords(
+      [
+        "bunx metadata {}",
+        JSON.stringify({
+          daily: [
+            {
+              date: "2026-02-22",
+              source: "Claude Code",
+              totalTokens: 100,
+            },
+          ],
+        }),
+      ].join("\n"),
+      "daily",
+    );
+
+    expect(records).toHaveLength(1);
+    expect(records[0]?.providerId).toBe("claude-code");
   });
 
   test("maps known tool names and leaves unknown aggregates as ccusage", () => {

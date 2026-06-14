@@ -200,4 +200,34 @@ describe("CcusageProvider", () => {
 
     await expect(provider.refresh()).resolves.toEqual([]);
   });
+
+  test("structured rows that cannot normalize fall back to raw output", async () => {
+    const stdout = JSON.stringify({
+      daily: [
+        {
+          unexpectedDateKey: "2026-02-22",
+          totalTokens: 100,
+        },
+      ],
+    });
+    const { runner } = makeRunner(async (_command, args) => {
+      if (args.includes("--help")) {
+        return { ok: true, stdout: "Usage: ccusage", stderr: "" };
+      }
+      return { ok: true, stdout, stderr: "" };
+    });
+    const provider = new CcusageProvider(runner);
+
+    await expect(provider.refresh()).resolves.toEqual([
+      expect.objectContaining({
+        providerId: "ccusage",
+        tool: "ccusage daily",
+        source: "cli",
+        raw: {
+          command: "daily",
+          stdout,
+        },
+      }),
+    ]);
+  });
 });

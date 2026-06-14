@@ -10,17 +10,17 @@ export function normalizeCcusageRecords(stdout: string, command: string): UsageR
 export function parseCcusageRecords(
   stdout: string,
   command: string,
-): { parsed: boolean; records: UsageRecord[] } {
+): { parsed: boolean; rowCount: number; records: UsageRecord[] } {
   const parsed = parseCcusageOutput(stdout);
   if (!parsed.ok) {
-    return { parsed: false, records: [] };
+    return { parsed: false, rowCount: 0, records: [] };
   }
 
   const rows = extractRows(parsed.value);
   const records = rows
     .map((row) => normalizeRow(row, command))
     .filter((record): record is UsageRecord => record !== null);
-  return { parsed: true, records };
+  return { parsed: true, rowCount: rows.length, records };
 }
 
 export function createRawCcusageRecord(stdout: string, command: string): UsageRecord {
@@ -110,16 +110,24 @@ function extractLastJsonValue(stdout: string): string | null {
   }
 
   const starts = [...trimmed.matchAll(/[\[{]/g)].map((match) => match.index ?? 0);
+  let selected: string | null = null;
   for (const start of starts) {
     const candidate = extractBalancedJsonValue(trimmed, start);
-    if (candidate && isJson(candidate)) {
-      return candidate;
+    if (!candidate) {
+      continue;
+    }
+    const after = trimmed.slice(candidate.end + 1).trimStart();
+    if (after.startsWith("}") || after.startsWith("]") || after.startsWith(",")) {
+      continue;
+    }
+    if (isJson(candidate.text)) {
+      selected = candidate.text;
     }
   }
-  return null;
+  return selected;
 }
 
-function extractBalancedJsonValue(value: string, start: number): string | null {
+function extractBalancedJsonValue(value: string, start: number): { text: string; end: number } | null {
   const first = value[start];
   if (first !== "{" && first !== "[") {
     return null;
@@ -158,7 +166,10 @@ function extractBalancedJsonValue(value: string, start: number): string | null {
       return null;
     }
     if (stack.length === 0) {
-      return value.slice(start, index + 1);
+      return {
+        text: value.slice(start, index + 1),
+        end: index,
+      };
     }
   }
   return null;
