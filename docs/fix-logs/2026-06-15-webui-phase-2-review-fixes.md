@@ -21,7 +21,7 @@ Phase 2 ccusage refresh had correct API-level behavior, but re-review and smoke 
 ## Verification
 
 - `bun test packages/providers/test/ccusage-parser.test.ts packages/providers/test/ccusage-provider.test.ts`: passed, 21 tests.
-- `bun run test:webui`: passed, 32 tests.
+- `bun run test:webui`: passed, 34 tests.
 - `bun run build:webui`: passed.
 - Local smoke used `OPENUSAGE_WEBUI_DIR=/tmp/openusage-webui-phase2-smoke` and confirmed provider-level ccusage failure does not break manual/minimax refresh.
 - Host process checks after smoke showed no `ccusage`, no `bun`, and no listener on `127.0.0.1:6736`.
@@ -30,3 +30,5 @@ Phase 2 ccusage refresh had correct API-level behavior, but re-review and smoke 
 
 - Live successful ccusage JSON import still needs confirmation on a machine with usable ccusage logs.
 - Provider attribution for real ccusage aggregate rows remains conservative: unknown rows stay under `ccusage`.
+- First-run server startup can wait for seed-time ccusage detection before binding the port; move detection after bind if startup latency becomes visible.
+- Non-Linux timeout cleanup kills only the direct subprocess; Phase 2 is Linux-first, but future macOS support should add process-tree cleanup there.

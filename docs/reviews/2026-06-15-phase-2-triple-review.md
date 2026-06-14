@@ -34,11 +34,11 @@
 
 - `bun test packages/providers/test/ccusage-provider.test.ts`: passed, 11 tests.
 - `bun test packages/providers/test/ccusage-parser.test.ts packages/providers/test/ccusage-provider.test.ts`: passed, 21 tests.
-- `bun run test:webui`: passed, 32 tests.
+- `bun run test:webui`: passed, 34 tests.
 - `bun run build:webui`: passed.
 - Local smoke on `http://127.0.0.1:6736`: `GET /api/health` returned ok; `POST /api/providers/refresh` returned provider-level ccusage error with manual/minimax success.
 - Post-smoke process check: no `ccusage` process, no `bun` process, and no listener on `127.0.0.1:6736`.
 
 ## Merge Gate
 
-Do not merge Phase 2 until the review fixes are committed and the branch receives one final clean review over the updated head.
+Final merge-gate review approved the branch with no critical or high findings. Track first-run seed-time ccusage detection latency and non-Linux process-tree cleanup as follow-ups; both are non-blocking for the Linux-first Phase 2 scope.
