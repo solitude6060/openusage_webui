@@ -11,6 +11,7 @@ export interface CcusageCommandResult {
 export type CcusageCommandRunner = (
   command: string,
   args: string[],
+  timeoutMs?: number,
 ) => Promise<CcusageCommandResult>;
 
 const RUNNERS = ["bunx", "npx"] as const;
@@ -24,6 +25,7 @@ export interface CcusageProviderOptions {
 export class CcusageProvider implements UsageProvider {
   id = "ccusage" as const;
   name = "ccusage";
+  private detectedRunner: (typeof RUNNERS)[number] | null | undefined;
 
   constructor(
     private readonly runner: CcusageCommandRunner = runCcusageCommand,
@@ -31,11 +33,12 @@ export class CcusageProvider implements UsageProvider {
   ) {}
 
   async detect(): Promise<boolean> {
-    return (await this.findRunner()) !== null;
+    this.detectedRunner = await this.findRunner();
+    return this.detectedRunner !== null;
   }
 
   async refresh(): Promise<UsageRecord[]> {
-    const runner = await this.findRunner();
+    const runner = await this.takeDetectedRunner();
     if (!runner) {
       throw new Error("ccusage could not be executed. Install it or run with bunx ccusage first.");
     }
@@ -75,15 +78,25 @@ export class CcusageProvider implements UsageProvider {
     return null;
   }
 
+  private async takeDetectedRunner(): Promise<(typeof RUNNERS)[number] | null> {
+    if (this.detectedRunner !== undefined) {
+      const runner = this.detectedRunner;
+      this.detectedRunner = undefined;
+      return runner;
+    }
+    return this.findRunner();
+  }
+
   private async runWithTimeout(command: string, args: string[]): Promise<CcusageCommandResult> {
+    const timeoutMs = this.options.commandTimeoutMs ?? COMMAND_TIMEOUT_MS;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
-        this.runner(command, args),
+        this.runner(command, args, timeoutMs),
         new Promise<CcusageCommandResult>((resolve) => {
           timer = setTimeout(
             () => resolve({ ok: false, stdout: "", stderr: "ccusage command timed out" }),
-            this.options.commandTimeoutMs ?? COMMAND_TIMEOUT_MS,
+            timeoutMs,
           );
         }),
       ]);
@@ -98,10 +111,12 @@ export class CcusageProvider implements UsageProvider {
 export async function runCcusageCommand(
   command: string,
   args: string[],
+  timeoutMs = COMMAND_TIMEOUT_MS,
 ): Promise<CcusageCommandResult> {
   let proc: ReturnType<typeof Bun.spawn>;
+  const commandLine = process.platform === "linux" ? ["setsid", command, ...args] : [command, ...args];
   try {
-    proc = Bun.spawn([command, ...args], {
+    proc = Bun.spawn(commandLine, {
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
@@ -113,31 +128,46 @@ export async function runCcusageCommand(
       stderr: error instanceof Error ? error.message : "ccusage command failed to spawn",
     };
   }
+  const stdoutPromise = new Response(proc.stdout).text();
+  const stderrPromise = new Response(proc.stderr).text();
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const timedOut = new Promise<"timeout">((resolve) => {
-    timeout = setTimeout(() => resolve("timeout"), COMMAND_TIMEOUT_MS);
+    timeout = setTimeout(() => resolve("timeout"), timeoutMs);
   });
   const exited = await Promise.race([proc.exited, timedOut]);
   if (timeout) {
     clearTimeout(timeout);
   }
   if (exited === "timeout") {
-    proc.kill();
+    killProcessTree(proc);
     await proc.exited.catch(() => undefined);
-    await Promise.all([
-      new Response(proc.stdout).text().catch(() => ""),
-      new Response(proc.stderr).text().catch(() => ""),
-    ]);
+    await Promise.all([stdoutPromise.catch(() => ""), stderrPromise.catch(() => "")]);
     return { ok: false, stdout: "", stderr: "ccusage command timed out" };
   }
 
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
+  const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise]);
   return {
     ok: exited === 0,
     stdout,
     stderr,
   };
+}
+
+function killProcessTree(proc: ReturnType<typeof Bun.spawn>): void {
+  if (process.platform === "linux" && proc.pid) {
+    try {
+      process.kill(-proc.pid, "SIGTERM");
+      setTimeout(() => {
+        try {
+          process.kill(-proc.pid, "SIGKILL");
+        } catch {
+          // The process group already exited.
+        }
+      }, 250).unref();
+      return;
+    } catch {
+      // Fall back to Bun's direct child kill below.
+    }
+  }
+  proc.kill();
 }

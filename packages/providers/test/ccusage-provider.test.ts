@@ -70,6 +70,25 @@ describe("CcusageProvider", () => {
     ]);
   });
 
+  test("refresh reuses the runner found by detect", async () => {
+    const { runner, calls } = makeRunner(async (_command, args) => {
+      if (args.includes("--help")) {
+        return { ok: true, stdout: "Usage: ccusage", stderr: "" };
+      }
+      return {
+        ok: true,
+        stdout: JSON.stringify([{ date: "2026-02-22", source: "Codex", totalTokens: 100 }]),
+        stderr: "",
+      };
+    });
+    const provider = new CcusageProvider(runner);
+
+    await expect(provider.detect()).resolves.toBe(true);
+    await expect(provider.refresh()).resolves.toHaveLength(1);
+
+    expect(calls.filter((call) => call.args.includes("--help"))).toHaveLength(1);
+  });
+
   test("refresh falls back to raw output when JSON is unavailable", async () => {
     const { runner } = makeRunner(async (_command, args) => {
       if (args.includes("--help")) {
@@ -114,6 +133,60 @@ describe("CcusageProvider", () => {
       stdout: "",
       stderr: expect.any(String),
     });
+  });
+
+  test("default command runner honors an explicit timeout", async () => {
+    const result = await runCcusageCommand(
+      "bun",
+      ["-e", "await new Promise((resolve) => setTimeout(resolve, 50));"],
+      5,
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      stdout: "",
+      stderr: "ccusage command timed out",
+    });
+  });
+
+  test("default command runner drains large stdout while waiting for exit", async () => {
+    const result = await runCcusageCommand(
+      "bun",
+      ["-e", "process.stdout.write('x'.repeat(200000));"],
+      1000,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.stdout).toHaveLength(200000);
+  });
+
+  test("default command runner cleans up child processes on timeout", async () => {
+    const marker = `openusage-timeout-child-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const startedAt = performance.now();
+
+    await expect(
+      runCcusageCommand(
+        "bash",
+        ["-lc", `bash -c 'exec -a ${marker} sleep 1' & wait`],
+        25,
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      stdout: "",
+      stderr: "ccusage command timed out",
+    });
+    const elapsedMs = performance.now() - startedAt;
+
+    await Bun.sleep(100);
+    const ps = Bun.spawn(["ps", "-eo", "args"], {
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const output = await new Response(ps.stdout).text();
+    await ps.exited;
+
+    expect(elapsedMs).toBeLessThan(500);
+    expect(output).not.toContain(marker);
   });
 
   test("valid empty JSON returns no records without raw fallback", async () => {

@@ -30,8 +30,6 @@ export function createRawCcusageRecord(stdout: string, command: string): UsageRe
       providerId: "ccusage",
       tool: `ccusage ${command}`,
       startedAt,
-      totalTokens: 0,
-      costUsd: 0,
       command,
     }),
     providerId: "ccusage",
@@ -69,8 +67,6 @@ function normalizeRow(row: JsonObject, command: string): UsageRecord | null {
       tool,
       model,
       startedAt,
-      totalTokens: totalTokens ?? 0,
-      costUsd: costUsd ?? 0,
       command,
     }),
     providerId,
@@ -113,11 +109,56 @@ function extractLastJsonValue(stdout: string): string | null {
     return trimmed;
   }
 
-  const starts = [...trimmed.matchAll(/[\[{]/g)].map((match) => match.index ?? 0).reverse();
+  const starts = [...trimmed.matchAll(/[\[{]/g)].map((match) => match.index ?? 0);
   for (const start of starts) {
-    const candidate = trimmed.slice(start).trim();
-    if (isJson(candidate)) {
+    const candidate = extractBalancedJsonValue(trimmed, start);
+    if (candidate && isJson(candidate)) {
       return candidate;
+    }
+  }
+  return null;
+}
+
+function extractBalancedJsonValue(value: string, start: number): string | null {
+  const first = value[start];
+  if (first !== "{" && first !== "[") {
+    return null;
+  }
+
+  const stack: string[] = [];
+  let inString = false;
+  let escaping = false;
+  for (let index = start; index < value.length; index += 1) {
+    const char = value[index];
+    if (inString) {
+      if (escaping) {
+        escaping = false;
+      } else if (char === "\\") {
+        escaping = true;
+      } else if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = true;
+      continue;
+    }
+    if (char === "{" || char === "[") {
+      stack.push(char);
+      continue;
+    }
+    if (char !== "}" && char !== "]") {
+      continue;
+    }
+
+    const opener = stack.pop();
+    if ((char === "}" && opener !== "{") || (char === "]" && opener !== "[")) {
+      return null;
+    }
+    if (stack.length === 0) {
+      return value.slice(start, index + 1);
     }
   }
   return null;
@@ -164,6 +205,11 @@ function parseStartedAt(row: JsonObject): string | null {
   const compact = value.match(/^(\d{4})(\d{2})(\d{2})$/);
   if (compact) {
     return `${compact[1]}-${compact[2]}-${compact[3]}T00:00:00.000Z`;
+  }
+
+  const compactMonth = value.match(/^(\d{4})(\d{2})$/);
+  if (compactMonth) {
+    return `${compactMonth[1]}-${compactMonth[2]}-01T00:00:00.000Z`;
   }
 
   const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -224,8 +270,6 @@ function stableUsageId(input: {
   tool?: string;
   model?: string;
   startedAt: string;
-  totalTokens: number;
-  costUsd: number;
   command: string;
 }): string {
   return createHash("sha256")

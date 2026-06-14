@@ -121,6 +121,50 @@ describe("ccusage parser", () => {
     });
   });
 
+  test("parses compact monthly dates", () => {
+    const records = normalizeCcusageRecords(
+      JSON.stringify({
+        monthly: [
+          {
+            month: "202602",
+            totalTokens: 420,
+            costUSD: 1.23,
+          },
+        ],
+      }),
+      "monthly",
+    );
+
+    expect(records[0]).toMatchObject({
+      providerId: "ccusage",
+      startedAt: "2026-02-01T00:00:00.000Z",
+      totalTokens: 420,
+      costUsd: 1.23,
+    });
+  });
+
+  test("parses JSON output with trailing command noise", () => {
+    const records = normalizeCcusageRecords(
+      [
+        "bunx warning: using cached package",
+        JSON.stringify({
+          daily: [
+            {
+              date: "2026-02-22",
+              source: "Codex",
+              totalTokens: 100,
+            },
+          ],
+        }),
+        "Done in 25ms",
+      ].join("\n"),
+      "daily",
+    );
+
+    expect(records).toHaveLength(1);
+    expect(records[0]?.providerId).toBe("codex");
+  });
+
   test("maps known tool names and leaves unknown aggregates as ccusage", () => {
     const records = normalizeCcusageRecords(
       JSON.stringify({
