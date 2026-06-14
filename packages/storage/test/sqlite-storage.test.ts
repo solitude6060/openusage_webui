@@ -70,6 +70,37 @@ describe("SqliteStorage", () => {
     storage.close();
   });
 
+  test("summarizes more than the record listing limit", async () => {
+    const storage = new SqliteStorage();
+    await storage.init();
+    const startedAt = new Date().toISOString();
+    const records: UsageRecord[] = Array.from({ length: 1001 }, (_, index) => ({
+      id: `manual-${index}`,
+      providerId: "manual",
+      totalTokens: 1,
+      costUsd: 0.001,
+      startedAt,
+      source: "manual",
+    }));
+
+    await storage.upsertUsageRecords(records);
+    const summary = await storage.getUsageSummary();
+
+    expect(summary.today.records).toBe(1001);
+    expect(summary.today.totalTokens).toBe(1001);
+    expect(summary.month.records).toBe(1001);
+    expect(summary.byProvider).toEqual([
+      {
+        providerId: "manual",
+        totalTokens: 1001,
+        costUsd: 1.001,
+        records: 1001,
+      },
+    ]);
+
+    storage.close();
+  });
+
   test("upserts provider status and settings", async () => {
     const storage = new SqliteStorage();
     await storage.init();

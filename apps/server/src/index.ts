@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { join, normalize } from "node:path";
 import type { ProviderId, ProviderStatus } from "../../../packages/core/src/types";
 import {
@@ -35,31 +35,12 @@ export async function startServer(options: {
   const storage = new SqliteStorage();
   await storage.init();
   await seedProviderStatus(storage);
+  const handleRequest = createRequestHandler(storage, { host, port }, options.devFrontendUrl);
 
   const server = Bun.serve({
     hostname: host,
     port,
-    async fetch(request) {
-      const url = new URL(request.url);
-      try {
-        if (url.pathname.startsWith("/api/")) {
-          return await handleApi(request, url, storage);
-        }
-        return await serveFrontend(request, url, options.devFrontendUrl);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Unexpected server error";
-        return json(
-          {
-            ok: false,
-            error: {
-              code: "INTERNAL_ERROR",
-              message,
-            },
-          },
-          { status: 500 },
-        );
-      }
-    },
+    fetch: handleRequest,
   });
 
   console.log(
@@ -73,10 +54,37 @@ export async function startServer(options: {
   return server;
 }
 
+export function createRequestHandler(
+  storage: SqliteStorage,
+  serverInfo: { host: string; port: number },
+  devFrontendUrl?: string,
+): (request: Request) => Promise<Response> {
+  return async (request) => {
+    if (!isAllowedHost(request.headers.get("host"), serverInfo.port)) {
+      return jsonError("FORBIDDEN_HOST", "Host header is not allowed", 403);
+    }
+
+    const url = new URL(request.url);
+    try {
+      if (url.pathname.startsWith("/api/")) {
+        return await handleApi(request, url, storage, serverInfo);
+      }
+      return await serveFrontend(request, url, devFrontendUrl);
+    } catch (error) {
+      if (error instanceof HttpError) {
+        return jsonError(error.code, error.message, error.status);
+      }
+      const message = error instanceof Error ? error.message : "Unexpected server error";
+      return jsonError("INTERNAL_ERROR", message, 500);
+    }
+  };
+}
+
 async function handleApi(
   request: Request,
   url: URL,
   storage: SqliteStorage,
+  serverInfo: { host: string; port: number },
 ): Promise<Response> {
   if (request.method === "GET" && url.pathname === "/api/health") {
     return json({
@@ -84,8 +92,8 @@ async function handleApi(
       version: VERSION,
       database: "ok",
       databasePath: getDatabasePath(),
-      host: DEFAULT_HOST,
-      port: DEFAULT_PORT,
+      host: serverInfo.host,
+      port: serverInfo.port,
     });
   }
 
@@ -122,7 +130,7 @@ async function handleApi(
   }
 
   if (request.method === "POST" && url.pathname === "/api/manual/usage") {
-    const body = await request.json();
+    const body = await readJsonObject(request);
     const record = createManualUsageRecord({
       providerId: body.providerId ? parseProviderId(body.providerId) : "manual",
       tool: stringOrUndefined(body.tool),
@@ -143,7 +151,7 @@ async function handleApi(
   }
   if (settingsMatch && request.method === "PUT") {
     const providerId = parseProviderId(settingsMatch[1]);
-    const body = await request.json();
+    const body = await readJsonObject(request);
     await storage.updateProviderSettings(providerId, sanitizeSettings(body));
     return json(await storage.getProviderSettings(providerId));
   }
@@ -247,10 +255,10 @@ async function serveFrontend(
   }
 
   const webDist = join(import.meta.dir, "../../web/dist");
-  const requestedPath = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
+  const requestedPath = url.pathname === "/" ? "/index.html" : safeDecodePath(url.pathname);
   const safePath = normalize(requestedPath).replace(/^(\.\.(\/|\\|$))+/, "");
   const filePath = join(webDist, safePath);
-  const target = existsSync(filePath) ? filePath : join(webDist, "index.html");
+  const target = isExistingFile(filePath) ? filePath : join(webDist, "index.html");
   return new Response(Bun.file(target), {
     headers: {
       "content-type": contentType(target),
@@ -260,14 +268,14 @@ async function serveFrontend(
 
 function parseProviderId(value: string): ProviderId {
   if (!PROVIDER_IDS.has(value as ProviderId)) {
-    throw new Error(`Unknown provider: ${value}`);
+    throw new HttpError("BAD_REQUEST", `Unknown provider: ${value}`, 400);
   }
   return value as ProviderId;
 }
 
 function sanitizeSettings(body: unknown): Record<string, string> {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
-    throw new Error("Settings body must be an object");
+    throw new HttpError("BAD_REQUEST", "Settings body must be an object", 400);
   }
   return Object.fromEntries(
     Object.entries(body).map(([key, value]) => [key, value === undefined ? "" : String(value)]),
@@ -294,6 +302,40 @@ function contentType(pathname: string): string {
   return "text/html";
 }
 
+async function readJsonObject(request: Request): Promise<Record<string, unknown>> {
+  try {
+    const body = await request.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      throw new HttpError("BAD_REQUEST", "Request body must be a JSON object", 400);
+    }
+    return body as Record<string, unknown>;
+  } catch (error) {
+    if (error instanceof HttpError) {
+      throw error;
+    }
+    throw new HttpError("BAD_REQUEST", "Failed to parse JSON", 400);
+  }
+}
+
+function isAllowedHost(host: string | null, port: number): boolean {
+  if (!host) {
+    return true;
+  }
+  return host === `127.0.0.1:${port}` || host === `localhost:${port}`;
+}
+
+function safeDecodePath(pathname: string): string {
+  try {
+    return decodeURIComponent(pathname);
+  } catch {
+    throw new HttpError("BAD_REQUEST", "Request path is malformed", 400);
+  }
+}
+
+function isExistingFile(pathname: string): boolean {
+  return existsSync(pathname) && statSync(pathname).isFile();
+}
+
 function json(body: unknown, init: ResponseInit = {}): Response {
   return Response.json(body, {
     ...init,
@@ -302,6 +344,26 @@ function json(body: unknown, init: ResponseInit = {}): Response {
       ...(init.headers ?? {}),
     },
   });
+}
+
+function jsonError(code: string, message: string, status: number): Response {
+  return json(
+    {
+      ok: false,
+      error: { code, message },
+    },
+    { status },
+  );
+}
+
+class HttpError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
 }
 
 if (import.meta.main) {

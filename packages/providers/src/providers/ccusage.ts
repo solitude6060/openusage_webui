@@ -10,6 +10,6 @@ export class CcusageProvider implements UsageProvider {
   }
 
   async refresh(): Promise<UsageRecord[]> {
-    throw new Error("ccusage refresh is planned for Phase 2");
+    return [];
   }
 }

@@ -8,6 +8,8 @@ const vite = Bun.spawn(["bun", "run", "dev", "--", "--host", "127.0.0.1", "--por
   stderr: "inherit",
 });
 
+await waitForFrontend("http://127.0.0.1:6737");
+
 const server = await startServer({
   host: "127.0.0.1",
   port: 6736,
@@ -24,3 +26,20 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 
 await vite.exited;
 server.stop();
+
+async function waitForFrontend(url: string): Promise<void> {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    if (vite.exitCode !== null) {
+      throw new Error("Vite dev server exited before it became ready");
+    }
+    try {
+      const response = await fetch(url, { method: "HEAD" });
+      if (response.ok || response.status === 404) {
+        return;
+      }
+    } catch {
+      await Bun.sleep(100);
+    }
+  }
+  throw new Error("Vite dev server did not become ready");
+}

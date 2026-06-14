@@ -215,7 +215,14 @@ export class SqliteStorage implements Storage {
   }
 
   async getUsageSummary(): Promise<UsageSummary> {
-    const records = await this.listUsageRecords({ limit: 1000 });
+    const rows = this.requireDb()
+      .query("SELECT provider_id, total_tokens, cost_usd, started_at FROM usage_records")
+      .all() as Array<{
+      provider_id: ProviderId;
+      total_tokens: number | null;
+      cost_usd: number | null;
+      started_at: string;
+    }>;
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -232,11 +239,11 @@ export class SqliteStorage implements Storage {
       { providerId: ProviderId; totalTokens: number; costUsd: number; records: number }
     >();
 
-    for (const record of records) {
-      const tokens = record.totalTokens ?? 0;
-      const cost = record.costUsd ?? 0;
+    for (const row of rows) {
+      const tokens = row.total_tokens ?? 0;
+      const cost = row.cost_usd ?? 0;
 
-      const startedAtMs = Date.parse(record.startedAt);
+      const startedAtMs = Date.parse(row.started_at);
       if (!Number.isFinite(startedAtMs)) {
         continue;
       }
@@ -253,12 +260,12 @@ export class SqliteStorage implements Storage {
       }
 
       const provider =
-        byProvider.get(record.providerId) ??
-        { providerId: record.providerId, totalTokens: 0, costUsd: 0, records: 0 };
+        byProvider.get(row.provider_id) ??
+        { providerId: row.provider_id, totalTokens: 0, costUsd: 0, records: 0 };
       provider.totalTokens += tokens;
       provider.costUsd += cost;
       provider.records += 1;
-      byProvider.set(record.providerId, provider);
+      byProvider.set(row.provider_id, provider);
     }
 
     summary.today.costUsd = roundCurrency(summary.today.costUsd);

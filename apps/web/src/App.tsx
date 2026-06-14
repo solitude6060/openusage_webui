@@ -79,6 +79,15 @@ export function App() {
     void loadData();
   }, []);
 
+  useEffect(() => {
+    function handlePopState() {
+      setPage(pageFromPath(window.location.pathname));
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
   function navigate(nextPage: Page) {
     const target = pages.find((item) => item.id === nextPage);
     if (!target) return;

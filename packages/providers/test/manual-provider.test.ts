@@ -25,7 +25,32 @@ describe("Manual providers", () => {
       source: "manual",
       raw: { notes: "manual entry" },
     });
-    expect(record.id).toHaveLength(64);
+    expect(record.id).toHaveLength(36);
+  });
+
+  test("creates unique ids for repeated manual entries", () => {
+    const first = createManualUsageRecord({
+      providerId: "manual",
+      tool: "Codex CLI",
+      model: "gpt-5.5",
+      inputTokens: 100,
+      outputTokens: 50,
+      costUsd: 0.01,
+      startedAt: "2026-06-14T12:00:00.000Z",
+      notes: "first entry",
+    });
+    const second = createManualUsageRecord({
+      providerId: "manual",
+      tool: "Codex CLI",
+      model: "gpt-5.5",
+      inputTokens: 100,
+      outputTokens: 50,
+      costUsd: 0.01,
+      startedAt: "2026-06-14T12:00:00.000Z",
+      notes: "second entry",
+    });
+
+    expect(second.id).not.toBe(first.id);
   });
 
   test("manual refresh providers are no-op sources", async () => {
