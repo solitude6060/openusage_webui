@@ -394,6 +394,7 @@ function SessionsPage({
               <th>Input Tokens</th>
               <th>Output Tokens</th>
               <th>Total Tokens</th>
+              <th>Quota</th>
               <th>Cost USD</th>
               <th>Source</th>
             </tr>
@@ -401,7 +402,7 @@ function SessionsPage({
           <tbody>
             {records.length === 0 ? (
               <tr>
-                <td colSpan={9}>No Usage Records Yet</td>
+                <td colSpan={10}>No Usage Records Yet</td>
               </tr>
             ) : (
               records.map((record) => (
@@ -413,6 +414,7 @@ function SessionsPage({
                   <td>{formatNumber(record.inputTokens ?? 0)}</td>
                   <td>{formatNumber(record.outputTokens ?? 0)}</td>
                   <td>{formatNumber(record.totalTokens ?? 0)}</td>
+                  <td>{formatQuota(record)}</td>
                   <td>{formatMoney(record.costUsd ?? 0)}</td>
                   <td>{record.source}</td>
                 </tr>
@@ -637,12 +639,38 @@ function formatMoney(value: number): string {
   }).format(value);
 }
 
+function formatQuota(record: UsageRecord): string {
+  if (!isPlainObject(record.raw) || !isPlainObject(record.raw.quota)) {
+    return "-";
+  }
+  const quota = record.raw.quota;
+  const used = numberFromUnknown(quota.used);
+  const limit = numberFromUnknown(quota.limit);
+  if (used === undefined || limit === undefined) {
+    return "-";
+  }
+  const remaining = numberFromUnknown(quota.remaining);
+  const suffix = typeof quota.suffix === "string" ? ` ${quota.suffix}` : "";
+  const reset = typeof quota.resetsAt === "string" ? ` · Resets ${formatDate(quota.resetsAt)}` : "";
+  const remainingText = remaining === undefined ? "" : ` · ${formatNumber(remaining)} Left`;
+  return `${formatNumber(used)} / ${formatNumber(limit)}${suffix}${remainingText}${reset}`;
+}
+
 function formatDate(value?: string): string {
   if (!value) return "Never";
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function numberFromUnknown(value: unknown): number | undefined {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function toDatetimeLocal(value: Date): string {

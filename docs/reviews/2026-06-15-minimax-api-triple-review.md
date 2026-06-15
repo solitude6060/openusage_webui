@@ -56,3 +56,21 @@ All accepted CRITICAL/HIGH/MEDIUM findings from the first review pass were fixed
 | `durationToMs(21600)` should be treated as seconds. | AGY | CRITICAL | Original `inferRemainsMs` treats values as milliseconds when milliseconds are within the coding-plan window and seconds exceed it. Original tests cover `300000` as milliseconds. | Rejected. Kept original plugin behavior and added a matching milliseconds regression test. |
 
 These second-pass findings were addressed in a follow-up commit before merge.
+
+## Final Review Pass
+
+- Reviewed commit: `98071b4`
+- Review prompt: `/tmp/openusage_minimax_api_final_review_prompt.txt`
+- AGY: APPROVE
+- Claude: APPROVE with recommended non-blocking follow-ups
+- Claude MiniMax: APPROVE
+
+| Finding | Source | Severity | Verified Evidence | Action |
+|---|---|---:|---|---|
+| MiniMax quota snapshots were stored in `raw.quota` but not surfaced in WebUI tables. | Claude | MEDIUM | Sessions table rendered token/cost fields only, so MiniMax API rows showed zeros. | Fixed by adding a `Quota` column that renders used/limit/remaining/reset from `raw.quota`. |
+| WebUI API client still exported unused provider settings helpers. | Claude, Claude MiniMax | LOW/MEDIUM | `App.tsx` no longer imported `getProviderSettings` or `updateProviderSettings`. | Fixed by deleting the unused exports. |
+| `docs/providers/minimax.md` blurred original plugin and WebUI provider behavior. | Claude | LOW | Docs said "plugin" and "after attempting both regions" while documenting WebUI-specific key isolation. | Fixed wording and CN plan fallback description. |
+| Storage settings test still used `minimax`. | Claude | LOW | HTTP layer rejects MiniMax settings writes, but storage test persisted generic settings under `minimax`. | Fixed by moving the generic storage settings test to `manual`. |
+| CN percent-fallback path lacked a direct test. | Claude MiniMax | LOW | Percent mode should not apply the CN `/15` count multiplier. | Added regression test. |
+
+The final approval pass had no blocking findings. Non-blocking cleanup items were addressed before merge.

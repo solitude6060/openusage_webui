@@ -155,6 +155,38 @@ describe("MiniMaxProvider", () => {
     });
   });
 
+  test("does not scale CN percent fallback values", async () => {
+    const provider = new MiniMaxProvider({
+      env: { MINIMAX_CN_API_KEY: "cn-key" },
+      fetch: async () =>
+        response({
+          data: {
+            model_remains: [
+              {
+                model_name: "general",
+                current_interval_total_count: 0,
+                current_interval_remaining_percent: 87,
+                end_time: 1771765200,
+              },
+            ],
+          },
+          base_resp: { status_code: 0 },
+        }),
+    });
+
+    const records = await provider.refresh();
+
+    expect(records[0]?.raw).toMatchObject({
+      region: "CN",
+      quota: {
+        format: "percent",
+        used: 13,
+        limit: 100,
+        remaining: 87,
+      },
+    });
+  });
+
   test("keeps snapshot ids stable when start time is omitted", async () => {
     const provider = new MiniMaxProvider({
       env: { MINIMAX_API_KEY: "global-key" },

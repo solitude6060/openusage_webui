@@ -19,6 +19,10 @@ Address triple-review findings for the WebUI MiniMax provider while preserving t
 - Added stable snapshot coverage for payloads that provide only `remains_time`.
 - Rejected `PUT /api/settings/minimax` so API-key-like values cannot be stored through the local settings API.
 - Added coverage for CN-to-Global fallback, HTTP failure mapping, and abort mapping.
+- After the final approval pass, surfaced raw MiniMax quota snapshots in the Sessions table instead of showing only zero token/cost fields.
+- Removed unused WebUI provider settings API-client helpers.
+- Moved the generic storage settings test away from `minimax` to avoid implying MiniMax settings are writable.
+- Added CN percent-fallback coverage and clarified WebUI provider docs.
 
 ## Verification
 

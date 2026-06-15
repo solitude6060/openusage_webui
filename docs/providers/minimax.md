@@ -11,7 +11,7 @@
 
 ## Authentication
 
-The plugin supports automatic region detection and reads API keys based on the selected region:
+The WebUI provider supports automatic region detection and reads API keys based on the selected region:
 
 **Region auto-selection:**
 - If `MINIMAX_CN_API_KEY` is set: tries `CN` first, then `GLOBAL`
@@ -21,7 +21,7 @@ The plugin supports automatic region detection and reads API keys based on the s
 - **CN region**: `MINIMAX_CN_API_KEY`
 - **GLOBAL region**: `MINIMAX_API_KEY` → `MINIMAX_API_TOKEN`
 
-If no key is found after attempting both regions, it throws:
+If no key is found after attempting the available region or regions, it throws:
 
 - `MiniMax API key missing. Set MINIMAX_API_KEY, MINIMAX_API_TOKEN, or MINIMAX_CN_API_KEY.`
 
@@ -70,7 +70,7 @@ Expected payload fields:
 - If count totals are missing or too small to display after CN scaling, fall back to a valid `current_interval_remaining_percent`.
 - Plan name is taken from explicit plan/title fields when available.
 - If plan fields are missing in GLOBAL mode, infer plan tier from known limits (`100/300/1000/2000` prompts or `1500/4500/15000/30000` model-call equivalents).
-- If plan fields are missing in CN mode, infer only exact known CN limits (`600/1500/4500` model-call counts).
+- If plan fields are missing in CN mode, infer exact known CN limits (`600/1500/4500` model-call counts), then fall back to the original plugin's Global prompt-limit inference when the raw count is divisible by 15.
 - Use `end_time` for reset timestamp when present.
 - Fallback to `remains_time` when `end_time` is absent.
 - Infer `remains_time` units with the same seconds-versus-milliseconds heuristic as the original plugin.

@@ -84,21 +84,6 @@ export async function createManualUsage(input: ManualUsageInput): Promise<{
   });
 }
 
-export async function getProviderSettings(providerId: string): Promise<Record<string, string>> {
-  return request(`/api/settings/${encodeURIComponent(providerId)}`);
-}
-
-export async function updateProviderSettings(
-  providerId: string,
-  settings: Record<string, string>,
-): Promise<Record<string, string>> {
-  return request(`/api/settings/${encodeURIComponent(providerId)}`, {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(settings),
-  });
-}
-
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
   const body = await response.json().catch(() => undefined);
