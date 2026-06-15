@@ -10,7 +10,7 @@
 - Codex CLI via ccusage
 - GitHub Copilot CLI via ccusage
 - Gemini CLI / Google AI Pro coding usage via ccusage
-- MiniMax 手動追蹤
+- MiniMax Token Plan remains API key 查詢
 - 手動 usage entries
 
 ## 目前不做
@@ -59,3 +59,15 @@ Server 預設只綁定 `127.0.0.1`。
 ## ccusage 狀態
 
 手動 entries 和 MiniMax settings 已實作。`ccusage` refresh 會先嘗試 `bunx ccusage`，再嘗試 `npx ccusage`，並在 JSON output 可用時做 normalize。如果 ccusage 只回傳非 JSON output，WebUI 會儲存 raw fallback record，不做脆弱的表格 parsing。
+
+## MiniMax 狀態
+
+MiniMax refresh 沿用原本 OpenUsage 的 Token Plan remains API 方法。啟動 server 前設定其中一個環境變數：
+
+```bash
+export MINIMAX_API_KEY="..."
+# 或
+export MINIMAX_CN_API_KEY="..."
+```
+
+WebUI 不會儲存 MiniMax API key。MiniMax 回傳的是剩餘 prompt quota，不是逐筆 token usage，所以 WebUI 會把它存成 raw API usage snapshot。

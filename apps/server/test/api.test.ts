@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequestHandler } from "../src/index";
 import { SqliteStorage } from "../../../packages/storage/src/index";
-import type { UsageProvider } from "../../../packages/providers/src/index";
+import { MiniMaxProvider, type UsageProvider } from "../../../packages/providers/src/index";
 
 let dataDir: string;
 let previousDataDir: string | undefined;
@@ -150,6 +150,47 @@ describe("WebUI API", () => {
         { providerId: "manual", ok: true, records: 0 },
       ],
     });
+  });
+
+  test("minimax refresh reports missing API key as a provider-level error", async () => {
+    handleRequest = createRequestHandler(storage, {
+      host: "127.0.0.1",
+      port: 6736,
+    }, undefined, [
+      new MiniMaxProvider({
+        env: {},
+        fetch: async () => {
+          throw new Error("network should not be called without an API key");
+        },
+      }),
+    ]);
+
+    const response = await handleRequest(new Request("http://127.0.0.1:6736/api/providers/minimax/refresh", {
+      method: "POST",
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      ok: true,
+      results: [
+        {
+          providerId: "minimax",
+          ok: false,
+          error: "MiniMax API key missing. Set MINIMAX_API_KEY or MINIMAX_CN_API_KEY.",
+        },
+      ],
+    });
+    expect(await storage.listProviderStatus()).toEqual([
+      {
+        providerId: "minimax",
+        name: "MiniMax",
+        enabled: true,
+        detected: false,
+        lastRefreshAt: expect.any(String),
+        lastError: "MiniMax API key missing. Set MINIMAX_API_KEY or MINIMAX_CN_API_KEY.",
+      },
+    ]);
   });
 
   test("serves built frontend index for production SPA routes", async () => {
