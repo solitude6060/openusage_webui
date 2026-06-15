@@ -153,13 +153,15 @@ describe("WebUI API", () => {
   });
 
   test("minimax refresh reports missing API key as a provider-level error", async () => {
+    const calls: string[] = [];
     handleRequest = createRequestHandler(storage, {
       host: "127.0.0.1",
       port: 6736,
     }, undefined, [
       new MiniMaxProvider({
         env: {},
-        fetch: async () => {
+        fetch: async (url) => {
+          calls.push(String(url));
           throw new Error("network should not be called without an API key");
         },
       }),
@@ -177,10 +179,11 @@ describe("WebUI API", () => {
         {
           providerId: "minimax",
           ok: false,
-          error: "MiniMax API key missing. Set MINIMAX_API_KEY or MINIMAX_CN_API_KEY.",
+          error: "MiniMax API key missing. Set MINIMAX_API_KEY, MINIMAX_API_TOKEN, or MINIMAX_CN_API_KEY.",
         },
       ],
     });
+    expect(calls).toEqual([]);
     expect(await storage.listProviderStatus()).toEqual([
       {
         providerId: "minimax",
@@ -188,7 +191,7 @@ describe("WebUI API", () => {
         enabled: true,
         detected: false,
         lastRefreshAt: expect.any(String),
-        lastError: "MiniMax API key missing. Set MINIMAX_API_KEY or MINIMAX_CN_API_KEY.",
+        lastError: "MiniMax API key missing. Set MINIMAX_API_KEY, MINIMAX_API_TOKEN, or MINIMAX_CN_API_KEY.",
       },
     ]);
   });

@@ -58,7 +58,7 @@ No cloud upload.
 
 ## ccusage Notes
 
-Manual entries and MiniMax settings are implemented. ccusage refresh attempts `bunx ccusage` first and then `npx ccusage`, using JSON output when available. If ccusage returns non-JSON output, the WebUI stores a raw fallback record instead of brittle table parsing.
+Manual entries and MiniMax quota refresh are implemented. ccusage refresh attempts `bunx ccusage` first and then `npx ccusage`, using JSON output when available. If ccusage returns non-JSON output, the WebUI stores a raw fallback record instead of brittle table parsing.
 
 ## MiniMax Notes
 
@@ -67,7 +67,9 @@ MiniMax refresh uses the original OpenUsage Token Plan remains API method. Set o
 ```bash
 export MINIMAX_API_KEY="..."
 # or
+export MINIMAX_API_TOKEN="..."
+# or
 export MINIMAX_CN_API_KEY="..."
 ```
 
-The WebUI does not store the MiniMax API key. It stores quota snapshots as raw API usage records because MiniMax returns remaining prompt quota, not per-request token usage.
+The WebUI does not store the MiniMax API key. Global keys are only sent to `www.minimax.io`; the CN endpoint is used only when `MINIMAX_CN_API_KEY` is set. It stores quota snapshots as raw API usage records because MiniMax returns remaining prompt quota, not per-request token usage.

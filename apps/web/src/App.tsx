@@ -8,13 +8,11 @@ import type {
 import {
   createManualUsage,
   getHealth,
-  getProviderSettings,
   getProviders,
   getUsageRecords,
   getUsageSummary,
   refreshAllProviders,
   refreshProvider,
-  updateProviderSettings,
   type HealthResponse,
 } from "./lib/api";
 
@@ -434,12 +432,6 @@ function SettingsPage({
   health: HealthResponse | null;
   onCreated: () => Promise<void>;
 }) {
-  const [minimax, setMiniMax] = useState({
-    plan_type: "",
-    monthly_budget_usd: "",
-    remaining_quota: "",
-    notes: "",
-  });
   const [manual, setManual] = useState({
     providerId: "manual" as ProviderId,
     tool: "",
@@ -452,33 +444,6 @@ function SettingsPage({
   });
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    getProviderSettings("minimax")
-      .then((settings) =>
-        setMiniMax({
-          plan_type: settings.plan_type ?? "",
-          monthly_budget_usd: settings.monthly_budget_usd ?? "",
-          remaining_quota: settings.remaining_quota ?? "",
-          notes: settings.notes ?? "",
-        }),
-      )
-      .catch((settingsError) =>
-        setError(settingsError instanceof Error ? settingsError.message : "Settings failed"),
-      );
-  }, []);
-
-  async function saveMiniMax(event: FormEvent) {
-    event.preventDefault();
-    setError(null);
-    setMessage(null);
-    try {
-      await updateProviderSettings("minimax", minimax);
-      setMessage("MiniMax Settings Saved");
-    } catch (settingsError) {
-      setError(settingsError instanceof Error ? settingsError.message : "Settings failed");
-    }
-  }
 
   async function saveManual(event: FormEvent) {
     event.preventDefault();
@@ -534,46 +499,29 @@ function SettingsPage({
         </dl>
       </section>
 
-      <form className="panel form-panel" onSubmit={saveMiniMax}>
+      <section className="panel">
         <div className="panel-header">
           <h3>MiniMax Settings</h3>
         </div>
-        <label>
-          Plan Type
-          <input
-            value={minimax.plan_type}
-            onChange={(event) => setMiniMax({ ...minimax, plan_type: event.target.value })}
-          />
-        </label>
-        <label>
-          Monthly Budget USD
-          <input
-            inputMode="decimal"
-            value={minimax.monthly_budget_usd}
-            onChange={(event) =>
-              setMiniMax({ ...minimax, monthly_budget_usd: event.target.value })
-            }
-          />
-        </label>
-        <label>
-          Remaining Quota
-          <input
-            value={minimax.remaining_quota}
-            onChange={(event) => setMiniMax({ ...minimax, remaining_quota: event.target.value })}
-          />
-        </label>
-        <label>
-          Notes
-          <textarea
-            rows={4}
-            value={minimax.notes}
-            onChange={(event) => setMiniMax({ ...minimax, notes: event.target.value })}
-          />
-        </label>
-        <button className="primary-button" type="submit">
-          Save MiniMax
-        </button>
-      </form>
+        <dl className="detail-list wide">
+          <div>
+            <dt>Tracking Method</dt>
+            <dd>Token Plan Remains API</dd>
+          </div>
+          <div>
+            <dt>API Key Source</dt>
+            <dd>Environment Variables</dd>
+          </div>
+          <div>
+            <dt>Accepted Variables</dt>
+            <dd>MINIMAX_API_KEY, MINIMAX_API_TOKEN, MINIMAX_CN_API_KEY</dd>
+          </div>
+          <div>
+            <dt>Stored API Key</dt>
+            <dd>No</dd>
+          </div>
+        </dl>
+      </section>
 
       <form className="panel form-panel" onSubmit={saveManual}>
         <div className="panel-header">

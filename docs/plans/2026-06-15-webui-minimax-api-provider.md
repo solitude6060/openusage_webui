@@ -11,7 +11,8 @@ Use the original OpenUsage MiniMax tracking method in the local WebUI: query Min
   - `MINIMAX_CN_API_KEY`
   - `MINIMAX_API_KEY`
   - `MINIMAX_API_TOKEN`
-- Try CN first when `MINIMAX_CN_API_KEY` is present, otherwise try Global first.
+- Try CN first when `MINIMAX_CN_API_KEY` is present, otherwise try Global only.
+- Keep the original MiniMax remains API behavior, but do not send a Global key to the CN endpoint unless a separate CN key is configured.
 - Query:
   - `https://www.minimax.io/v1/token_plan/remains`
   - `https://api.minimaxi.com/v1/token_plan/remains`
@@ -40,12 +41,20 @@ Use the original OpenUsage MiniMax tracking method in the local WebUI: query Min
    - converts CN model-call counts to prompt counts with the original `15` divisor.
 4. Percent fallback:
    - uses `current_interval_remaining_percent` when count totals are not displayable.
-5. Registry:
+5. Review hardening:
+   - keeps snapshot IDs stable when `start_time` is absent.
+   - uses `remains_time` as a reset fallback when `end_time` is absent.
+   - does not send Global API keys to the CN endpoint.
+6. Registry:
    - uses the automatic `MiniMaxProvider` instead of the no-op manual provider.
 
 ## Data Model Decision
 
 MiniMax Token Plan remains APIs return quota snapshots, not per-request token usage. The WebUI will store one stable snapshot record per region/model/window in `usage_records.raw` and leave token/cost fields empty. This preserves the original provider semantics without pretending prompt quota is token usage.
+
+## Security Decision
+
+The original plugin can fall back across regions with generic MiniMax keys. The WebUI keeps the same API method and quota normalization, but restricts the CN endpoint to `MINIMAX_CN_API_KEY`. This avoids sending a Global API key to a different host while preserving explicit CN support.
 
 ## Verification
 

@@ -21,7 +21,7 @@ describe("MiniMaxProvider", () => {
 
     await expect(provider.detect()).resolves.toBe(false);
     await expect(provider.refresh()).rejects.toThrow(
-      "MiniMax API key missing. Set MINIMAX_API_KEY or MINIMAX_CN_API_KEY.",
+      "MiniMax API key missing. Set MINIMAX_API_KEY, MINIMAX_API_TOKEN, or MINIMAX_CN_API_KEY.",
     );
     expect(calls).toEqual([]);
   });
@@ -153,6 +153,134 @@ describe("MiniMaxProvider", () => {
         remaining: 42,
       },
     });
+  });
+
+  test("keeps snapshot ids stable when start time is omitted", async () => {
+    const provider = new MiniMaxProvider({
+      env: { MINIMAX_API_KEY: "global-key" },
+      fetch: async () =>
+        response({
+          data: {
+            model_remains: [
+              {
+                model_name: "general",
+                current_interval_total_count: 0,
+                current_interval_remaining_percent: 42,
+                end_time: 1771765200,
+              },
+            ],
+          },
+          base_resp: { status_code: 0 },
+        }),
+    });
+
+    const first = await provider.refresh();
+    const second = await provider.refresh();
+
+    expect(second[0]?.id).toBe(first[0]?.id);
+    expect(first[0]?.startedAt).toBe("2026-02-22T08:00:00.000Z");
+    expect(first[0]?.endedAt).toBe("2026-02-22T13:00:00.000Z");
+  });
+
+  test("uses remains time as reset fallback when end time is omitted", async () => {
+    const provider = new MiniMaxProvider({
+      env: { MINIMAX_API_KEY: "global-key" },
+      fetch: async () =>
+        response({
+          data: {
+            model_remains: [
+              {
+                model_name: "MiniMax-M2",
+                current_interval_total_count: 100,
+                current_interval_usage_count: 70,
+                start_time: 1771747200,
+                remains_time: 18000,
+              },
+            ],
+          },
+          base_resp: { status_code: 0 },
+        }),
+    });
+
+    const records = await provider.refresh();
+
+    expect(records[0]).toMatchObject({
+      startedAt: "2026-02-22T08:00:00.000Z",
+      endedAt: "2026-02-22T13:00:00.000Z",
+    });
+    expect(records[0]?.raw).toMatchObject({
+      quota: {
+        resetsAt: "2026-02-22T13:00:00.000Z",
+        periodDurationMs: 18000000,
+      },
+    });
+  });
+
+  test("prefers explicit remaining count over MiniMax usage count field", async () => {
+    const provider = new MiniMaxProvider({
+      env: { MINIMAX_API_KEY: "global-key" },
+      fetch: async () =>
+        response({
+          data: {
+            model_remains: [
+              {
+                model_name: "MiniMax-M2",
+                current_interval_total_count: 100,
+                current_interval_remaining_count: 20,
+                current_interval_usage_count: 70,
+                start_time: 1771747200,
+                end_time: 1771765200,
+              },
+            ],
+          },
+          base_resp: { status_code: 0 },
+        }),
+    });
+
+    const records = await provider.refresh();
+
+    expect(records[0]?.raw).toMatchObject({
+      quota: {
+        used: 80,
+        limit: 100,
+        remaining: 20,
+      },
+    });
+  });
+
+  test("does not send a global API key to the CN endpoint after global failure", async () => {
+    const calls: string[] = [];
+    const provider = new MiniMaxProvider({
+      env: { MINIMAX_API_KEY: "global-key" },
+      fetch: async (url) => {
+        calls.push(String(url));
+        return response({ error: "unauthorized" }, 401);
+      },
+    });
+
+    await expect(provider.refresh()).rejects.toThrow("Session expired. Check your MiniMax API key.");
+    expect(calls).toEqual(["https://www.minimax.io/v1/token_plan/remains"]);
+  });
+
+  test("reports MiniMax API status errors from base_resp", async () => {
+    const provider = new MiniMaxProvider({
+      env: { MINIMAX_API_TOKEN: "token-key" },
+      fetch: async () =>
+        response({
+          data: {
+            model_remains: [
+              {
+                model_name: "MiniMax-M2",
+                current_interval_total_count: 100,
+                current_interval_usage_count: 70,
+              },
+            ],
+            base_resp: { status_code: 2001, status_msg: "plan unavailable" },
+          },
+        }),
+    });
+
+    await expect(provider.refresh()).rejects.toThrow("MiniMax API error: plan unavailable");
   });
 
   test("registry uses the automatic MiniMax provider", () => {

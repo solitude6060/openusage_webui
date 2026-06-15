@@ -5,9 +5,11 @@ import type { UsageProvider } from "../types";
 const GLOBAL_USAGE_URL = "https://www.minimax.io/v1/token_plan/remains";
 const CN_USAGE_URL = "https://api.minimaxi.com/v1/token_plan/remains";
 const GLOBAL_API_KEY_ENV_VARS = ["MINIMAX_API_KEY", "MINIMAX_API_TOKEN"] as const;
-const CN_API_KEY_ENV_VARS = ["MINIMAX_CN_API_KEY", "MINIMAX_API_KEY", "MINIMAX_API_TOKEN"] as const;
+const CN_API_KEY_ENV_VARS = ["MINIMAX_CN_API_KEY"] as const;
 const MODEL_CALLS_PER_PROMPT = 15;
 const REQUEST_TIMEOUT_MS = 15_000;
+const CODING_PLAN_WINDOW_MS = 5 * 60 * 60 * 1000;
+const CODING_PLAN_WINDOW_TOLERANCE_MS = 10 * 60 * 1000;
 
 const GLOBAL_PROMPT_LIMIT_TO_PLAN: Record<number, string> = {
   100: "Starter",
@@ -82,12 +84,12 @@ export class MiniMaxProvider implements UsageProvider {
     }
 
     throw new Error(
-      lastError ?? "MiniMax API key missing. Set MINIMAX_API_KEY or MINIMAX_CN_API_KEY.",
+      lastError ?? "MiniMax API key missing. Set MINIMAX_API_KEY, MINIMAX_API_TOKEN, or MINIMAX_CN_API_KEY.",
     );
   }
 
   private endpointAttempts(): Region[] {
-    return readString(this.env.MINIMAX_CN_API_KEY) ? ["CN", "GLOBAL"] : ["GLOBAL", "CN"];
+    return readString(this.env.MINIMAX_CN_API_KEY) ? ["CN", "GLOBAL"] : ["GLOBAL"];
   }
 
   private loadApiKey(region: Region): string | null {
@@ -263,7 +265,6 @@ function recordFromQuota(quota: ParsedQuota, region: Region): UsageRecord {
         region,
         quota.model ?? "",
         quota.startedAt,
-        quota.endedAt ?? "",
         quota.limit,
         quota.format,
       ].join("|"))
@@ -295,11 +296,21 @@ function readTimes(row: JsonObject): {
   endedAt?: string;
   periodDurationMs?: number;
 } {
-  const startMs = epochToMs(row.start_time ?? row.startTime);
-  const endMs = epochToMs(row.end_time ?? row.endTime);
-  const startedAt = new Date(startMs ?? Date.now()).toISOString();
+  const explicitStartMs = epochToMs(row.start_time ?? row.startTime);
+  const explicitEndMs = epochToMs(row.end_time ?? row.endTime);
+  const remainsMs = durationToMs(row.remains_time ?? row.remainsTime);
+  const nowMs = Date.now();
+  const endMs = explicitEndMs
+    ?? (explicitStartMs !== undefined && remainsMs !== undefined
+      ? explicitStartMs + remainsMs
+      : remainsMs !== undefined
+        ? nowMs + remainsMs
+        : undefined);
+  const startMs = explicitStartMs
+    ?? (endMs !== undefined ? endMs - CODING_PLAN_WINDOW_MS : startOfUtcDayMs(nowMs));
+  const startedAt = new Date(startMs).toISOString();
   const endedAt = endMs === undefined ? undefined : new Date(endMs).toISOString();
-  const periodDurationMs = startMs !== undefined && endMs !== undefined && endMs > startMs
+  const periodDurationMs = endMs !== undefined && endMs > startMs
     ? endMs - startMs
     : undefined;
   return { startedAt, endedAt, periodDurationMs };
@@ -321,6 +332,8 @@ function remainingCount(row: JsonObject): number | undefined {
     "remains",
     "left_count",
     "leftCount",
+    // The MiniMax remains endpoint used by the original OpenUsage plugin commonly
+    // returns remaining prompts in this field despite the "usage" name.
     "current_interval_usage_count",
     "currentIntervalUsageCount",
   ]);
@@ -361,6 +374,26 @@ function epochToMs(value: unknown): number | undefined {
     return undefined;
   }
   return Math.abs(number) < 1e10 ? number * 1000 : number;
+}
+
+function durationToMs(value: unknown): number | undefined {
+  const number = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isFinite(number) || number <= 0) {
+    return undefined;
+  }
+  const secondsAsMs = number * 1000;
+  if (secondsAsMs <= CODING_PLAN_WINDOW_MS + CODING_PLAN_WINDOW_TOLERANCE_MS) {
+    return secondsAsMs;
+  }
+  if (number <= CODING_PLAN_WINDOW_MS + CODING_PLAN_WINDOW_TOLERANCE_MS) {
+    return number;
+  }
+  return Math.abs(number) < 1e10 ? secondsAsMs : number;
+}
+
+function startOfUtcDayMs(value: number): number {
+  const date = new Date(value);
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 }
 
 function pickFirstString(values: unknown[]): string | null {

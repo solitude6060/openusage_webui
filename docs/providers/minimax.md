@@ -15,15 +15,17 @@ The plugin supports automatic region detection and reads API keys based on the s
 
 **Region auto-selection:**
 - If `MINIMAX_CN_API_KEY` is set: tries `CN` first, then `GLOBAL`
-- If `MINIMAX_CN_API_KEY` is not set: tries `GLOBAL` first, then `CN`
+- If `MINIMAX_CN_API_KEY` is not set: tries `GLOBAL` only
 
 **Key lookup by region:**
-- **CN region**: `MINIMAX_CN_API_KEY` → `MINIMAX_API_KEY` → `MINIMAX_API_TOKEN`
+- **CN region**: `MINIMAX_CN_API_KEY`
 - **GLOBAL region**: `MINIMAX_API_KEY` → `MINIMAX_API_TOKEN`
 
 If no key is found after attempting both regions, it throws:
 
-- `MiniMax API key missing. Set MINIMAX_API_KEY or MINIMAX_CN_API_KEY.`
+- `MiniMax API key missing. Set MINIMAX_API_KEY, MINIMAX_API_TOKEN, or MINIMAX_CN_API_KEY.`
+
+The WebUI provider intentionally does not send a Global key to the CN endpoint. This keeps the original remains API method while avoiding cross-host credential fallback.
 
 ## Data Source
 
@@ -90,7 +92,7 @@ Expected payload fields:
 
 | Condition | Message |
 |---|---|
-| Missing API key | `MiniMax API key missing. Set MINIMAX_API_KEY or MINIMAX_CN_API_KEY.` |
+| Missing API key | `MiniMax API key missing. Set MINIMAX_API_KEY, MINIMAX_API_TOKEN, or MINIMAX_CN_API_KEY.` |
 | HTTP 401/403 | `Session expired. Check your MiniMax API key.` |
 | API status `base_resp.status_code != 0` | `MiniMax API error: ...` (or session-expired for auth-like errors) |
 | Non-2xx | `Request failed (HTTP {status}). Try again later.` |
