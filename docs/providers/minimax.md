@@ -27,6 +27,8 @@ If no key is found after attempting both regions, it throws:
 
 The WebUI provider intentionally does not send a Global key to the CN endpoint. This keeps the original remains API method while avoiding cross-host credential fallback.
 
+The WebUI `PUT /api/settings/minimax` route is rejected. MiniMax API keys must be provided through environment variables and are not stored in SQLite provider settings.
+
 ## Data Source
 
 Request:
@@ -71,6 +73,7 @@ Expected payload fields:
 - If plan fields are missing in CN mode, infer only exact known CN limits (`600/1500/4500` model-call counts).
 - Use `end_time` for reset timestamp when present.
 - Fallback to `remains_time` when `end_time` is absent.
+- Infer `remains_time` units with the same seconds-versus-milliseconds heuristic as the original plugin.
 - Use `start_time` + `end_time` as `periodDurationMs` when both are valid.
 
 ## Output

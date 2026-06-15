@@ -13,6 +13,7 @@ Use the original OpenUsage MiniMax tracking method in the local WebUI: query Min
   - `MINIMAX_API_TOKEN`
 - Try CN first when `MINIMAX_CN_API_KEY` is present, otherwise try Global only.
 - Keep the original MiniMax remains API behavior, but do not send a Global key to the CN endpoint unless a separate CN key is configured.
+- Reject WebUI `PUT /api/settings/minimax` writes. MiniMax API keys must stay environment-only and are never stored in provider settings.
 - Query:
   - `https://www.minimax.io/v1/token_plan/remains`
   - `https://api.minimaxi.com/v1/token_plan/remains`
@@ -45,16 +46,20 @@ Use the original OpenUsage MiniMax tracking method in the local WebUI: query Min
    - keeps snapshot IDs stable when `start_time` is absent.
    - uses `remains_time` as a reset fallback when `end_time` is absent.
    - does not send Global API keys to the CN endpoint.
+   - rejects MiniMax settings writes so API-key-like values cannot be stored through the local API.
+   - covers CN-to-Global fallback and provider-level error paths.
 6. Registry:
    - uses the automatic `MiniMaxProvider` instead of the no-op manual provider.
 
 ## Data Model Decision
 
-MiniMax Token Plan remains APIs return quota snapshots, not per-request token usage. The WebUI will store one stable snapshot record per region/model/window in `usage_records.raw` and leave token/cost fields empty. This preserves the original provider semantics without pretending prompt quota is token usage.
+MiniMax Token Plan remains APIs return quota snapshots, not per-request token usage. The WebUI will store one stable snapshot record for the chosen model per region/window in `usage_records.raw` and leave token/cost fields empty. This preserves the original provider semantics without pretending prompt quota is token usage.
 
 ## Security Decision
 
 The original plugin can fall back across regions with generic MiniMax keys. The WebUI keeps the same API method and quota normalization, but restricts the CN endpoint to `MINIMAX_CN_API_KEY`. This avoids sending a Global API key to a different host while preserving explicit CN support.
+
+`remains_time` unit inference mirrors the original plugin. When `end_time` is absent, reset time is derived from `Date.now() + remains_time`. If no stable `start_time` or `end_time` exists, the persistent snapshot ID uses a UTC-day start fallback rather than the moving reset timestamp.
 
 ## Verification
 

@@ -182,9 +182,10 @@ describe("MiniMaxProvider", () => {
     expect(first[0]?.endedAt).toBe("2026-02-22T13:00:00.000Z");
   });
 
-  test("uses remains time as reset fallback when end time is omitted", async () => {
+  test("uses remains time from now as reset fallback when end time is omitted", async () => {
     const provider = new MiniMaxProvider({
       env: { MINIMAX_API_KEY: "global-key" },
+      now: () => 1771761600000,
       fetch: async () =>
         response({
           data: {
@@ -194,7 +195,7 @@ describe("MiniMaxProvider", () => {
                 current_interval_total_count: 100,
                 current_interval_usage_count: 70,
                 start_time: 1771747200,
-                remains_time: 18000,
+                remains_time: 3600,
               },
             ],
           },
@@ -211,9 +212,68 @@ describe("MiniMaxProvider", () => {
     expect(records[0]?.raw).toMatchObject({
       quota: {
         resetsAt: "2026-02-22T13:00:00.000Z",
-        periodDurationMs: 18000000,
       },
     });
+    const raw = records[0]?.raw as { quota?: { periodDurationMs?: number } };
+    expect(raw.quota?.periodDurationMs).toBeUndefined();
+  });
+
+  test("keeps snapshot ids stable when only remains time is available", async () => {
+    let now = 1771761600000;
+    const provider = new MiniMaxProvider({
+      env: { MINIMAX_API_KEY: "global-key" },
+      now: () => {
+        const value = now;
+        now += 60000;
+        return value;
+      },
+      fetch: async () =>
+        response({
+          data: {
+            model_remains: [
+              {
+                model_name: "MiniMax-M2",
+                current_interval_total_count: 100,
+                current_interval_usage_count: 70,
+                remains_time: 3600,
+              },
+            ],
+          },
+          base_resp: { status_code: 0 },
+        }),
+    });
+
+    const first = await provider.refresh();
+    const second = await provider.refresh();
+
+    expect(second[0]?.id).toBe(first[0]?.id);
+    expect(first[0]?.startedAt).toBe("2026-02-22T00:00:00.000Z");
+    expect(second[0]?.startedAt).toBe("2026-02-22T00:00:00.000Z");
+  });
+
+  test("interprets plausible remains time values as milliseconds", async () => {
+    const provider = new MiniMaxProvider({
+      env: { MINIMAX_API_KEY: "global-key" },
+      now: () => 1771761600000,
+      fetch: async () =>
+        response({
+          data: {
+            model_remains: [
+              {
+                model_name: "MiniMax-M2",
+                current_interval_total_count: 100,
+                current_interval_usage_count: 70,
+                remains_time: 300000,
+              },
+            ],
+          },
+          base_resp: { status_code: 0 },
+        }),
+    });
+
+    const records = await provider.refresh();
+
+    expect(records[0]?.endedAt).toBe("2026-02-22T12:05:00.000Z");
   });
 
   test("prefers explicit remaining count over MiniMax usage count field", async () => {
@@ -262,6 +322,50 @@ describe("MiniMaxProvider", () => {
     expect(calls).toEqual(["https://www.minimax.io/v1/token_plan/remains"]);
   });
 
+  test("falls back to global when a configured CN key is expired", async () => {
+    const calls: Array<{ url: string; authorization?: string }> = [];
+    const provider = new MiniMaxProvider({
+      env: { MINIMAX_CN_API_KEY: "cn-key", MINIMAX_API_KEY: "global-key" },
+      fetch: async (url, init) => {
+        calls.push({
+          url: String(url),
+          authorization: (init?.headers as Record<string, string>).Authorization,
+        });
+        if (String(url).includes("api.minimaxi.com")) {
+          return response({ error: "unauthorized" }, 401);
+        }
+        return response({
+          data: {
+            model_remains: [
+              {
+                model_name: "MiniMax-M2",
+                current_interval_total_count: 100,
+                current_interval_usage_count: 70,
+                start_time: 1771747200,
+                end_time: 1771765200,
+              },
+            ],
+          },
+          base_resp: { status_code: 0 },
+        });
+      },
+    });
+
+    const records = await provider.refresh();
+
+    expect(calls).toEqual([
+      {
+        url: "https://api.minimaxi.com/v1/token_plan/remains",
+        authorization: "Bearer cn-key",
+      },
+      {
+        url: "https://www.minimax.io/v1/token_plan/remains",
+        authorization: "Bearer global-key",
+      },
+    ]);
+    expect(records[0]?.raw).toMatchObject({ region: "GLOBAL" });
+  });
+
   test("reports MiniMax API status errors from base_resp", async () => {
     const provider = new MiniMaxProvider({
       env: { MINIMAX_API_TOKEN: "token-key" },
@@ -281,6 +385,28 @@ describe("MiniMaxProvider", () => {
     });
 
     await expect(provider.refresh()).rejects.toThrow("MiniMax API error: plan unavailable");
+  });
+
+  test("reports MiniMax HTTP failures without parsing response bodies", async () => {
+    const provider = new MiniMaxProvider({
+      env: { MINIMAX_API_KEY: "global-key" },
+      fetch: async () => response({ error: "unavailable" }, 500),
+    });
+
+    await expect(provider.refresh()).rejects.toThrow("Request failed (HTTP 500). Try again later.");
+  });
+
+  test("reports MiniMax aborts as connection failures", async () => {
+    const abortError = new Error("aborted");
+    abortError.name = "AbortError";
+    const provider = new MiniMaxProvider({
+      env: { MINIMAX_API_KEY: "global-key" },
+      fetch: async () => {
+        throw abortError;
+      },
+    });
+
+    await expect(provider.refresh()).rejects.toThrow("Request failed. Check your connection.");
   });
 
   test("registry uses the automatic MiniMax provider", () => {

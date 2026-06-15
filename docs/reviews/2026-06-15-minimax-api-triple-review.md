@@ -37,3 +37,22 @@
 ## Outcome
 
 All accepted CRITICAL/HIGH/MEDIUM findings from the first review pass were fixed or explicitly deferred with scope evidence. A follow-up review must run on the fixed branch before merge.
+
+## Second Review Pass
+
+- Reviewed commit: `b2e989847f1daed454077c2cc42b99a2439b1b47`
+- Review prompt: `/tmp/openusage_minimax_api_rereview_prompt.txt`
+- AGY: REQUEST CHANGES
+- Claude: REQUEST CHANGES
+- Claude MiniMax: REQUEST CHANGES
+
+| Finding | Source | Severity | Verified Evidence | Action |
+|---|---|---:|---|---|
+| `remains_time` reset fallback used `start_time + remains_time` instead of the original `now + remains_time`. | Claude | HIGH | Original `plugins/minimax/plugin.js` derives `resetsAt` from `Date.now() + remainsMs` when `end_time` is absent. | Fixed with injectable clock and regression test. |
+| Snapshot IDs were still unstable when only `remains_time` existed. | Claude, Claude MiniMax | HIGH/MEDIUM | `startedAt` was derived from `now + remains - window`, so it moved every refresh. | Fixed by using UTC-day start fallback when no `start_time` or `end_time` anchors exist. |
+| MiniMax settings writes remained available through `PUT /api/settings/minimax`. | Claude, Claude MiniMax | MEDIUM/LOW | Frontend form was removed, but server still accepted arbitrary settings for `minimax`. | Fixed by returning `405 METHOD_NOT_ALLOWED` and asserting no provider settings are stored. |
+| CN-to-Global fallback with both keys was untested. | Claude MiniMax | MEDIUM | `endpointAttempts()` supports `["CN", "GLOBAL"]` when CN key exists. | Added regression test for CN 401 followed by Global success with the Global key. |
+| HTTP failure and abort paths lacked provider tests. | Claude MiniMax | MEDIUM | Provider had branches for non-2xx and `AbortError`. | Added provider tests for HTTP 500 and abort mapping. |
+| `durationToMs(21600)` should be treated as seconds. | AGY | CRITICAL | Original `inferRemainsMs` treats values as milliseconds when milliseconds are within the coding-plan window and seconds exceed it. Original tests cover `300000` as milliseconds. | Rejected. Kept original plugin behavior and added a matching milliseconds regression test. |
+
+These second-pass findings were addressed in a follow-up commit before merge.

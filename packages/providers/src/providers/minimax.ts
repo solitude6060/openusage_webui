@@ -31,6 +31,7 @@ export interface MiniMaxProviderOptions {
   env?: Record<string, string | undefined>;
   fetch?: typeof fetch;
   timeoutMs?: number;
+  now?: () => number;
 }
 
 interface ParsedQuota {
@@ -52,11 +53,13 @@ export class MiniMaxProvider implements UsageProvider {
   private readonly env: Record<string, string | undefined>;
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
+  private readonly now: () => number;
 
   constructor(options: MiniMaxProviderOptions = {}) {
     this.env = options.env ?? process.env;
     this.fetchImpl = options.fetch ?? fetch;
     this.timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
+    this.now = options.now ?? Date.now;
   }
 
   async detect(): Promise<boolean> {
@@ -72,7 +75,7 @@ export class MiniMaxProvider implements UsageProvider {
       }
       try {
         const payload = await this.fetchPayload(region, apiKey);
-        const parsed = parsePayload(payload, region);
+        const parsed = parsePayload(payload, region, this.now());
         if (!parsed) {
           lastError = "Could not parse usage data.";
           continue;
@@ -137,7 +140,7 @@ export class MiniMaxProvider implements UsageProvider {
   }
 }
 
-function parsePayload(payload: unknown, region: Region): ParsedQuota | null {
+function parsePayload(payload: unknown, region: Region, nowMs: number): ParsedQuota | null {
   if (!isObject(payload)) {
     return null;
   }
@@ -194,7 +197,7 @@ function parsePayload(payload: unknown, region: Region): ParsedQuota | null {
     "current_interval_remaining_percent",
     "currentIntervalRemainingPercent",
   ]);
-  const times = readTimes(chosen);
+  const times = readTimes(chosen, nowMs);
   const planName = normalizePlanName(
     pickFirstString([
       data.current_subscribe_title,
@@ -291,27 +294,23 @@ function recordFromQuota(quota: ParsedQuota, region: Region): UsageRecord {
   };
 }
 
-function readTimes(row: JsonObject): {
+function readTimes(row: JsonObject, nowMs: number): {
   startedAt: string;
   endedAt?: string;
   periodDurationMs?: number;
 } {
   const explicitStartMs = epochToMs(row.start_time ?? row.startTime);
   const explicitEndMs = epochToMs(row.end_time ?? row.endTime);
-  const remainsMs = durationToMs(row.remains_time ?? row.remainsTime);
-  const nowMs = Date.now();
-  const endMs = explicitEndMs
-    ?? (explicitStartMs !== undefined && remainsMs !== undefined
-      ? explicitStartMs + remainsMs
-      : remainsMs !== undefined
-        ? nowMs + remainsMs
-        : undefined);
+  const remainsMs = durationToMs(row.remains_time ?? row.remainsTime, explicitEndMs, nowMs);
+  const endMs = explicitEndMs ?? (remainsMs !== undefined ? nowMs + remainsMs : undefined);
   const startMs = explicitStartMs
-    ?? (endMs !== undefined ? endMs - CODING_PLAN_WINDOW_MS : startOfUtcDayMs(nowMs));
+    ?? (explicitEndMs !== undefined ? explicitEndMs - CODING_PLAN_WINDOW_MS : startOfUtcDayMs(nowMs));
   const startedAt = new Date(startMs).toISOString();
   const endedAt = endMs === undefined ? undefined : new Date(endMs).toISOString();
-  const periodDurationMs = endMs !== undefined && endMs > startMs
-    ? endMs - startMs
+  const periodDurationMs = explicitStartMs !== undefined
+    && explicitEndMs !== undefined
+    && explicitEndMs > explicitStartMs
+    ? explicitEndMs - explicitStartMs
     : undefined;
   return { startedAt, endedAt, periodDurationMs };
 }
@@ -376,19 +375,42 @@ function epochToMs(value: unknown): number | undefined {
   return Math.abs(number) < 1e10 ? number * 1000 : number;
 }
 
-function durationToMs(value: unknown): number | undefined {
+function durationToMs(value: unknown, endMs: number | undefined, nowMs: number): number | undefined {
   const number = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
   if (!Number.isFinite(number) || number <= 0) {
     return undefined;
   }
   const secondsAsMs = number * 1000;
-  if (secondsAsMs <= CODING_PLAN_WINDOW_MS + CODING_PLAN_WINDOW_TOLERANCE_MS) {
+  const millisecondsAsMs = number;
+  if (endMs !== undefined) {
+    const toEndMs = endMs - nowMs;
+    if (toEndMs > 0) {
+      const secondsDelta = Math.abs(secondsAsMs - toEndMs);
+      const millisecondsDelta = Math.abs(millisecondsAsMs - toEndMs);
+      return secondsDelta <= millisecondsDelta ? secondsAsMs : millisecondsAsMs;
+    }
+  }
+
+  const maxExpectedMs = CODING_PLAN_WINDOW_MS + CODING_PLAN_WINDOW_TOLERANCE_MS;
+  const secondsLooksValid = secondsAsMs <= maxExpectedMs;
+  const millisecondsLooksValid = millisecondsAsMs <= maxExpectedMs;
+
+  if (secondsLooksValid && !millisecondsLooksValid) {
     return secondsAsMs;
   }
-  if (number <= CODING_PLAN_WINDOW_MS + CODING_PLAN_WINDOW_TOLERANCE_MS) {
-    return number;
+  if (millisecondsLooksValid && !secondsLooksValid) {
+    return millisecondsAsMs;
   }
-  return Math.abs(number) < 1e10 ? secondsAsMs : number;
+  if (secondsLooksValid && millisecondsLooksValid) {
+    return secondsAsMs;
+  }
+
+  const secondsOverflow = Math.abs(secondsAsMs - maxExpectedMs);
+  const millisecondsOverflow = Math.abs(millisecondsAsMs - maxExpectedMs);
+  if (secondsOverflow <= millisecondsOverflow) {
+    return secondsAsMs;
+  }
+  return millisecondsAsMs;
 }
 
 function startOfUtcDayMs(value: number): number {

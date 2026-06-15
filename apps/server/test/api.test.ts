@@ -102,6 +102,21 @@ describe("WebUI API", () => {
     expect(body.error.code).toBe("BAD_REQUEST");
   });
 
+  test("rejects MiniMax provider settings writes", async () => {
+    const response = await handleRequest(new Request("http://127.0.0.1:6736/api/settings/minimax", {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ api_key: "should-not-persist" }),
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(405);
+    expect(body.error.code).toBe("METHOD_NOT_ALLOWED");
+    expect(await storage.getProviderSettings("minimax")).toEqual({});
+  });
+
   test("refresh all returns per-provider results", async () => {
     const response = await handleRequest(new Request("http://127.0.0.1:6736/api/providers/refresh", {
       method: "POST",

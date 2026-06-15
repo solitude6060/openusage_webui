@@ -15,11 +15,16 @@ Address triple-review findings for the WebUI MiniMax provider while preserving t
 - Replaced the MiniMax Settings form with read-only environment-variable tracking details.
 - Updated English and Traditional Chinese README MiniMax notes.
 - Updated `docs/providers/minimax.md` and the implementation plan to document the WebUI-specific CN key restriction.
+- After the second review pass, aligned `remains_time` reset derivation and unit inference with the original plugin.
+- Added stable snapshot coverage for payloads that provide only `remains_time`.
+- Rejected `PUT /api/settings/minimax` so API-key-like values cannot be stored through the local settings API.
+- Added coverage for CN-to-Global fallback, HTTP failure mapping, and abort mapping.
 
 ## Verification
 
 - `bun test packages/providers/test/minimax-provider.test.ts`
 - `bun test packages/providers/test/manual-provider.test.ts apps/server/test/api.test.ts`
+- `bun test apps/server/test/api.test.ts`
 
 ## Deferred
 
