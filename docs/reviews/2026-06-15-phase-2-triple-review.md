@@ -21,7 +21,7 @@
 |---|---|---:|---|---|
 | Subprocess output pipes can block while waiting for process exit. | `agy` | High | `runCcusageCommand` waited for `proc.exited` before reading streams. | Fixed by starting stdout/stderr reads immediately. Covered by large stdout test. |
 | Timeout option does not reach default runner. | `agy`, `claude` | Medium | `runWithTimeout` used configured timeout, but `runCcusageCommand` used the constant timeout. | Fixed by passing `timeoutMs` into the runner and default subprocess timeout. |
-| Timeout can leave wrapper-spawned child processes alive. | Smoke test | High | API returned while host `ps` showed `ccusage daily/session/monthly --json` child processes still running. | Fixed by launching commands through Linux `setsid` and killing the process group on timeout. Covered by child cleanup test. |
+| Timeout can leave wrapper-spawned child processes alive. | Smoke test | High | API returned while host `ps` showed `ccusage daily/session/monthly --json` child processes still running. | Fixed by launching commands through Linux `setsid`, discovering descendants, and killing descendants plus the process group on timeout. Covered by detached child cleanup test. |
 | `detect()` then `refresh()` repeats runner probes. | `claude` | Medium | Server refresh calls `detect()` before `refresh()`, and provider `refresh()` called `findRunner()` again. | Fixed by consuming the runner discovered by `detect()` for the next refresh. |
 | Compact monthly dates like `YYYYMM` parse incorrectly. | `agy` | Medium | `Date.parse("202602")` produced an unintended extended year instead of February 2026. | Fixed with explicit compact-month parsing. |
 | JSON extraction fails when valid JSON is followed by command noise. | `agy` | Low | Parser only tried whole suffixes from bracket positions. | Fixed with balanced JSON extraction. |
@@ -34,7 +34,7 @@
 
 - `bun test packages/providers/test/ccusage-provider.test.ts`: passed, 11 tests.
 - `bun test packages/providers/test/ccusage-parser.test.ts packages/providers/test/ccusage-provider.test.ts`: passed, 21 tests.
-- `bun run test:webui`: passed, 34 tests.
+- `bun run test:webui`: passed, 41 tests.
 - `bun run build:webui`: passed.
 - Local smoke on `http://127.0.0.1:6736`: `GET /api/health` returned ok; `POST /api/providers/refresh` returned provider-level ccusage error with manual/minimax success.
 - Post-smoke process check: no `ccusage` process, no `bun` process, and no listener on `127.0.0.1:6736`.
