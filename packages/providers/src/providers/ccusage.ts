@@ -152,7 +152,7 @@ export async function runCcusageCommand(
     clearTimeout(timeout);
   }
   if (exited === "timeout") {
-    killProcessTree(proc);
+    await killProcessTree(proc.pid);
     await proc.exited.catch(() => undefined);
     await Promise.all([stdoutPromise.catch(() => ""), stderrPromise.catch(() => "")]);
     return { ok: false, stdout: "", stderr: "ccusage command timed out" };
@@ -166,21 +166,63 @@ export async function runCcusageCommand(
   };
 }
 
-function killProcessTree(proc: ReturnType<typeof Bun.spawn>): void {
-  if (process.platform === "linux" && proc.pid) {
-    try {
-      process.kill(-proc.pid, "SIGTERM");
-      setTimeout(() => {
-        try {
-          process.kill(-proc.pid, "SIGKILL");
-        } catch {
-          // The process group already exited.
-        }
-      }, 250).unref();
-      return;
-    } catch {
-      // Fall back to Bun's direct child kill below.
+async function killProcessTree(rootPid: number): Promise<void> {
+  const descendants = process.platform === "linux" ? await listDescendantPids(rootPid) : [];
+  const targets = [...descendants].reverse();
+  killTargets(rootPid, targets, "SIGTERM");
+  await Bun.sleep(50);
+  killTargets(rootPid, targets, "SIGKILL");
+}
+
+async function listDescendantPids(rootPid: number): Promise<number[]> {
+  const ps = Bun.spawn(["ps", "-eo", "pid=,ppid="], {
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "ignore",
+  });
+  const output = await new Response(ps.stdout).text().catch(() => "");
+  await ps.exited.catch(() => undefined);
+
+  const childrenByParent = new Map<number, number[]>();
+  for (const line of output.split("\n")) {
+    const [pidText, ppidText] = line.trim().split(/\s+/);
+    const pid = Number(pidText);
+    const ppid = Number(ppidText);
+    if (!Number.isInteger(pid) || !Number.isInteger(ppid)) {
+      continue;
     }
+    const children = childrenByParent.get(ppid) ?? [];
+    children.push(pid);
+    childrenByParent.set(ppid, children);
   }
-  proc.kill();
+
+  const descendants = new Set<number>();
+  const stack = [...(childrenByParent.get(rootPid) ?? [])];
+  while (stack.length > 0) {
+    const pid = stack.pop();
+    if (!pid || descendants.has(pid)) {
+      continue;
+    }
+    descendants.add(pid);
+    stack.push(...(childrenByParent.get(pid) ?? []));
+  }
+  return [...descendants];
+}
+
+function killTargets(rootPid: number, descendants: number[], signal: NodeJS.Signals): void {
+  for (const pid of descendants) {
+    killPid(pid, signal);
+  }
+  if (process.platform === "linux") {
+    killPid(-rootPid, signal);
+  }
+  killPid(rootPid, signal);
+}
+
+function killPid(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(pid, signal);
+  } catch {
+    // The process may have exited between discovery and cleanup.
+  }
 }

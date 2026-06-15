@@ -9,7 +9,7 @@ Phase 2 ccusage refresh had correct API-level behavior, but re-review and smoke 
 | Area | Change | Tests |
 |---|---|---|
 | Command timeout | Propagated `commandTimeoutMs` from `CcusageProvider` into the default runner. | `default command runner honors an explicit timeout` |
-| Process cleanup | On Linux, run provider commands through `setsid` and kill the process group on timeout. | `default command runner cleans up child processes on timeout` |
+| Process cleanup | On Linux, run provider commands through `setsid`, discover descendant PIDs, and kill descendants plus the process group on timeout. | `default command runner cleans up child processes on timeout` |
 | Pipe draining | Start stdout/stderr reads immediately after spawn instead of waiting for process exit first. | `default command runner drains large stdout while waiting for exit` |
 | Duplicate detection | Reuse the runner found by `detect()` for the next `refresh()` call. | `refresh reuses the runner found by detect` |
 | Monthly parsing | Parse compact month strings like `202602` as the first day of that month. | `parses compact monthly dates` |
@@ -21,7 +21,7 @@ Phase 2 ccusage refresh had correct API-level behavior, but re-review and smoke 
 ## Verification
 
 - `bun test packages/providers/test/ccusage-parser.test.ts packages/providers/test/ccusage-provider.test.ts`: passed, 21 tests.
-- `bun run test:webui`: passed, 34 tests.
+- `bun run test:webui`: passed, 41 tests.
 - `bun run build:webui`: passed.
 - Local smoke used `OPENUSAGE_WEBUI_DIR=/tmp/openusage-webui-phase2-smoke` and confirmed provider-level ccusage failure does not break manual/minimax refresh.
 - Host process checks after smoke showed no `ccusage`, no `bun`, and no listener on `127.0.0.1:6736`.

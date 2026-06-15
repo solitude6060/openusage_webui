@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { unlink } from "node:fs/promises";
 import {
   CcusageProvider,
   runCcusageCommand,
@@ -17,6 +18,16 @@ function makeRunner(
     },
   };
 }
+
+async function removeIfExists(path: string): Promise<void> {
+  await unlink(path).catch(() => undefined);
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+const linuxTest = process.platform === "linux" ? test : test.skip;
 
 describe("CcusageProvider", () => {
   test("detect tries bunx before npx", async () => {
@@ -160,33 +171,64 @@ describe("CcusageProvider", () => {
     expect(result.stdout).toHaveLength(200000);
   });
 
-  test("default command runner cleans up child processes on timeout", async () => {
-    const marker = `openusage-timeout-child-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const startedAt = performance.now();
+  linuxTest("default command runner cleans up child processes on timeout", async () => {
+    const marker = `${process.env.TMPDIR ?? "/tmp"}/openusage-timeout-child-${Date.now()}-${Math.random()
+      .toString(16)
+      .slice(2)}`;
+    await removeIfExists(marker);
+    const childScript = [
+      `setTimeout(() => Bun.write(${JSON.stringify(marker)}, "alive"), 100);`,
+      "setTimeout(() => {}, 1000);",
+    ].join("");
+    const parentScript = `setsid bun -e ${shellQuote(childScript)} >/dev/null 2>&1 & wait`;
 
     await expect(
       runCcusageCommand(
         "bash",
-        ["-lc", `bash -c 'exec -a ${marker} sleep 1' & wait`],
-        25,
+        ["-lc", parentScript],
+        10,
       ),
     ).resolves.toEqual({
       ok: false,
       stdout: "",
       stderr: "ccusage command timed out",
     });
-    const elapsedMs = performance.now() - startedAt;
 
-    await Bun.sleep(100);
-    const ps = Bun.spawn(["ps", "-eo", "args"], {
-      stdout: "pipe",
-      stderr: "ignore",
+    await Bun.sleep(200);
+    expect(await Bun.file(marker).exists()).toBe(false);
+    await removeIfExists(marker);
+  });
+
+  linuxTest("default command runner cleans up grandchildren on timeout", async () => {
+    const marker = `${process.env.TMPDIR ?? "/tmp"}/openusage-timeout-grandchild-${Date.now()}-${Math.random()
+      .toString(16)
+      .slice(2)}`;
+    await removeIfExists(marker);
+    const grandchildScript = [
+      `setTimeout(() => Bun.write(${JSON.stringify(marker)}, "alive"), 300);`,
+      "setTimeout(() => {}, 1000);",
+    ].join("");
+    const childScript = [
+      `Bun.spawn(["bun", "-e", ${JSON.stringify(grandchildScript)}]);`,
+      "setTimeout(() => {}, 1000);",
+    ].join("");
+    const parentScript = `setsid bun -e ${shellQuote(childScript)} >/dev/null 2>&1 & wait`;
+
+    await expect(
+      runCcusageCommand(
+        "bash",
+        ["-lc", parentScript],
+        80,
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      stdout: "",
+      stderr: "ccusage command timed out",
     });
-    const output = await new Response(ps.stdout).text();
-    await ps.exited;
 
-    expect(elapsedMs).toBeLessThan(500);
-    expect(output).not.toContain(marker);
+    await Bun.sleep(450);
+    expect(await Bun.file(marker).exists()).toBe(false);
+    await removeIfExists(marker);
   });
 
   test("valid empty JSON returns no records without raw fallback", async () => {
