@@ -165,6 +165,13 @@ async function handleApi(
   }
   if (settingsMatch && request.method === "PUT") {
     const providerId = parseProviderId(settingsMatch[1]);
+    if (providerId === "minimax") {
+      throw new HttpError(
+        "METHOD_NOT_ALLOWED",
+        "MiniMax settings are read-only. Configure MiniMax API keys with environment variables.",
+        405,
+      );
+    }
     const body = await readJsonObject(request);
     await storage.updateProviderSettings(providerId, sanitizeSettings(body));
     return json(await storage.getProviderSettings(providerId));

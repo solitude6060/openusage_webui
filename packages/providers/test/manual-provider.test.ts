@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createManualUsageRecord, ManualProvider, MiniMaxManualProvider } from "../src/index";
+import { createManualUsageRecord, ManualProvider } from "../src/index";
 
 describe("Manual providers", () => {
   test("creates a normalized manual usage record", () => {
@@ -55,6 +55,5 @@ describe("Manual providers", () => {
 
   test("manual refresh providers are no-op sources", async () => {
     await expect(new ManualProvider().refresh()).resolves.toEqual([]);
-    await expect(new MiniMaxManualProvider().refresh()).resolves.toEqual([]);
   });
 });

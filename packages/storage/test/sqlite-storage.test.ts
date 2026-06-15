@@ -106,13 +106,13 @@ describe("SqliteStorage", () => {
     await storage.init();
 
     await storage.upsertProviderStatus({
-      providerId: "minimax",
-      name: "MiniMax",
+      providerId: "manual",
+      name: "Manual",
       enabled: true,
       detected: true,
       lastRefreshAt: "2026-06-14T12:00:00.000Z",
     });
-    await storage.updateProviderSettings("minimax", {
+    await storage.updateProviderSettings("manual", {
       plan_type: "Pro",
       monthly_budget_usd: "20",
       remaining_quota: "80%",
@@ -121,14 +121,14 @@ describe("SqliteStorage", () => {
 
     expect(await storage.listProviderStatus()).toEqual([
       {
-        providerId: "minimax",
-        name: "MiniMax",
+        providerId: "manual",
+        name: "Manual",
         enabled: true,
         detected: true,
         lastRefreshAt: "2026-06-14T12:00:00.000Z",
       },
     ]);
-    expect(await storage.getProviderSettings("minimax")).toEqual({
+    expect(await storage.getProviderSettings("manual")).toEqual({
       monthly_budget_usd: "20",
       notes: "Manual tracking",
       plan_type: "Pro",
