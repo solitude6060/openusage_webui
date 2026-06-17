@@ -6,9 +6,22 @@ A local-first WebUI dashboard for AI coding usage on Ubuntu/Linux.
 
 ## What It Supports
 
-- Claude Code via ccusage
-- Codex CLI via ccusage
-- GitHub Copilot CLI via ccusage
+- Amp via the original OpenUsage plugin adapter
+- Antigravity via the original OpenUsage plugin adapter
+- Claude Code via the original OpenUsage plugin adapter
+- Codex CLI via the original OpenUsage plugin adapter
+- Cursor via the original OpenUsage plugin adapter
+- Devin via the original OpenUsage plugin adapter
+- Factory / Droid via the original OpenUsage plugin adapter
+- Grok via the original OpenUsage plugin adapter
+- GitHub Copilot via the original OpenUsage plugin adapter
+- JetBrains AI Assistant via the original OpenUsage plugin adapter
+- Kimi via the original OpenUsage plugin adapter
+- Kiro via the original OpenUsage plugin adapter
+- OpenCode Go via the original OpenUsage plugin adapter
+- Perplexity via the original OpenUsage plugin adapter
+- Synthetic via the original OpenUsage plugin adapter
+- Z.ai via the original OpenUsage plugin adapter
 - Gemini CLI / Google AI Pro coding usage via ccusage
 - MiniMax Token Plan remains via API key
 - Manual usage entries
@@ -22,6 +35,11 @@ A local-first WebUI dashboard for AI coding usage on Ubuntu/Linux.
 - No Linux tray yet
 
 ## Install
+
+Requirements:
+
+- Bun
+- `curl` available on `PATH` for original OpenUsage plugin HTTP refreshes
 
 ```bash
 bun install
@@ -39,6 +57,7 @@ http://127.0.0.1:6736
 ```text
 ~/.openusage-webui/openusage.sqlite
 ~/.openusage-webui/config.json
+~/.openusage-webui/plugins/<provider>/keychain.json
 ```
 
 ## Production-Like Local Use
@@ -55,10 +74,31 @@ bun run start:webui
 The server binds to 127.0.0.1 by default.
 No telemetry.
 No cloud upload.
+Original OpenUsage plugins that write keychain items use a local WebUI shim at `~/.openusage-webui/plugins/<provider>/keychain.json` with owner-only file permissions. This is not the macOS Keychain or a Linux secret-service integration.
 
 ## ccusage Notes
 
-Manual entries and MiniMax quota refresh are implemented. ccusage refresh attempts `bunx ccusage` first and then `npx ccusage`, using JSON output when available. If ccusage returns non-JSON output, the WebUI stores a raw fallback record instead of brittle table parsing.
+Manual entries, MiniMax quota refresh, and original OpenUsage plugin-backed providers are implemented. ccusage refresh attempts `bunx ccusage` first and then `npx ccusage`, using JSON output when available. If ccusage returns non-JSON output, the WebUI stores a raw fallback record instead of brittle table parsing.
+
+## Claude And Codex Notes
+
+Claude Code and Codex use the original `plugins/claude/plugin.js` and `plugins/codex/plugin.js` through a WebUI host adapter.
+
+Claude reads `CLAUDE_CONFIG_DIR/.credentials.json` when `CLAUDE_CONFIG_DIR` is set, otherwise `~/.claude/.credentials.json`.
+
+Codex reads `CODEX_HOME/auth.json` when `CODEX_HOME` is set, otherwise `~/.config/codex/auth.json` and `~/.codex/auth.json`.
+
+The original plugins may refresh OAuth tokens and write updated credentials back to the same file source. Browser cookies are not used.
+
+## GitHub Copilot Notes
+
+GitHub Copilot uses the original `plugins/copilot/plugin.js` through a WebUI host adapter. On Linux, authenticate with GitHub CLI:
+
+```bash
+gh auth login
+```
+
+The WebUI adapter tries `gh auth token` during refresh. You can also start the server with `GH_TOKEN` or `GITHUB_TOKEN`.
 
 ## MiniMax Notes
 

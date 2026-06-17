@@ -1,6 +1,6 @@
 import { existsSync, statSync } from "node:fs";
 import { join, normalize } from "node:path";
-import type { ProviderId, ProviderStatus } from "../../../packages/core/src/types";
+import { PROVIDER_IDS, type ProviderId, type ProviderStatus } from "../../../packages/core/src/types";
 import {
   getDatabasePath,
   SqliteStorage,
@@ -11,16 +11,7 @@ import type { UsageProvider } from "../../../packages/providers/src/index";
 const VERSION = "0.1.0";
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 6736;
-const PROVIDER_IDS = new Set<ProviderId>([
-  "ccusage",
-  "claude-code",
-  "codex",
-  "github-copilot",
-  "gemini-cli",
-  "google-ai-pro",
-  "minimax",
-  "manual",
-]);
+const PROVIDER_ID_SET = new Set<ProviderId>(PROVIDER_IDS);
 
 type RefreshResult =
   | { providerId: ProviderId; ok: true; records: number }
@@ -223,8 +214,9 @@ async function refreshProviders(
   const results: RefreshResult[] = [];
   for (const provider of refreshableProviders) {
     console.log(JSON.stringify({ event: "provider_refresh_started", providerId: provider.id }));
+    let detected = false;
     try {
-      const detected = await provider.detect();
+      detected = await provider.detect();
       const records = await provider.refresh();
       await storage.upsertUsageRecords(records);
       await storage.upsertProviderStatus({
@@ -248,7 +240,7 @@ async function refreshProviders(
         providerId: provider.id,
         name: provider.name,
         enabled: true,
-        detected: false,
+        detected,
         lastRefreshAt: new Date().toISOString(),
         lastError: message,
       });
@@ -275,7 +267,7 @@ async function serveFrontend(
     const proxyUrl = new URL(url.pathname + url.search, devFrontendUrl);
     return fetch(proxyUrl, {
       method: request.method,
-      headers: request.headers,
+      headers: proxyHeaders(request.headers, proxyUrl),
       body: request.body,
     });
   }
@@ -310,7 +302,7 @@ async function serveFrontend(
 }
 
 function parseProviderId(value: string): ProviderId {
-  if (!PROVIDER_IDS.has(value as ProviderId)) {
+  if (!PROVIDER_ID_SET.has(value as ProviderId)) {
     throw new HttpError("BAD_REQUEST", `Unknown provider: ${value}`, 400);
   }
   return value as ProviderId;
@@ -323,6 +315,12 @@ function sanitizeSettings(body: unknown): Record<string, string> {
   return Object.fromEntries(
     Object.entries(body).map(([key, value]) => [key, value === undefined ? "" : String(value)]),
   );
+}
+
+function proxyHeaders(headers: Headers, target: URL): Headers {
+  const proxied = new Headers(headers);
+  proxied.set("host", target.host);
+  return proxied;
 }
 
 function stringOrUndefined(value: unknown): string | undefined {

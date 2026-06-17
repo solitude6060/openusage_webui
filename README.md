@@ -44,6 +44,36 @@ Community contributions welcome.
 
 Want a provider that's not listed? [Open an issue.](https://github.com/robinebers/openusage/issues/new)
 
+## WebUI Fork Status
+
+The local WebUI fork keeps the original Tauri app intact and adds a localhost dashboard under `apps/web` and `apps/server`.
+
+Current WebUI provider support:
+
+- Amp via the original `plugins/amp/plugin.js` adapter
+- Antigravity via the original `plugins/antigravity/plugin.js` adapter
+- Claude Code via the original `plugins/claude/plugin.js` adapter
+- Codex via the original `plugins/codex/plugin.js` adapter
+- Cursor via the original `plugins/cursor/plugin.js` adapter
+- Devin via the original `plugins/devin/plugin.js` adapter
+- Factory via the original `plugins/factory/plugin.js` adapter
+- Grok via the original `plugins/grok/plugin.js` adapter
+- GitHub Copilot via the original `plugins/copilot/plugin.js` adapter
+- JetBrains AI Assistant via the original `plugins/jetbrains-ai-assistant/plugin.js` adapter
+- Kimi via the original `plugins/kimi/plugin.js` adapter
+- Kiro via the original `plugins/kiro/plugin.js` adapter
+- OpenCode Go via the original `plugins/opencode-go/plugin.js` adapter
+- Perplexity via the original `plugins/perplexity/plugin.js` adapter
+- Synthetic via the original `plugins/synthetic/plugin.js` adapter
+- Z.ai via the original `plugins/zai/plugin.js` adapter
+- MiniMax via the original Token Plan remains API behavior
+- Gemini CLI / Google AI Pro coding usage via `ccusage`
+- Manual usage entries
+
+The WebUI adapter provides Linux host shims for original plugin HTTP, SQLite, local keychain, filesystem, crypto, and formatting APIs where needed. Local keychain shim data stays under `~/.openusage-webui/plugins/<provider>/keychain.json`.
+
+See [README_WEBUI.md](README_WEBUI.md) and [README_WEBUI.zh-TW.md](README_WEBUI.zh-TW.md) for local WebUI setup.
+
 ## Open Source, Community Driven
 
 OpenUsage is built by its users. Hundreds of people use it daily, and the project grows through community contributions: new providers, bug fixes, and ideas.

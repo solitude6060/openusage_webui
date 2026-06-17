@@ -15,6 +15,7 @@ import {
   refreshProvider,
   type HealthResponse,
 } from "./lib/api";
+import { getProviderStatusLabel, isProviderRefreshable, providerCards } from "./provider-ui";
 
 type Page = "dashboard" | "providers" | "sessions" | "settings";
 
@@ -27,24 +28,27 @@ const pages: Array<{ id: Page; label: string; path: string }> = [
 
 const providerLabels: Record<ProviderId, string> = {
   ccusage: "ccusage",
+  amp: "Amp",
+  antigravity: "Antigravity",
   "claude-code": "Claude Code",
   codex: "Codex",
+  cursor: "Cursor",
+  devin: "Devin",
+  factory: "Factory",
+  grok: "Grok",
   "github-copilot": "GitHub Copilot",
+  "jetbrains-ai-assistant": "JetBrains AI Assistant",
+  kimi: "Kimi",
+  kiro: "Kiro",
+  "opencode-go": "OpenCode Go",
+  perplexity: "Perplexity",
+  synthetic: "Synthetic",
+  zai: "Z.ai",
   "gemini-cli": "Gemini CLI",
   "google-ai-pro": "Google AI Pro",
   minimax: "MiniMax",
   manual: "Manual",
 };
-
-const providerCards: Array<{ providerId: ProviderId; name: string; note?: string }> = [
-  { providerId: "ccusage", name: "ccusage" },
-  { providerId: "claude-code", name: "Claude Code", note: "via ccusage" },
-  { providerId: "codex", name: "Codex", note: "via ccusage" },
-  { providerId: "github-copilot", name: "GitHub Copilot", note: "via ccusage" },
-  { providerId: "gemini-cli", name: "Gemini CLI / Google AI Pro", note: "via ccusage" },
-  { providerId: "minimax", name: "MiniMax" },
-  { providerId: "manual", name: "Manual" },
-];
 
 export function App() {
   const [page, setPage] = useState<Page>(pageFromPath(window.location.pathname));
@@ -257,7 +261,7 @@ function ProvidersPage({
     <section className="provider-grid">
       {providerCards.map((provider) => {
         const status = providerMap.get(provider.providerId);
-        const refreshable = provider.providerId === "ccusage" || provider.providerId === "manual" || provider.providerId === "minimax";
+        const refreshable = isProviderRefreshable(provider.providerId);
         return (
           <article className="provider-card" key={provider.providerId}>
             <div>
@@ -267,12 +271,20 @@ function ProvidersPage({
               </div>
               <dl className="detail-list">
                 <div>
-                  <dt>Detected</dt>
-                  <dd>{status?.detected ? "Yes" : "No"}</dd>
+                  <dt>{getProviderStatusLabel(provider)}</dt>
+                  <dd>
+                    <StatusPill tone={status?.detected ? "success" : "muted"}>
+                      {status?.detected ? "Yes" : "No"}
+                    </StatusPill>
+                  </dd>
                 </div>
                 <div>
                   <dt>Enabled</dt>
-                  <dd>{status?.enabled === false ? "No" : "Yes"}</dd>
+                  <dd>
+                    <StatusPill tone={status?.enabled === false ? "muted" : "success"}>
+                      {status?.enabled === false ? "No" : "Yes"}
+                    </StatusPill>
+                  </dd>
                 </div>
                 <div>
                   <dt>Last Refresh</dt>
@@ -280,7 +292,9 @@ function ProvidersPage({
                 </div>
                 <div>
                   <dt>Last Error</dt>
-                  <dd>{status?.lastError ?? "None"}</dd>
+                  <dd className={status?.lastError ? "error-text" : undefined}>
+                    {status?.lastError ?? "None"}
+                  </dd>
                 </div>
               </dl>
             </div>
@@ -488,7 +502,9 @@ function SettingsPage({
           </div>
           <div>
             <dt>Database Path</dt>
-            <dd>{health?.databasePath ?? "~/.openusage-webui/openusage.sqlite"}</dd>
+            <dd className="mono-value">
+              {health?.databasePath ?? "~/.openusage-webui/openusage.sqlite"}
+            </dd>
           </div>
           <div>
             <dt>Refresh Interval</dt>
@@ -508,19 +524,29 @@ function SettingsPage({
         <dl className="detail-list wide">
           <div>
             <dt>Tracking Method</dt>
-            <dd>Token Plan Remains API</dd>
+            <dd>
+              <span className="value-chip">Token Plan Remains API</span>
+            </dd>
           </div>
           <div>
             <dt>API Key Source</dt>
-            <dd>Environment Variables</dd>
+            <dd>
+              <span className="value-chip">Environment Variables</span>
+            </dd>
           </div>
           <div>
             <dt>Accepted Variables</dt>
-            <dd>MINIMAX_API_KEY, MINIMAX_API_TOKEN, MINIMAX_CN_API_KEY</dd>
+            <dd className="chip-list">
+              <span className="value-chip">MINIMAX_API_KEY</span>
+              <span className="value-chip">MINIMAX_API_TOKEN</span>
+              <span className="value-chip">MINIMAX_CN_API_KEY</span>
+            </dd>
           </div>
           <div>
             <dt>Stored API Key</dt>
-            <dd>No</dd>
+            <dd>
+              <StatusPill tone="muted">No</StatusPill>
+            </dd>
           </div>
         </dl>
       </section>
@@ -614,6 +640,16 @@ function Metric({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function StatusPill({
+  children,
+  tone,
+}: {
+  children: string;
+  tone: "success" | "muted";
+}) {
+  return <span className={`status-pill ${tone}`}>{children}</span>;
 }
 
 function pageFromPath(pathname: string): Page {

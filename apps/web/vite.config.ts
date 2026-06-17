@@ -7,5 +7,9 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 6737,
     strictPort: true,
+    hmr: {
+      host: "127.0.0.1",
+      clientPort: 6737,
+    },
   },
 });
