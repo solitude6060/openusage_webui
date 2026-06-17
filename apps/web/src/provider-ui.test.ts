@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isProviderRefreshable, providerCards } from "./provider-ui";
+import { getProviderStatusLabel, isProviderRefreshable, providerCards } from "./provider-ui";
 
 describe("provider UI metadata", () => {
   test.each([
@@ -28,5 +28,13 @@ describe("provider UI metadata", () => {
       note: "OpenUsage plugin",
     });
     expect(isProviderRefreshable(providerId)).toBe(true);
+    expect(getProviderStatusLabel(provider)).toBe("Adapter Loaded");
+  });
+
+  test("keeps detection wording for non-plugin providers", () => {
+    const provider = providerCards.find((item) => item.providerId === "ccusage");
+
+    expect(provider).toBeDefined();
+    expect(getProviderStatusLabel(provider!)).toBe("Detected");
   });
 });

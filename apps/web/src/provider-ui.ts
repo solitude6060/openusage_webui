@@ -48,3 +48,7 @@ const refreshableProviders = new Set<ProviderId>([
 export function isProviderRefreshable(providerId: ProviderId): boolean {
   return refreshableProviders.has(providerId);
 }
+
+export function getProviderStatusLabel(provider: { note?: string }): string {
+  return provider.note === "OpenUsage plugin" ? "Adapter Loaded" : "Detected";
+}

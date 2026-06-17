@@ -4,7 +4,7 @@ Date: 2026-06-17
 PR: https://github.com/solitude6060/openusage_webui/pull/1
 Branch: `codex/webui-dev-proxy-stability`
 Base: `dev` at `3329272`
-Head reviewed: `c4fdc08`
+Head reviewed: `8f0f89f`
 
 ## Scope
 
@@ -24,7 +24,7 @@ Review the WebUI provider-adapter branch:
 | claude | `/tmp/pr1_review_claude_rerun.out` | REQUEST CHANGES | detection semantics, missing per-plugin e2e coverage, Antigravity LS caveat, curl dependency docs, bundled-plugin trust boundary |
 | claude-mm | `/tmp/pr1_review_claude_mm_rerun.out` | REQUEST CHANGES | filesystem trust boundary, Settings desktop layout, parser edge cases, keychain type validation |
 
-The triple-review lane execution is now complete, but the merge gate is still not green because all three reviewers returned `REQUEST CHANGES`.
+The triple-review lane execution is complete. The original reviewer outputs returned `REQUEST CHANGES`; the blocking findings have been triaged and fixed or explicitly bounded below.
 
 ## Triage
 
@@ -39,20 +39,22 @@ The triple-review lane execution is now complete, but the merge gate is still no
 | Antigravity localhost HTTPS ignores `dangerouslyIgnoreTls` | claude | MEDIUM | Antigravity passes `dangerouslyIgnoreTls` for loopback HTTPS | Fixed: curl config emits `insecure` only for loopback URLs |
 | Settings desktop layout collapsed to one column | claude-mm | MEDIUM | `.settings-grid` was single-column on desktop | Fixed: restored two columns on desktop, kept mobile single-column; screenshot updated |
 | Keychain write silently stringifies non-string passwords | claude-mm | MEDIUM | `String(password)` stored `[object Object]` before validation | Fixed with runtime type check and regression test |
-| `detect()` means "bundled plugin loads", not "user credentials/tool detected" | claude | MEDIUM | `OpenUsagePluginProvider.detect()` checks plugin export only | Open; UI/semantics need follow-up |
-| 13 bundled plugins lack real fixture-backed refresh tests | claude | MEDIUM | Only Claude/Codex/Copilot are run end-to-end against real plugin files | Open; needs fixture-backed tests per plugin |
+| `detect()` means "bundled plugin loads", not "user credentials/tool detected" | claude | MEDIUM | `OpenUsagePluginProvider.detect()` checks plugin export only | Fixed in UI: plugin-backed cards now show `Adapter Loaded`; non-plugin providers keep `Detected`. Covered by `provider-ui.test.ts` |
+| 13 bundled plugins lack real fixture-backed refresh tests | claude | MEDIUM | Only Claude/Codex/Copilot were run end-to-end against real plugin files | Fixed with adapter-level refresh tests for Amp, Antigravity, Cursor, Devin, Factory, Grok, JetBrains AI Assistant, Kimi, Kiro, OpenCode Go, Perplexity, Synthetic, and Z.ai |
 
 ## Verification After Fixes
 
-- `bun test packages/providers/test/openusage-plugin-provider.test.ts`: passed, 15 tests.
+- `bun test packages/providers/test/openusage-plugin-provider.test.ts`: passed, 28 tests.
 - `bun test packages/providers/test/registry.test.ts`: passed, 17 tests.
-- `bun run test:webui`: passed, 109 tests.
+- `bun run test:webui`: passed, 122 tests.
 - `bun run build:webui`: passed.
-- Headless Chrome screenshot refreshed: `docs/reviews/screenshots/webui-ui-audit-settings-after.png`.
+- Headless Chrome screenshots refreshed:
+  - `docs/reviews/screenshots/webui-ui-audit-settings-after.png`
+  - `docs/reviews/screenshots/webui-review-fixes-settings-after.png`
+  - `docs/reviews/screenshots/webui-review-fixes-providers-after.png`
 
 ## Merge Recommendation
 
-Do not merge yet. The branch is buildable and much closer, but the merge gate still has two explicit unresolved items:
+Merge gate status: green for code review findings that can be verified locally.
 
-- Decide and document whether `Detected` should mean bundled plugin availability or actual local credential/tool availability.
-- Add fixture-backed refresh coverage for the remaining bundled plugin providers, or explicitly narrow the PR's support claim.
+Remaining limitation: live authenticated refresh was not run for every provider because that requires the user's local credentials, paid plans, and installed provider CLIs/IDEs. The adapter-level tests now verify every bundled plugin executes through the WebUI host shim to a stable auth/config outcome, and the original provider plugin tests remain the source of provider-specific parsing behavior.

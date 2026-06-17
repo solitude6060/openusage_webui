@@ -700,4 +700,41 @@ describe("OpenUsagePluginProvider", () => {
       },
     });
   });
+
+  test.each([
+    ["amp", "Amp", "amp", "Amp not installed. Install Amp Code to get started."],
+    ["antigravity", "Antigravity", "antigravity", "Start Antigravity or run `agy` and try again."],
+    ["cursor", "Cursor", "cursor", "Not logged in. Sign in via Cursor app or run `agent login`."],
+    ["devin", "Devin", "devin", "Run devin auth login or sign in to Devin and try again."],
+    ["factory", "Factory", "factory", "Not logged in. Run `droid` to authenticate."],
+    ["grok", "Grok", "grok", "Grok not logged in. Run `grok login`."],
+    [
+      "jetbrains-ai-assistant",
+      "JetBrains AI Assistant",
+      "jetbrains-ai-assistant",
+      "JetBrains AI Assistant not detected. Open a JetBrains IDE with AI Assistant enabled.",
+    ],
+    ["kimi", "Kimi", "kimi", "Not logged in. Run `kimi login` to authenticate."],
+    ["kiro", "Kiro", "kiro", "Open Kiro and sign in, then try again."],
+    ["opencode-go", "OpenCode Go", "opencode-go", "OpenCode Go not detected. Log in with OpenCode Go or use it locally first."],
+    ["perplexity", "Perplexity", "perplexity", "Not logged in. Sign in via Perplexity app."],
+    ["synthetic", "Synthetic", "synthetic", "Synthetic API key not found. Set SYNTHETIC_API_KEY or add key to ~/.pi/agent/auth.json"],
+    ["zai", "Z.ai", "zai", "No ZAI_API_KEY found. Set up environment variable first."],
+  ] as const)(
+    "runs the original %s plugin through the WebUI host shim to a stable auth/config result",
+    async (providerId, name, pluginId, expectedError) => {
+      const scriptText = readFileSync(resolve(import.meta.dir, "../../../plugins", pluginId, "plugin.js"), "utf8");
+      const provider = new OpenUsagePluginProvider({
+        providerId,
+        name,
+        pluginId,
+        scriptText,
+        env: {},
+        request: () => ({ status: 500, headers: {}, bodyText: "{}" }),
+        ccusageQuery: () => ({ status: "no_runner", data: null }),
+      });
+
+      await expect(provider.refresh()).rejects.toThrow(expectedError);
+    },
+  );
 });

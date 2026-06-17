@@ -15,7 +15,7 @@ import {
   refreshProvider,
   type HealthResponse,
 } from "./lib/api";
-import { isProviderRefreshable, providerCards } from "./provider-ui";
+import { getProviderStatusLabel, isProviderRefreshable, providerCards } from "./provider-ui";
 
 type Page = "dashboard" | "providers" | "sessions" | "settings";
 
@@ -271,7 +271,7 @@ function ProvidersPage({
               </div>
               <dl className="detail-list">
                 <div>
-                  <dt>{provider.note === "OpenUsage plugin" ? "Adapter Loaded" : "Detected"}</dt>
+                  <dt>{getProviderStatusLabel(provider)}</dt>
                   <dd>
                     <StatusPill tone={status?.detected ? "success" : "muted"}>
                       {status?.detected ? "Yes" : "No"}
