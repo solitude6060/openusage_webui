@@ -68,6 +68,7 @@ export interface OpenUsagePluginProviderOptions {
   ccusageQuery?: (opts: PluginCcusageQueryOptions) => PluginCcusageQueryResult;
   now?: () => string;
   pluginDataDir?: string;
+  homeDir?: string;
 }
 
 interface LoadedPlugin {
@@ -88,6 +89,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
   private readonly ccusageQueryImpl: (opts: PluginCcusageQueryOptions) => PluginCcusageQueryResult;
   private readonly now: () => string;
   private readonly pluginDataDir: string;
+  private readonly homeDir: string;
 
   constructor(options: OpenUsagePluginProviderOptions) {
     this.id = options.providerId;
@@ -99,7 +101,8 @@ export class OpenUsagePluginProvider implements UsageProvider {
     this.requestImpl = options.request ?? runPluginHttpRequest;
     this.ccusageQueryImpl = options.ccusageQuery ?? ((opts) => runPluginCcusageQuery(opts, this.pluginId));
     this.now = options.now ?? (() => new Date().toISOString());
-    this.pluginDataDir = options.pluginDataDir ?? join(homedir(), ".openusage-webui", "plugins", this.id);
+    this.homeDir = options.homeDir ?? resolveHomeDir();
+    this.pluginDataDir = options.pluginDataDir ?? join(this.homeDir, ".openusage-webui", "plugins", this.id);
   }
 
   async detect(): Promise<boolean> {
@@ -174,21 +177,21 @@ export class OpenUsagePluginProvider implements UsageProvider {
       app: {
         version: "0.1.0",
         platform: process.platform,
-        appDataDir: join(homedir(), ".openusage-webui"),
+        appDataDir: join(this.homeDir, ".openusage-webui"),
         pluginDataDir: this.pluginDataDir,
       },
       host: {
         fs: {
-          exists: (path: string) => existsSync(expandHome(path)),
-          readText: (path: string) => readFileSync(expandHome(path), "utf8"),
+          exists: (path: string) => existsSync(expandHome(path, this.homeDir)),
+          readText: (path: string) => readFileSync(expandHome(path, this.homeDir), "utf8"),
           writeText: (path: string, text: string) => {
-            const target = expandHome(path);
+            const target = expandHome(path, this.homeDir);
             mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
             writeFileSync(target, text, { mode: 0o600 });
             chmodSync(target, 0o600);
           },
           listDir: (path: string) => {
-            const base = expandHome(path);
+            const base = expandHome(path, this.homeDir);
             if (!existsSync(base)) return [];
             return readdirSync(base).sort();
           },
@@ -229,8 +232,8 @@ export class OpenUsagePluginProvider implements UsageProvider {
           },
         },
         sqlite: {
-          query: (databasePath: string, sql: string) => querySqlite(databasePath, sql),
-          exec: (databasePath: string, sql: string) => execSqlite(databasePath, sql),
+          query: (databasePath: string, sql: string) => querySqlite(databasePath, sql, this.homeDir),
+          exec: (databasePath: string, sql: string) => execSqlite(databasePath, sql, this.homeDir),
         },
         ls: {
           discover: (opts: LanguageServerDiscoveryOptions) => discoverLanguageServer(opts ?? {}),
@@ -608,9 +611,9 @@ function curlQuote(value: string): string {
     .replace(/\n/g, "\\n");
 }
 
-function querySqlite(databasePath: string, sql: string): string {
+function querySqlite(databasePath: string, sql: string, homeDir = resolveHomeDir()): string {
   rejectSqliteDotCommand(sql);
-  const db = new Database(expandHome(databasePath), { readonly: true, create: false });
+  const db = new Database(expandHome(databasePath, homeDir), { readonly: true, create: false });
   try {
     return JSON.stringify(db.query(sql).all());
   } finally {
@@ -618,9 +621,9 @@ function querySqlite(databasePath: string, sql: string): string {
   }
 }
 
-function execSqlite(databasePath: string, sql: string): void {
+function execSqlite(databasePath: string, sql: string, homeDir = resolveHomeDir()): void {
   rejectSqliteDotCommand(sql);
-  const target = expandHome(databasePath);
+  const target = expandHome(databasePath, homeDir);
   if (!existsSync(target)) {
     throw new Error("SQLite database does not exist.");
   }
@@ -794,8 +797,13 @@ function normalizeBase64(value: string): string {
   return text;
 }
 
-function expandHome(path: string): string {
-  if (path === "~") return homedir();
-  if (path.startsWith("~/")) return join(homedir(), path.slice(2));
+function expandHome(path: string, homeDir = resolveHomeDir()): string {
+  if (path === "~") return homeDir;
+  if (path.startsWith("~/")) return join(homeDir, path.slice(2));
   return path;
+}
+
+function resolveHomeDir(): string {
+  const home = process.env.HOME;
+  return typeof home === "string" && home.trim() ? home : homedir();
 }
