@@ -266,6 +266,7 @@ td {
   display: grid;
   grid-template-columns: 132px minmax(0, 1fr);
   gap: 10px;
+  min-width: 0;
 }
 
 .detail-list.wide div {
@@ -275,11 +276,14 @@ td {
 dt,
 dd {
   margin: 0;
+  min-width: 0;
 }
 
 dd {
   min-width: 0;
+  line-height: 1.45;
   overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .filter-bar {
@@ -315,7 +319,7 @@ textarea {
 }
 
 .settings-grid {
-  grid-template-columns: minmax(280px, 0.92fr) minmax(280px, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
 }
 
@@ -386,7 +390,6 @@ textarea {
   }
 
   .metric-band,
-  .settings-grid,
   .filter-bar {
     grid-template-columns: 1fr;
   }
@@ -408,5 +411,11 @@ textarea {
 
   .form-row {
     grid-template-columns: 1fr;
+  }
+
+  .detail-list div,
+  .detail-list.wide div {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 }
