@@ -272,11 +272,19 @@ function ProvidersPage({
               <dl className="detail-list">
                 <div>
                   <dt>Detected</dt>
-                  <dd>{status?.detected ? "Yes" : "No"}</dd>
+                  <dd>
+                    <StatusPill tone={status?.detected ? "success" : "muted"}>
+                      {status?.detected ? "Yes" : "No"}
+                    </StatusPill>
+                  </dd>
                 </div>
                 <div>
                   <dt>Enabled</dt>
-                  <dd>{status?.enabled === false ? "No" : "Yes"}</dd>
+                  <dd>
+                    <StatusPill tone={status?.enabled === false ? "muted" : "success"}>
+                      {status?.enabled === false ? "No" : "Yes"}
+                    </StatusPill>
+                  </dd>
                 </div>
                 <div>
                   <dt>Last Refresh</dt>
@@ -284,7 +292,9 @@ function ProvidersPage({
                 </div>
                 <div>
                   <dt>Last Error</dt>
-                  <dd>{status?.lastError ?? "None"}</dd>
+                  <dd className={status?.lastError ? "error-text" : undefined}>
+                    {status?.lastError ?? "None"}
+                  </dd>
                 </div>
               </dl>
             </div>
@@ -492,7 +502,9 @@ function SettingsPage({
           </div>
           <div>
             <dt>Database Path</dt>
-            <dd>{health?.databasePath ?? "~/.openusage-webui/openusage.sqlite"}</dd>
+            <dd className="mono-value">
+              {health?.databasePath ?? "~/.openusage-webui/openusage.sqlite"}
+            </dd>
           </div>
           <div>
             <dt>Refresh Interval</dt>
@@ -512,19 +524,29 @@ function SettingsPage({
         <dl className="detail-list wide">
           <div>
             <dt>Tracking Method</dt>
-            <dd>Token Plan Remains API</dd>
+            <dd>
+              <span className="value-chip">Token Plan Remains API</span>
+            </dd>
           </div>
           <div>
             <dt>API Key Source</dt>
-            <dd>Environment Variables</dd>
+            <dd>
+              <span className="value-chip">Environment Variables</span>
+            </dd>
           </div>
           <div>
             <dt>Accepted Variables</dt>
-            <dd>MINIMAX_API_KEY, MINIMAX_API_TOKEN, MINIMAX_CN_API_KEY</dd>
+            <dd className="chip-list">
+              <span className="value-chip">MINIMAX_API_KEY</span>
+              <span className="value-chip">MINIMAX_API_TOKEN</span>
+              <span className="value-chip">MINIMAX_CN_API_KEY</span>
+            </dd>
           </div>
           <div>
             <dt>Stored API Key</dt>
-            <dd>No</dd>
+            <dd>
+              <StatusPill tone="muted">No</StatusPill>
+            </dd>
           </div>
         </dl>
       </section>
@@ -618,6 +640,16 @@ function Metric({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function StatusPill({
+  children,
+  tone,
+}: {
+  children: string;
+  tone: "success" | "muted";
+}) {
+  return <span className={`status-pill ${tone}`}>{children}</span>;
 }
 
 function pageFromPath(pathname: string): Page {
