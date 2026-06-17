@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { OpenUsagePluginProvider, getProviders } from "../src/index";
+import { resolveBundledPluginScriptPath } from "../src/registry";
 
 describe("provider registry", () => {
   test.each([
@@ -25,5 +26,10 @@ describe("provider registry", () => {
     expect(provider).toBeInstanceOf(OpenUsagePluginProvider);
     expect(provider?.name).toBe(name);
     await expect(provider?.detect()).resolves.toBe(true);
+  });
+
+  test("rejects bundled plugin path traversal ids", () => {
+    expect(() => resolveBundledPluginScriptPath("../cursor")).toThrow("Invalid bundled plugin id.");
+    expect(() => resolveBundledPluginScriptPath("cursor/../../codex")).toThrow("Invalid bundled plugin id.");
   });
 });

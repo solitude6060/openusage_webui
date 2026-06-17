@@ -36,6 +36,11 @@ A local-first WebUI dashboard for AI coding usage on Ubuntu/Linux.
 
 ## Install
 
+Requirements:
+
+- Bun
+- `curl` available on `PATH` for original OpenUsage plugin HTTP refreshes
+
 ```bash
 bun install
 bun run dev:webui

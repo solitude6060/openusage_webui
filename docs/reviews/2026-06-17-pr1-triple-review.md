@@ -4,7 +4,7 @@ Date: 2026-06-17
 PR: https://github.com/solitude6060/openusage_webui/pull/1
 Branch: `codex/webui-dev-proxy-stability`
 Base: `dev` at `3329272`
-Head after fixes: `e6d5727`
+Head reviewed: `c4fdc08`
 
 ## Scope
 
@@ -18,45 +18,41 @@ Review the WebUI provider-adapter branch:
 
 ## Review Lanes
 
-| Reviewer | Result | Blocking Findings |
-| --- | --- | --- |
-| agy | REQUEST CHANGES | Missing `ctx.host.sqlite.exec`; path-access concerns |
-| claude | BLOCKED | CLI returned `Execution error` without a usable review |
-| claude-mm | BLOCKED | CLI produced no output before interruption |
+| Reviewer | Output File | Result | Blocking Findings |
+| --- | --- | --- | --- |
+| agy | `/tmp/pr1_review_agy_rerun.out` | REQUEST CHANGES | curl body truncation |
+| claude | `/tmp/pr1_review_claude_rerun.out` | REQUEST CHANGES | detection semantics, missing per-plugin e2e coverage, Antigravity LS caveat, curl dependency docs, bundled-plugin trust boundary |
+| claude-mm | `/tmp/pr1_review_claude_mm_rerun.out` | REQUEST CHANGES | filesystem trust boundary, Settings desktop layout, parser edge cases, keychain type validation |
 
-This triple-review gate is not complete yet because only one usable reviewer result was obtained.
+The triple-review lane execution is now complete, but the merge gate is still not green because all three reviewers returned `REQUEST CHANGES`.
 
-## agy Findings
+## Triage
 
-### Fixed
-
-- `ctx.host.sqlite.exec` was missing from the WebUI OpenUsage plugin adapter.
-- Cursor's original plugin calls `ctx.host.sqlite.exec(...)` when persisting auth state.
-- Fix commit: `b572314 Preserve original plugin host behavior in WebUI`.
-- Regression coverage:
-  - `OpenUsagePluginProvider > supports original plugin sqlite exec writes`
-  - `OpenUsagePluginProvider > persists original plugin keychain writes in the local WebUI plugin directory`
-
-### Needs Follow-Up Review
-
-- `host.fs` and `host.sqlite` expose original-plugin filesystem and SQLite access without a WebUI-specific allowlist.
-- Current triage: this matches the original OpenUsage plugin host model and is needed by bundled provider plugins that read local credential/config stores.
-- Risk boundary: the WebUI registry currently wires bundled repository plugins, not user-installed arbitrary plugin scripts.
-- Required before merge: rerun review lanes or explicitly decide whether bundled-plugin trust is acceptable for this WebUI fork, because a strict allowlist may break original provider compatibility.
-
-### Reviewed As Non-Blocking For Current Direction
-
-- `curl --config -` is used for synchronous original plugin HTTP calls.
-- Current triage: original plugin probes are synchronous; headers are passed through stdin rather than argv so bearer tokens are not exposed in process arguments.
-- Follow-up: replace or isolate only if an async plugin execution model is introduced.
+| Finding | Source | Severity | Verified Evidence | Action |
+| --- | --- | ---: | --- | --- |
+| Missing `ctx.host.sqlite.exec` breaks Cursor auth persistence | agy initial review | CRITICAL | `plugins/cursor/plugin.js` calls `ctx.host.sqlite.exec`; adapter had only `query` before `b572314` | Fixed in `b572314`; covered by `supports original plugin sqlite exec writes` |
+| curl parser truncates bodies containing blank lines | agy, claude low | HIGH | `parseCurlIncludeOutput` split on every blank line and returned only the last segment | Fixed with regression test `preserves plugin HTTP response bodies that contain blank lines` |
+| Registry should enforce bundled-plugin path boundary | claude, claude-mm | HIGH/MEDIUM | WebUI registry should only load repo-bundled plugin scripts while host shims preserve original plugin filesystem behavior | Partially fixed: `resolveBundledPluginScriptPath` rejects traversal ids and resolves under repo `plugins/` |
+| `host.fs` / `host.sqlite` remain broad inside bundled plugin host | agy, claude, claude-mm | HIGH/MEDIUM | Adapter still intentionally exposes original plugin host file/SQLite primitives to bundled plugins | Not fully closed; requires explicit bundled-plugin trust decision or a provider-specific allowlist |
+| `curl` runtime dependency undocumented | claude | MEDIUM | Original plugin HTTP shim uses `curl --config -` | Fixed in `README_WEBUI.md`, `README_WEBUI.zh-TW.md`, and `docs/USER_GUIDE_WEBUI.zh-TW.md` |
+| Antigravity LS discovery stub disables local LS path | claude | MEDIUM | `plugins/antigravity/plugin.js` calls `ctx.host.ls.discover` | Improved: added `/proc` command-line LS discovery and exported parser test |
+| Antigravity localhost HTTPS ignores `dangerouslyIgnoreTls` | claude | MEDIUM | Antigravity passes `dangerouslyIgnoreTls` for loopback HTTPS | Fixed: curl config emits `insecure` only for loopback URLs |
+| Settings desktop layout collapsed to one column | claude-mm | MEDIUM | `.settings-grid` was single-column on desktop | Fixed: restored two columns on desktop, kept mobile single-column; screenshot updated |
+| Keychain write silently stringifies non-string passwords | claude-mm | MEDIUM | `String(password)` stored `[object Object]` before validation | Fixed with runtime type check and regression test |
+| `detect()` means "bundled plugin loads", not "user credentials/tool detected" | claude | MEDIUM | `OpenUsagePluginProvider.detect()` checks plugin export only | Open; UI/semantics need follow-up |
+| 13 bundled plugins lack real fixture-backed refresh tests | claude | MEDIUM | Only Claude/Codex/Copilot are run end-to-end against real plugin files | Open; needs fixture-backed tests per plugin |
 
 ## Verification After Fixes
 
-- `bun test packages/providers/test/openusage-plugin-provider.test.ts`: passed, 9 tests.
-- `bun run test:webui`: passed, 102 tests.
+- `bun test packages/providers/test/openusage-plugin-provider.test.ts`: passed, 15 tests.
+- `bun test packages/providers/test/registry.test.ts`: passed, 17 tests.
+- `bun run test:webui`: passed, 109 tests.
 - `bun run build:webui`: passed.
-- `gh pr view 1`: PR is open and mergeable.
+- Headless Chrome screenshot refreshed: `docs/reviews/screenshots/webui-ui-audit-settings-after.png`.
 
 ## Merge Recommendation
 
-Do not merge solely on this artifact. The critical Cursor compatibility issue is fixed, but the triple-review process still needs either successful replacement reviewer lanes or an explicit project decision on the bundled-plugin filesystem trust boundary.
+Do not merge yet. The branch is buildable and much closer, but the merge gate still has two explicit unresolved items:
+
+- Decide and document whether `Detected` should mean bundled plugin availability or actual local credential/tool availability.
+- Add fixture-backed refresh coverage for the remaining bundled plugin providers, or explicitly narrow the PR's support claim.

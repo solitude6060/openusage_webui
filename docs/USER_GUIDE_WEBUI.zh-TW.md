@@ -47,6 +47,11 @@ http://127.0.0.1:6736
 
 ### 3.1 安裝依賴
 
+系統需要先有：
+
+- Bun
+- `curl`，原本 OpenUsage plugin adapter 會用它執行 provider HTTP refresh
+
 在 repo 根目錄執行：
 
 ```bash

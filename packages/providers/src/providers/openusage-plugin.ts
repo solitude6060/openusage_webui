@@ -1,10 +1,11 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { runInNewContext } from "node:vm";
 import type { ProviderId, UsageRecord } from "../../../core/src/types";
+import { parseCcusageJsonPayload } from "./ccusage-parser";
 import type { UsageProvider } from "../types";
 
 export interface PluginRequestOptions {
@@ -13,12 +14,38 @@ export interface PluginRequestOptions {
   headers?: Record<string, string>;
   bodyText?: string;
   timeoutMs?: number;
+  dangerouslyIgnoreTls?: boolean;
 }
 
 export interface PluginRequestResponse {
   status: number;
   headers: Record<string, string>;
   bodyText: string;
+}
+
+export interface PluginCcusageQueryOptions {
+  provider?: "claude" | "codex";
+  since?: string;
+  until?: string;
+  homePath?: string;
+  claudePath?: string;
+}
+
+export type PluginCcusageQueryResult =
+  | { status: "ok"; data: { daily: Array<Record<string, unknown>> } }
+  | { status: "no_runner" | "runner_failed"; data: null };
+
+export interface LanguageServerDiscoveryOptions {
+  processName?: string;
+  markers?: string[];
+  csrfFlag?: string;
+  portFlag?: string | null;
+}
+
+export interface LanguageServerDiscovery {
+  csrf: string;
+  extensionPort?: number;
+  ports: number[];
 }
 
 export type PluginHttpRunner = (
@@ -38,6 +65,7 @@ export interface OpenUsagePluginProviderOptions {
   scriptText?: string;
   env?: Record<string, string | undefined>;
   request?: (opts: PluginRequestOptions) => PluginRequestResponse;
+  ccusageQuery?: (opts: PluginCcusageQueryOptions) => PluginCcusageQueryResult;
   now?: () => string;
   pluginDataDir?: string;
 }
@@ -57,6 +85,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
   private readonly scriptText?: string;
   private readonly env: Record<string, string | undefined>;
   private readonly requestImpl?: (opts: PluginRequestOptions) => PluginRequestResponse;
+  private readonly ccusageQueryImpl: (opts: PluginCcusageQueryOptions) => PluginCcusageQueryResult;
   private readonly now: () => string;
   private readonly pluginDataDir: string;
 
@@ -68,6 +97,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
     this.scriptText = options.scriptText;
     this.env = options.env ?? process.env;
     this.requestImpl = options.request ?? runPluginHttpRequest;
+    this.ccusageQueryImpl = options.ccusageQuery ?? ((opts) => runPluginCcusageQuery(opts, this.pluginId));
     this.now = options.now ?? (() => new Date().toISOString());
     this.pluginDataDir = options.pluginDataDir ?? join(homedir(), ".openusage-webui", "plugins", this.id);
   }
@@ -89,7 +119,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
 
     let result: unknown;
     try {
-      result = plugin.probe(this.createContext());
+      result = await plugin.probe(this.createContext());
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : String(error));
     }
@@ -155,6 +185,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
             const target = expandHome(path);
             mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
             writeFileSync(target, text, { mode: 0o600 });
+            chmodSync(target, 0o600);
           },
           listDir: (path: string) => {
             const base = expandHome(path);
@@ -177,9 +208,9 @@ export class OpenUsagePluginProvider implements UsageProvider {
           },
           readGenericPasswordForCurrentUser: (service: string) =>
             this.readLocalKeychainPassword(service, this.currentKeychainAccount()),
-          writeGenericPassword: (service: string, password: string, account?: string) =>
+          writeGenericPassword: (service: string, password: unknown, account?: string) =>
             this.writeLocalKeychainPassword(service, account, password),
-          writeGenericPasswordForCurrentUser: (service: string, password: string) =>
+          writeGenericPasswordForCurrentUser: (service: string, password: unknown) =>
             this.writeLocalKeychainPassword(service, this.currentKeychainAccount(), password),
           deleteGenericPassword: (service: string, account?: string) =>
             this.deleteLocalKeychainPassword(service, account),
@@ -202,10 +233,10 @@ export class OpenUsagePluginProvider implements UsageProvider {
           exec: (databasePath: string, sql: string) => execSqlite(databasePath, sql),
         },
         ls: {
-          discover: () => null,
+          discover: (opts: LanguageServerDiscoveryOptions) => discoverLanguageServer(opts ?? {}),
         },
         ccusage: {
-          query: () => ({ status: "no_runner", data: null }),
+          query: (opts: PluginCcusageQueryOptions) => this.ccusageQueryImpl(opts ?? {}),
         },
         log: {
           trace: () => undefined,
@@ -257,9 +288,12 @@ export class OpenUsagePluginProvider implements UsageProvider {
     return typeof value === "string" ? value : null;
   }
 
-  private writeLocalKeychainPassword(service: string, account: string | undefined, password: string): void {
+  private writeLocalKeychainPassword(service: string, account: string | undefined, password: unknown): void {
+    if (typeof password !== "string") {
+      throw new Error("Keychain password must be a string.");
+    }
     const store = this.readLocalKeychainStore();
-    store[localKeychainKey(service, account)] = String(password);
+    store[localKeychainKey(service, account)] = password;
     this.writeLocalKeychainStore(store);
   }
 
@@ -297,11 +331,101 @@ export class OpenUsagePluginProvider implements UsageProvider {
   private writeLocalKeychainStore(store: LocalKeychainStore): void {
     mkdirSync(this.pluginDataDir, { recursive: true, mode: 0o700 });
     writeFileSync(this.keychainStorePath(), JSON.stringify(store), { mode: 0o600 });
+    chmodSync(this.keychainStorePath(), 0o600);
   }
 }
 
 function localKeychainKey(service: string, account?: string): string {
   return `${service}\u0000${account ?? ""}`;
+}
+
+export function discoverLanguageServer(
+  opts: LanguageServerDiscoveryOptions,
+): LanguageServerDiscovery | null {
+  return discoverLanguageServerFromCommandLines(readLinuxProcCommandLines(), opts);
+}
+
+export function discoverLanguageServerFromCommandLines(
+  commandLines: string[][],
+  opts: LanguageServerDiscoveryOptions,
+): LanguageServerDiscovery | null {
+  const processName = opts.processName?.trim();
+  const markers = (opts.markers ?? []).map((marker) => marker.trim()).filter(Boolean);
+  const csrfFlag = opts.csrfFlag?.trim();
+  const portFlag = opts.portFlag?.trim();
+
+  for (const argv of commandLines) {
+    if (!argvMatchesDiscovery(argv, processName, markers)) {
+      continue;
+    }
+    const port = portFlag ? readFlagPort(argv, portFlag) : null;
+    if (port === null) {
+      continue;
+    }
+    return {
+      csrf: csrfFlag ? readFlagValue(argv, csrfFlag) ?? "" : "",
+      extensionPort: port,
+      ports: [port],
+    };
+  }
+
+  return null;
+}
+
+function readLinuxProcCommandLines(): string[][] {
+  if (process.platform !== "linux") return [];
+  let entries: string[];
+  try {
+    entries = readdirSync("/proc");
+  } catch {
+    return [];
+  }
+
+  const commandLines: string[][] = [];
+  for (const entry of entries) {
+    if (!/^\d+$/.test(entry)) continue;
+    try {
+      const text = readFileSync(`/proc/${entry}/cmdline`, "utf8");
+      const argv = text.split("\0").filter(Boolean);
+      if (argv.length > 0) commandLines.push(argv);
+    } catch {
+      continue;
+    }
+  }
+  return commandLines;
+}
+
+function argvMatchesDiscovery(argv: string[], processName: string | undefined, markers: string[]): boolean {
+  const joined = argv.join(" ").toLowerCase();
+  if (processName) {
+    const processMatch = argv.some((arg) => basename(arg).toLowerCase().includes(processName.toLowerCase()));
+    if (!processMatch) return false;
+  }
+  if (markers.length === 0) return true;
+  return markers.some((marker) => joined.includes(marker.toLowerCase()));
+}
+
+function readFlagPort(argv: string[], flag: string): number | null {
+  const value = readFlagValue(argv, flag);
+  if (!value) return null;
+  const port = Number(value);
+  return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null;
+}
+
+function readFlagValue(argv: string[], flag: string): string | null {
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === flag) {
+      const value = argv[index + 1];
+      return typeof value === "string" && value.trim() ? value.trim() : null;
+    }
+    const prefix = `${flag}=`;
+    if (typeof arg === "string" && arg.startsWith(prefix)) {
+      const value = arg.slice(prefix.length).trim();
+      return value || null;
+    }
+  }
+  return null;
 }
 
 export function runPluginHttpRequest(
@@ -314,6 +438,86 @@ export function runPluginHttpRequest(
     throw new Error("Plugin HTTP request failed. Check your connection.");
   }
   return parseCurlIncludeOutput(result.stdout);
+}
+
+export function runPluginCcusageQuery(
+  opts: PluginCcusageQueryOptions,
+  pluginId?: string,
+): PluginCcusageQueryResult {
+  const provider = resolvePluginCcusageProvider(opts.provider, pluginId);
+  const args = [provider, "daily", "--json"];
+  if (opts.since) args.push("--since", opts.since);
+  if (opts.until) args.push("--until", opts.until);
+
+  let sawRunnableCommand = false;
+  for (const runner of ["bunx", "npx"] as const) {
+    const env = ccusageEnvForProvider(provider, opts.homePath ?? opts.claudePath);
+    let proc: ReturnType<typeof Bun.spawnSync>;
+    try {
+      proc = Bun.spawnSync([runner, "ccusage", ...args], {
+        env,
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+    } catch {
+      continue;
+    }
+    sawRunnableCommand = true;
+    if (proc.exitCode !== 0) {
+      continue;
+    }
+    const daily = dailyRowsFromCcusagePayload(
+      parseCcusageJsonPayload(Buffer.from(proc.stdout).toString("utf8")),
+    );
+    if (daily) {
+      return { status: "ok", data: { daily } };
+    }
+  }
+
+  return { status: sawRunnableCommand ? "runner_failed" : "no_runner", data: null };
+}
+
+function resolvePluginCcusageProvider(
+  provider: PluginCcusageQueryOptions["provider"],
+  pluginId?: string,
+): "claude" | "codex" {
+  if (provider === "codex" || pluginId === "codex") return "codex";
+  return "claude";
+}
+
+function ccusageEnvForProvider(
+  provider: "claude" | "codex",
+  homePath?: string,
+): Record<string, string | undefined> {
+  if (!homePath) return process.env;
+  const env = { ...process.env };
+  if (provider === "codex") {
+    env.CODEX_HOME = expandHome(homePath);
+  } else {
+    env.CLAUDE_CONFIG_DIR = expandHome(homePath);
+  }
+  return env;
+}
+
+function dailyRowsFromCcusagePayload(value: unknown): Array<Record<string, unknown>> | null {
+  if (Array.isArray(value)) {
+    return value.filter(isRecord);
+  }
+  if (!isRecord(value)) {
+    return null;
+  }
+  if (Array.isArray(value.daily)) {
+    return value.daily.filter(isRecord);
+  }
+  if (isRecord(value.data)) {
+    return dailyRowsFromCcusagePayload(value.data);
+  }
+  return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function runCurlConfig(args: string[], stdin: string): ReturnType<PluginHttpRunner> {
@@ -341,6 +545,9 @@ function buildCurlConfig(opts: PluginRequestOptions): string {
     `request = "${curlQuote(method)}"`,
     `url = "${curlQuote(opts.url)}"`,
   ];
+  if (opts.dangerouslyIgnoreTls && isLoopbackUrl(opts.url)) {
+    lines.push("insecure");
+  }
   for (const [key, value] of Object.entries(opts.headers ?? {})) {
     lines.push(`header = "${curlQuote(`${key}: ${value}`)}"`);
   }
@@ -350,13 +557,30 @@ function buildCurlConfig(opts: PluginRequestOptions): string {
   return `${lines.join("\n")}\n`;
 }
 
+function isLoopbackUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname;
+    return hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1" || hostname === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
 function parseCurlIncludeOutput(output: string): PluginRequestResponse {
-  const parts = output.split(/\r?\n\r?\n/);
-  const bodyText = parts.pop() ?? "";
-  const headerBlock = [...parts].reverse().find((part) => /^HTTP\/\d(?:\.\d)?\s+\d+/.test(part.trim()));
-  if (!headerBlock) {
+  const statusMatches = [...output.matchAll(/^HTTP\/\d(?:\.\d)?\s+\d+/gm)];
+  const finalStatus = statusMatches.at(-1);
+  if (!finalStatus || finalStatus.index === undefined) {
     throw new Error("Plugin HTTP response was malformed.");
   }
+
+  const finalResponse = output.slice(finalStatus.index);
+  const separatorMatch = finalResponse.match(/\r?\n\r?\n/);
+  const headerBlock = separatorMatch
+    ? finalResponse.slice(0, separatorMatch.index)
+    : finalResponse;
+  const bodyText = separatorMatch
+    ? finalResponse.slice((separatorMatch.index ?? 0) + separatorMatch[0].length)
+    : "";
 
   const [statusLine, ...headerLines] = headerBlock.split(/\r?\n/);
   const status = Number(statusLine?.match(/^HTTP\/\d(?:\.\d)?\s+(\d+)/)?.[1]);

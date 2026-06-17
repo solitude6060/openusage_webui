@@ -99,6 +99,11 @@ function parseCcusageOutput(stdout: string): { ok: true; value: unknown } | { ok
   }
 }
 
+export function parseCcusageJsonPayload(stdout: string): unknown | null {
+  const parsed = parseCcusageOutput(stdout);
+  return parsed.ok ? parsed.value : null;
+}
+
 function extractLastJsonValue(stdout: string): string | null {
   const trimmed = stdout.trim();
   if (!trimmed) {

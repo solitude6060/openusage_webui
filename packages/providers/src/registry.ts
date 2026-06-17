@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import { CcusageProvider } from "./providers/ccusage";
 import { ManualProvider } from "./providers/manual";
 import { MiniMaxProvider } from "./providers/minimax";
@@ -24,6 +24,21 @@ const pluginProviders = [
   { providerId: "zai", name: "Z.ai", pluginId: "zai" },
 ] as const;
 
+const bundledPluginsDir = resolve(import.meta.dir, "../../../plugins");
+const bundledPluginIdPattern = /^[a-z0-9-]+$/;
+
+export function resolveBundledPluginScriptPath(pluginId: string): string {
+  if (!bundledPluginIdPattern.test(pluginId)) {
+    throw new Error("Invalid bundled plugin id.");
+  }
+  const scriptPath = resolve(bundledPluginsDir, pluginId, "plugin.js");
+  const relativePath = relative(bundledPluginsDir, scriptPath);
+  if (relativePath.startsWith("..") || relativePath === "" || isAbsolute(relativePath)) {
+    throw new Error("Invalid bundled plugin id.");
+  }
+  return scriptPath;
+}
+
 export function getProviders(): UsageProvider[] {
   return [
     new CcusageProvider(),
@@ -31,7 +46,7 @@ export function getProviders(): UsageProvider[] {
       providerId: provider.providerId,
       name: provider.name,
       pluginId: provider.pluginId,
-      scriptPath: join(import.meta.dir, "../../../plugins", provider.pluginId, "plugin.js"),
+      scriptPath: resolveBundledPluginScriptPath(provider.pluginId),
     })),
     new ManualProvider(),
     new MiniMaxProvider(),

@@ -271,7 +271,7 @@ function ProvidersPage({
               </div>
               <dl className="detail-list">
                 <div>
-                  <dt>Detected</dt>
+                  <dt>{provider.note === "OpenUsage plugin" ? "Adapter Loaded" : "Detected"}</dt>
                   <dd>
                     <StatusPill tone={status?.detected ? "success" : "muted"}>
                       {status?.detected ? "Yes" : "No"}

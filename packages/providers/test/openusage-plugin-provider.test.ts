@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { OpenUsagePluginProvider, runPluginHttpRequest } from "../src/index";
+import {
+  discoverLanguageServerFromCommandLines,
+  OpenUsagePluginProvider,
+  runPluginHttpRequest,
+} from "../src/index";
 
 const pluginScript = `
 (function () {
@@ -36,6 +40,34 @@ const pluginScript = `
 `;
 
 describe("OpenUsagePluginProvider", () => {
+  test("discovers Antigravity language server ports from process command lines", () => {
+    expect(
+      discoverLanguageServerFromCommandLines(
+        [
+          ["/usr/bin/other", "--extension_server_port", "1111"],
+          [
+            "/opt/antigravity/language_server",
+            "--csrf_token",
+            "csrf-value",
+            "--extension_server_port=6738",
+            "--workspace",
+            "/tmp/antigravity-project",
+          ],
+        ],
+        {
+          processName: "language_server",
+          markers: ["antigravity", "antigravity-ide"],
+          csrfFlag: "--csrf_token",
+          portFlag: "--extension_server_port",
+        },
+      ),
+    ).toEqual({
+      csrf: "csrf-value",
+      extensionPort: 6738,
+      ports: [6738],
+    });
+  });
+
   test("runs an original OpenUsage plugin and stores its lines as a usage snapshot", async () => {
     const requests: Array<{ url: string; headers?: Record<string, string> }> = [];
     const provider = new OpenUsagePluginProvider({
@@ -131,6 +163,87 @@ describe("OpenUsagePluginProvider", () => {
     expect(calls[0]?.args.join(" ")).not.toContain("secret-token");
     expect(calls[0]?.stdin).toContain('header = "Authorization: Bearer secret-token"');
     expect(calls[0]?.stdin).toContain('data-raw = "{\\"query\\":\\"usage\\"}"');
+  });
+
+  test("preserves plugin HTTP response bodies that contain blank lines", () => {
+    const response = runPluginHttpRequest(
+      {
+        method: "GET",
+        url: "https://example.test/text",
+      },
+      () => ({
+        exitCode: 0,
+        stdout: "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nfirst\n\nsecond\n",
+        stderr: "",
+      }),
+    );
+
+    expect(response).toEqual({
+      status: 200,
+      headers: {
+        "content-type": "text/plain",
+      },
+      bodyText: "first\n\nsecond\n",
+    });
+  });
+
+  test("awaits async original plugin probes", async () => {
+    const provider = new OpenUsagePluginProvider({
+      providerId: "synthetic",
+      name: "Synthetic",
+      scriptText: `
+        globalThis.__openusage_plugin = {
+          id: "async",
+          async probe(ctx) {
+            return {
+              plan: "Async",
+              lines: [ctx.line.text({ label: "Mode", value: "Awaited" })],
+            };
+          },
+        };
+      `,
+      now: () => "2026-06-17T13:00:00.000Z",
+    });
+
+    const records = await provider.refresh();
+
+    expect(records[0]?.raw).toMatchObject({
+      plan: "Async",
+      lines: [{ type: "text", label: "Mode", value: "Awaited" }],
+    });
+  });
+
+  test("passes host ccusage query results into original plugins", async () => {
+    const provider = new OpenUsagePluginProvider({
+      providerId: "codex",
+      name: "Codex",
+      scriptText: `
+        globalThis.__openusage_plugin = {
+          id: "codex",
+          probe(ctx) {
+            const result = ctx.host.ccusage.query({ provider: "codex", since: "20260601" });
+            return {
+              plan: result.status,
+              lines: [ctx.line.text({ label: "Days", value: String(result.data.daily.length) })],
+            };
+          },
+        };
+      `,
+      ccusageQuery: (opts) => ({
+        status: "ok",
+        data: {
+          daily: [{ date: opts.since, totalTokens: 42, costUSD: 0.01 }],
+        },
+      }),
+      now: () => "2026-06-17T13:30:00.000Z",
+    });
+
+    const records = await provider.refresh();
+
+    expect(records[0]?.raw).toMatchObject({
+      plan: "ok",
+      lines: [{ type: "text", label: "Days", value: "1" }],
+    });
   });
 
   test("adapts the original GitHub Copilot plugin state-file auth flow", async () => {
@@ -370,6 +483,50 @@ describe("OpenUsagePluginProvider", () => {
     expect(statSync(join(pluginDataDir, "keychain.json")).mode & 0o777).toBe(0o600);
   });
 
+  test("tightens permissions when a local keychain shim file already exists", async () => {
+    const pluginDataDir = mkdtempSync(join(tmpdir(), "openusage-keychain-mode-plugin-"));
+    const keychainPath = join(pluginDataDir, "keychain.json");
+    writeFileSync(keychainPath, JSON.stringify({}));
+    chmodSync(keychainPath, 0o644);
+    const provider = new OpenUsagePluginProvider({
+      providerId: "cursor",
+      name: "Cursor",
+      pluginDataDir,
+      scriptText: `
+        globalThis.__openusage_plugin = {
+          id: "keychain-mode",
+          probe(ctx) {
+            ctx.host.keychain.writeGenericPassword("service", "secret");
+            return { lines: [ctx.line.text({ label: "Mode", value: "Saved" })] };
+          },
+        };
+      `,
+    });
+
+    await provider.refresh();
+
+    expect(statSync(keychainPath).mode & 0o777).toBe(0o600);
+  });
+
+  test("rejects non-string original plugin keychain writes", async () => {
+    const provider = new OpenUsagePluginProvider({
+      providerId: "cursor",
+      name: "Cursor",
+      pluginDataDir: mkdtempSync(join(tmpdir(), "openusage-keychain-type-plugin-")),
+      scriptText: `
+        globalThis.__openusage_plugin = {
+          id: "keychain-type",
+          probe(ctx) {
+            ctx.host.keychain.writeGenericPassword("service", { token: "bad" });
+            return { lines: [ctx.line.text({ label: "Mode", value: "Saved" })] };
+          },
+        };
+      `,
+    });
+
+    await expect(provider.refresh()).rejects.toThrow("Keychain password must be a string.");
+  });
+
   test("adapts the original Claude plugin file OAuth usage flow", async () => {
     const claudeDir = mkdtempSync(join(tmpdir(), "openusage-claude-home-"));
     writeFileSync(
@@ -392,6 +549,7 @@ describe("OpenUsagePluginProvider", () => {
       name: "Claude Code",
       scriptText,
       env: { CLAUDE_CONFIG_DIR: claudeDir },
+      ccusageQuery: () => ({ status: "no_runner", data: null }),
       now: () => "2026-06-17T10:00:00.000Z",
       request: (opts) => {
         requests.push({
@@ -475,6 +633,7 @@ describe("OpenUsagePluginProvider", () => {
       name: "Codex",
       scriptText,
       env: { CODEX_HOME: codexHome },
+      ccusageQuery: () => ({ status: "no_runner", data: null }),
       now: () => "2026-06-17T10:30:00.000Z",
       request: (opts) => {
         requests.push({

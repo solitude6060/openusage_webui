@@ -46,7 +46,10 @@ http://127.0.0.1:6736
 
 ## 安裝
 
-需要先安裝 Bun。
+需要先安裝：
+
+- Bun
+- `curl`，原本 OpenUsage plugin adapter 會用它執行 provider HTTP refresh
 
 ```bash
 bun install
