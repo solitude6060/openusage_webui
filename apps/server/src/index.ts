@@ -223,8 +223,9 @@ async function refreshProviders(
   const results: RefreshResult[] = [];
   for (const provider of refreshableProviders) {
     console.log(JSON.stringify({ event: "provider_refresh_started", providerId: provider.id }));
+    let detected = false;
     try {
-      const detected = await provider.detect();
+      detected = await provider.detect();
       const records = await provider.refresh();
       await storage.upsertUsageRecords(records);
       await storage.upsertProviderStatus({
@@ -248,7 +249,7 @@ async function refreshProviders(
         providerId: provider.id,
         name: provider.name,
         enabled: true,
-        detected: false,
+        detected,
         lastRefreshAt: new Date().toISOString(),
         lastError: message,
       });

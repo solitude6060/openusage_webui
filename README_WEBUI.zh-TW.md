@@ -16,7 +16,7 @@ http://127.0.0.1:6736
 
 - Claude Code via `ccusage`
 - Codex CLI via `ccusage`
-- GitHub Copilot CLI via `ccusage`
+- GitHub Copilot via 原本 OpenUsage plugin adapter
 - Gemini CLI / Google AI Pro coding usage via `ccusage`
 - MiniMax Token Plan remains API key 查詢
 - 手動 usage entries
@@ -97,6 +97,26 @@ npx ccusage
 ```
 
 如果 `ccusage` 支援 JSON output，WebUI 會 normalize 成 usage records。如果只有非 JSON output，WebUI 會保留 raw fallback record，不做脆弱的表格 parsing。
+
+## GitHub Copilot 設定
+
+GitHub Copilot 已開始沿用原本 OpenUsage 的 `plugins/copilot/plugin.js`。WebUI 會提供 Linux-friendly host adapter，讓原本 plugin 可以在本機 server 裡執行。
+
+建議先用 GitHub CLI 登入：
+
+```bash
+gh auth login
+```
+
+WebUI refresh 時會嘗試使用 `gh auth token`。也可以在啟動前提供其中一個環境變數：
+
+```bash
+export GH_TOKEN="..."
+# 或
+export GITHUB_TOKEN="..."
+```
+
+Copilot quota 會以原本 plugin 的 progress/text lines 存成 snapshot record，並顯示在 Sessions。
 
 ## 手動輸入
 

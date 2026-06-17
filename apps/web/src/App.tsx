@@ -15,6 +15,7 @@ import {
   refreshProvider,
   type HealthResponse,
 } from "./lib/api";
+import { isProviderRefreshable, providerCards } from "./provider-ui";
 
 type Page = "dashboard" | "providers" | "sessions" | "settings";
 
@@ -35,16 +36,6 @@ const providerLabels: Record<ProviderId, string> = {
   minimax: "MiniMax",
   manual: "Manual",
 };
-
-const providerCards: Array<{ providerId: ProviderId; name: string; note?: string }> = [
-  { providerId: "ccusage", name: "ccusage" },
-  { providerId: "claude-code", name: "Claude Code", note: "via ccusage" },
-  { providerId: "codex", name: "Codex", note: "via ccusage" },
-  { providerId: "github-copilot", name: "GitHub Copilot", note: "via ccusage" },
-  { providerId: "gemini-cli", name: "Gemini CLI / Google AI Pro", note: "via ccusage" },
-  { providerId: "minimax", name: "MiniMax" },
-  { providerId: "manual", name: "Manual" },
-];
 
 export function App() {
   const [page, setPage] = useState<Page>(pageFromPath(window.location.pathname));
@@ -257,7 +248,7 @@ function ProvidersPage({
     <section className="provider-grid">
       {providerCards.map((provider) => {
         const status = providerMap.get(provider.providerId);
-        const refreshable = provider.providerId === "ccusage" || provider.providerId === "manual" || provider.providerId === "minimax";
+        const refreshable = isProviderRefreshable(provider.providerId);
         return (
           <article className="provider-card" key={provider.providerId}>
             <div>

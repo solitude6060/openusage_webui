@@ -192,6 +192,38 @@ describe("WebUI API", () => {
     });
   });
 
+  test("keeps provider detected when refresh fails after successful detection", async () => {
+    handleRequest = createRequestHandler(storage, {
+      host: "127.0.0.1",
+      port: 6736,
+    }, undefined, [
+      {
+        id: "github-copilot",
+        name: "GitHub Copilot",
+        detect: async () => true,
+        refresh: async () => {
+          throw new Error("Not logged in. Run `gh auth login` first.");
+        },
+      },
+    ]);
+
+    const response = await handleRequest(new Request("http://127.0.0.1:6736/api/providers/github-copilot/refresh", {
+      method: "POST",
+    }));
+
+    expect(response.status).toBe(200);
+    expect(await storage.listProviderStatus()).toEqual([
+      {
+        providerId: "github-copilot",
+        name: "GitHub Copilot",
+        enabled: true,
+        detected: true,
+        lastRefreshAt: expect.any(String),
+        lastError: "Not logged in. Run `gh auth login` first.",
+      },
+    ]);
+  });
+
   test("minimax refresh reports missing API key as a provider-level error", async () => {
     const calls: string[] = [];
     handleRequest = createRequestHandler(storage, {

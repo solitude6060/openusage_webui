@@ -8,7 +8,7 @@ A local-first WebUI dashboard for AI coding usage on Ubuntu/Linux.
 
 - Claude Code via ccusage
 - Codex CLI via ccusage
-- GitHub Copilot CLI via ccusage
+- GitHub Copilot via the original OpenUsage plugin adapter
 - Gemini CLI / Google AI Pro coding usage via ccusage
 - MiniMax Token Plan remains via API key
 - Manual usage entries
@@ -58,7 +58,17 @@ No cloud upload.
 
 ## ccusage Notes
 
-Manual entries and MiniMax quota refresh are implemented. ccusage refresh attempts `bunx ccusage` first and then `npx ccusage`, using JSON output when available. If ccusage returns non-JSON output, the WebUI stores a raw fallback record instead of brittle table parsing.
+Manual entries, MiniMax quota refresh, and GitHub Copilot through the original OpenUsage plugin adapter are implemented. ccusage refresh attempts `bunx ccusage` first and then `npx ccusage`, using JSON output when available. If ccusage returns non-JSON output, the WebUI stores a raw fallback record instead of brittle table parsing.
+
+## GitHub Copilot Notes
+
+GitHub Copilot uses the original `plugins/copilot/plugin.js` through a WebUI host adapter. On Linux, authenticate with GitHub CLI:
+
+```bash
+gh auth login
+```
+
+The WebUI adapter tries `gh auth token` during refresh. You can also start the server with `GH_TOKEN` or `GITHUB_TOKEN`.
 
 ## MiniMax Notes
 

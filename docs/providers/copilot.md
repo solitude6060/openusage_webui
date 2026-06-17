@@ -4,7 +4,7 @@ Tracks GitHub Copilot usage quotas for both paid and free tier users.
 
 ## Authentication
 
-The plugin looks for a GitHub token in this order:
+The original Tauri plugin looks for a GitHub token in this order:
 
 1. **OpenUsage Keychain** (`OpenUsage-copilot`) — Token previously cached by the plugin
 2. **GitHub CLI Keychain** (`gh:github.com`) — Token from `gh auth login`
@@ -25,6 +25,19 @@ gh auth login
 Choose "GitHub.com" and follow the prompts. The plugin will automatically read the token from the gh CLI keychain.
 
 Once authenticated via gh CLI, the plugin caches the token in the OpenUsage keychain for faster access on subsequent probes.
+
+## WebUI Adapter Notes
+
+The Linux WebUI runs the original `plugins/copilot/plugin.js` through a local host adapter instead of rewriting the provider logic.
+
+Because Linux WebUI does not use the macOS keychain, the adapter bridges the GitHub CLI token source this way:
+
+1. `GH_TOKEN`
+2. `GITHUB_TOKEN`
+3. `gh auth token`
+4. WebUI plugin state file at `~/.openusage-webui/plugins/github-copilot/auth.json`
+
+The adapter passes request headers to curl through stdin config, not process argv, so bearer tokens are not exposed in command-line arguments.
 
 ## API
 

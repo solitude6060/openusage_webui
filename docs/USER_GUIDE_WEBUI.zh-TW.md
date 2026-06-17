@@ -77,6 +77,7 @@ bun run start:webui
 5. 如果需要手動補資料，到 `Settings` 新增 manual entry
 
 如果沒有設定 MiniMax key、也沒有安裝或可執行 `ccusage`，dashboard 仍可開啟，只是對應 provider 會顯示錯誤或沒有資料。
+GitHub Copilot 可以另外透過原本 OpenUsage plugin adapter refresh，不依賴 `ccusage`。
 
 ## 5. 頁面說明
 
@@ -104,7 +105,7 @@ Providers 頁面顯示各 provider 狀態：
 - last error
 - refresh button
 
-Claude Code、Codex、GitHub Copilot、Gemini CLI / Google AI Pro 目前主要透過 `ccusage` 匯入。
+GitHub Copilot 目前透過原本 OpenUsage `plugins/copilot/plugin.js` adapter refresh。Claude Code、Codex、Gemini CLI / Google AI Pro 仍主要透過 `ccusage` 匯入，後續會逐步移植原本 provider plugin。
 
 ### 5.3 Sessions
 
@@ -211,7 +212,39 @@ MiniMax 回傳的是目前 plan/window 的剩餘 prompt quota。WebUI 會存成 
 
 它不會被計入 token totals 或 cost totals。
 
-## 8. 手動 Usage Entry
+## 8. GitHub Copilot 使用
+
+GitHub Copilot provider 已開始沿用原本 OpenUsage plugin：
+
+```text
+plugins/copilot/plugin.js
+```
+
+WebUI 在 Linux 上會提供 adapter，讓原本 plugin 可以讀 token、呼叫 GitHub Copilot quota API，並把回傳的 progress/text lines 存成 Sessions 裡的 snapshot。
+
+建議先登入 GitHub CLI：
+
+```bash
+gh auth login
+```
+
+refresh 時 WebUI 會嘗試使用：
+
+```bash
+gh auth token
+```
+
+也可以啟動前提供環境變數：
+
+```bash
+export GH_TOKEN="..."
+# 或
+export GITHUB_TOKEN="..."
+```
+
+GitHub Copilot 的 quota snapshot 不一定是 token/cost usage，因此主要會出現在 Sessions 的 raw snapshot / quota 類資訊，不應和 Claude/Codex token totals 混在一起解讀。
+
+## 9. 手動 Usage Entry
 
 到 `Settings` 頁面填入：
 
@@ -226,7 +259,7 @@ MiniMax 回傳的是目前 plan/window 的剩餘 prompt quota。WebUI 會存成 
 
 送出後，資料會寫入 SQLite，並可在 `Sessions` 和 summary 中看到。
 
-## 9. 資料與備份
+## 10. 資料與備份
 
 資料位置：
 
@@ -241,9 +274,9 @@ MiniMax 回傳的是目前 plan/window 的剩餘 prompt quota。WebUI 會存成 
 ~/.openusage-webui
 ```
 
-## 10. Port 與連線問題
+## 11. Port 與連線問題
 
-### 10.1 Port 6736 被占用
+### 11.1 Port 6736 被占用
 
 如果啟動時顯示 port 已被使用，先找出目前是哪個 process 使用：
 
