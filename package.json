@@ -17,7 +17,7 @@
     "bundle:plugins": "bun copy-bundled.cjs",
     "preview": "vite preview",
     "test": "vitest",
-    "test:webui": "bun test packages/storage/test packages/providers/test apps/server/test",
+    "test:webui": "bun test packages/storage/test packages/providers/test apps/server/test apps/web/src",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest run --coverage.enabled",
     "start:webui": "bun run --cwd apps/server start",

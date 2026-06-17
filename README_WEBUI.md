@@ -6,8 +6,8 @@ A local-first WebUI dashboard for AI coding usage on Ubuntu/Linux.
 
 ## What It Supports
 
-- Claude Code via ccusage
-- Codex CLI via ccusage
+- Claude Code via the original OpenUsage plugin adapter
+- Codex CLI via the original OpenUsage plugin adapter
 - GitHub Copilot via the original OpenUsage plugin adapter
 - Gemini CLI / Google AI Pro coding usage via ccusage
 - MiniMax Token Plan remains via API key
@@ -58,7 +58,17 @@ No cloud upload.
 
 ## ccusage Notes
 
-Manual entries, MiniMax quota refresh, and GitHub Copilot through the original OpenUsage plugin adapter are implemented. ccusage refresh attempts `bunx ccusage` first and then `npx ccusage`, using JSON output when available. If ccusage returns non-JSON output, the WebUI stores a raw fallback record instead of brittle table parsing.
+Manual entries, MiniMax quota refresh, and Claude Code / Codex / GitHub Copilot through the original OpenUsage plugin adapter are implemented. ccusage refresh attempts `bunx ccusage` first and then `npx ccusage`, using JSON output when available. If ccusage returns non-JSON output, the WebUI stores a raw fallback record instead of brittle table parsing.
+
+## Claude And Codex Notes
+
+Claude Code and Codex use the original `plugins/claude/plugin.js` and `plugins/codex/plugin.js` through a WebUI host adapter.
+
+Claude reads `CLAUDE_CONFIG_DIR/.credentials.json` when `CLAUDE_CONFIG_DIR` is set, otherwise `~/.claude/.credentials.json`.
+
+Codex reads `CODEX_HOME/auth.json` when `CODEX_HOME` is set, otherwise `~/.config/codex/auth.json` and `~/.codex/auth.json`.
+
+The original plugins may refresh OAuth tokens and write updated credentials back to the same file source. Browser cookies are not used.
 
 ## GitHub Copilot Notes
 

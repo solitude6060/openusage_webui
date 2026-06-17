@@ -14,8 +14,8 @@ http://127.0.0.1:6736
 
 ## 目前支援
 
-- Claude Code via `ccusage`
-- Codex CLI via `ccusage`
+- Claude Code via 原本 OpenUsage plugin adapter
+- Codex CLI via 原本 OpenUsage plugin adapter
 - GitHub Copilot via 原本 OpenUsage plugin adapter
 - Gemini CLI / Google AI Pro coding usage via `ccusage`
 - MiniMax Token Plan remains API key 查詢
@@ -97,6 +97,34 @@ npx ccusage
 ```
 
 如果 `ccusage` 支援 JSON output，WebUI 會 normalize 成 usage records。如果只有非 JSON output，WebUI 會保留 raw fallback record，不做脆弱的表格 parsing。
+
+## Claude / Codex 設定
+
+Claude Code 和 Codex 已開始沿用原本 OpenUsage 的 provider plugin：
+
+```text
+plugins/claude/plugin.js
+plugins/codex/plugin.js
+```
+
+WebUI 會提供 Linux-friendly host adapter，讓原本 plugin 可以在本機 server 裡執行。
+
+Claude 會讀：
+
+```text
+CLAUDE_CONFIG_DIR/.credentials.json
+~/.claude/.credentials.json
+```
+
+Codex 會讀：
+
+```text
+CODEX_HOME/auth.json
+~/.config/codex/auth.json
+~/.codex/auth.json
+```
+
+原本 plugin 可能會 refresh OAuth token，並把更新後的 credential 寫回同一個檔案來源。WebUI 不使用 browser cookies。
 
 ## GitHub Copilot 設定
 

@@ -9,6 +9,18 @@ export function getProviders(): UsageProvider[] {
   return [
     new CcusageProvider(),
     new OpenUsagePluginProvider({
+      providerId: "claude-code",
+      name: "Claude Code",
+      pluginId: "claude",
+      scriptPath: join(import.meta.dir, "../../../plugins/claude/plugin.js"),
+    }),
+    new OpenUsagePluginProvider({
+      providerId: "codex",
+      name: "Codex",
+      pluginId: "codex",
+      scriptPath: join(import.meta.dir, "../../../plugins/codex/plugin.js"),
+    }),
+    new OpenUsagePluginProvider({
       providerId: "github-copilot",
       name: "GitHub Copilot",
       pluginId: "copilot",
