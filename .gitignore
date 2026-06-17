@@ -30,6 +30,7 @@ tmpcov-gem
 !.env.example
 
 # Agent working files
+.playwright-mcp/
 docs/choices.md
 docs/breadcrumbs.md
 docs/superpowers/

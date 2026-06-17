@@ -54,6 +54,31 @@ afterEach(() => {
 });
 
 describe("WebUI API", () => {
+  test("proxies dev frontend requests with the frontend host header", async () => {
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      const headers = new Headers(init?.headers);
+      expect(headers.get("host")).toBe("127.0.0.1:6737");
+      return new Response("<!doctype html><title>Vite</title>", {
+        headers: { "content-type": "text/html" },
+      });
+    });
+    const devHandler = createRequestHandler(
+      storage,
+      { host: "127.0.0.1", port: 6736 },
+      "http://127.0.0.1:6737",
+      [],
+    );
+
+    const response = await devHandler(new Request("http://127.0.0.1:6736/", {
+      headers: { host: "127.0.0.1:6736" },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toBe("http://127.0.0.1:6737/");
+    fetchSpy.mockRestore();
+  });
+
   test("reports the actual bind port in health", async () => {
     const response = await handleRequest(new Request("http://127.0.0.1:6736/api/health"));
     const body = await response.json();

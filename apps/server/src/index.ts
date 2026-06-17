@@ -275,7 +275,7 @@ async function serveFrontend(
     const proxyUrl = new URL(url.pathname + url.search, devFrontendUrl);
     return fetch(proxyUrl, {
       method: request.method,
-      headers: request.headers,
+      headers: proxyHeaders(request.headers, proxyUrl),
       body: request.body,
     });
   }
@@ -323,6 +323,12 @@ function sanitizeSettings(body: unknown): Record<string, string> {
   return Object.fromEntries(
     Object.entries(body).map(([key, value]) => [key, value === undefined ? "" : String(value)]),
   );
+}
+
+function proxyHeaders(headers: Headers, target: URL): Headers {
+  const proxied = new Headers(headers);
+  proxied.set("host", target.host);
+  return proxied;
 }
 
 function stringOrUndefined(value: unknown): string | undefined {
