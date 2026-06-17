@@ -304,7 +304,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
   private readLocalKeychainPassword(service: string, account?: string): string | null {
     const store = this.readLocalKeychainStore();
     const value = store[localKeychainKey(service, account)];
-    return typeof value === "string" ? value : null;
+    return typeof value === "string" && value.trim() ? value : null;
   }
 
   private writeLocalKeychainPassword(service: string, account: string | undefined, password: unknown): void {
