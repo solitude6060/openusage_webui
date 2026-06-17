@@ -4,13 +4,14 @@ PR: https://github.com/solitude6060/openusage_webui/pull/2
 Base branch: `dev`
 Head branch: `codex/webui-provider-fixture-coverage`
 Latest technical head reviewed: `c5bd413`
+Latest fix head: `2d36bf4`
 
 ## Reviewer Lanes
 
 | Reviewer | Command | Output File | Verdict |
 | --- | --- | --- | --- |
 | agy | `agy --print-timeout 15m --dangerously-skip-permissions -p "$(cat /tmp/pr2_review_prompt.txt)"` | `/tmp/pr2_review_agy.out` | REQUEST CHANGES, fixed in `9b8510f` |
-| claude | `claude -p "$(cat /tmp/pr2_review_prompt.txt)"` | `/tmp/pr2_review_claude_rerun.out` | REQUEST CHANGES, fixes staged after `c5bd413` |
+| claude | `claude -p "$(cat /tmp/pr2_review_prompt.txt)"` | `/tmp/pr2_review_claude_rerun.out` | REQUEST CHANGES, fixed in `2d36bf4`; post-fix approval blocked |
 | claude-mm | `CLAUDE_CONFIG_DIR=$HOME/.claude-minimax claude -p "$(cat /tmp/pr2_review_prompt.txt)"` | `/tmp/pr2_review_claude_mm.out` | BLOCKED: MiniMax 429 Token Plan usage limit |
 
 ## Triage
@@ -20,8 +21,8 @@ Latest technical head reviewed: `c5bd413`
 | `ccusage` query did not consistently use adapter `homeDir` for tilde expansion and HOME. | agy | HIGH | `runPluginCcusageQuery` previously called `ccusageEnvForProvider` without adapter home context. | Fixed: `runPluginCcusageQuery` now receives `homeDir`, and `ccusageEnvForProvider` sets `HOME`, `CODEX_HOME`, and `CLAUDE_CONFIG_DIR` relative to it. Regression: `expands plugin ccusage home paths against configured homeDir`. |
 | GitHub CLI fallback token lookup spawned `gh` without adapter env/home. | agy | HIGH | `readGitHubToken` previously called `Bun.spawnSync(["gh", "auth", "token"])` without `env`. | Fixed: spawn now uses `{ ...process.env, ...this.env, HOME: this.homeDir }`. Regression: `runs GitHub CLI token lookup with configured homeDir environment`. |
 | `gh:github.com` keychain lookup bypassed local keychain store. | agy | MEDIUM | `readGenericPassword("gh:github.com")` previously went directly to env/CLI fallback. | Fixed: local keychain store is checked first, then env/CLI fallback. Regression: `prefers locally saved GitHub keychain token before gh CLI fallback`. |
-| `ccusageRunner` injection seam was introduced without direct test coverage. | claude | MEDIUM | The ccusage isolation test used global `Bun.spawnSync` monkeypatching instead of the provider option. | Fixed: the isolation test now passes `ccusageRunner` directly and asserts the expanded `CODEX_HOME`. |
-| `gh:github.com` local-vs-env precedence and blank local entries were not pinned. | claude | LOW | Local keychain won over env by implementation, and empty local strings short-circuited fallback. | Fixed: added local-vs-env and blank-local fallback regressions; blank local keychain values now behave as absent. |
+| `ccusageRunner` injection seam was introduced without direct test coverage. | claude | MEDIUM | The ccusage isolation test used global `Bun.spawnSync` monkeypatching instead of the provider option. | Fixed in `2d36bf4`: the isolation test now passes `ccusageRunner` directly and asserts the expanded `CODEX_HOME`. |
+| `gh:github.com` local-vs-env precedence and blank local entries were not pinned. | claude | LOW | Local keychain won over env by implementation, and empty local strings short-circuited fallback. | Fixed in `2d36bf4`: added local-vs-env and blank-local fallback regressions; blank local keychain values now behave as absent. |
 | Blank `homeDir` test assumed `process.env.HOME` was set. | claude | LOW | Test expected `join(process.env.HOME ?? "", ".openusage-webui")` while production falls back to `homedir()`. | Fixed: assertion now uses `process.env.HOME?.trim() || homedir()`. |
 | Isolated fixture helper leaked temporary home directories. | agy | LOW | `withIsolatedHome` created a temp directory and never removed it. | Fixed: helper removes the temp directory in `finally`. Regression: `cleans up isolated home directories after callback completion`. |
 | `writeJson` used `resolve(path, "..")` instead of a parent-directory API. | agy | LOW | Helper used `resolve` to calculate parent directory. | Fixed: helper uses `dirname(path)`. Regression: `writes JSON after creating the target parent directory`. |
@@ -35,8 +36,13 @@ Latest technical head reviewed: `c5bd413`
 - `bun run build:webui`: passed.
 - `git diff --check`: passed.
 
+## Post-Fix Reviewer Attempts
+
+- Claude post-fix rerun with `timeout 180s claude -p ...` failed with `API Error: Unable to connect to API (ConnectionRefused)`.
+- An escalated network retry was rejected by the approval reviewer because it would send repository review context to an external Claude API.
+
 ## Remaining Limits
 
-- Claude must be rerun on the post-fix commit before merge.
+- Claude post-fix approval is unavailable, so this triple-review gate is not green.
 - Claude MiniMax is still blocked by external Token Plan quota, not by a repository failure.
 - Live authenticated provider refresh remains untested locally because it requires the user's real provider accounts and installed CLIs/IDEs.

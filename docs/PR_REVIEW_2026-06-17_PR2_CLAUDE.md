@@ -4,13 +4,16 @@ PR: https://github.com/solitude6060/openusage_webui/pull/2
 Base: `dev`
 Head: `codex/webui-provider-fixture-coverage`
 Reviewed head: `c5bd41342570d8c7c447377b5b40c9feebe4dda1`
+Fix head: `2d36bf4`
 Reviewer command:
 
 ```bash
 claude -p "$(cat /tmp/pr2_review_prompt.txt)" > /tmp/pr2_review_claude_rerun.out 2>&1
 ```
 
-Verdict: REQUEST CHANGES
+Verdict: REQUEST CHANGES, fixed locally
+
+Post-fix rerun status: BLOCKED
 
 ## Findings
 
@@ -29,8 +32,24 @@ Verdict: REQUEST CHANGES
 - `bun run build:webui`: passed.
 - `git diff --check`: passed.
 
+## Post-Fix Rerun Attempt
+
+Command:
+
+```bash
+timeout 180s claude -p "Review only the latest PR #2 changes ..."
+```
+
+Result:
+
+```text
+API Error: Unable to connect to API (ConnectionRefused)
+```
+
+An escalated network retry was not executed because the approval reviewer rejected sending repository review context to an external Claude API.
+
 ## Remaining Limits
 
-- This Claude lane produced a valid REQUEST CHANGES review and the findings above were addressed locally.
-- Claude should be rerun on the post-fix commit before merging.
+- This Claude lane produced a valid REQUEST CHANGES review and the findings above were addressed in `2d36bf4`.
+- Claude post-fix approval is still unavailable, so this lane is not an approval.
 - Claude MiniMax remains a separate reviewer lane and is still blocked until its Token Plan quota is available.
