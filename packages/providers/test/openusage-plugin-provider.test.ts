@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -227,6 +228,58 @@ describe("OpenUsagePluginProvider", () => {
     expect(records[0]?.raw).toMatchObject({
       pluginId: "copilot",
       plan: "Pro",
+    });
+  });
+
+  test("provides original plugin host shims for http, sqlite, nowIso, and AES-GCM crypto", async () => {
+    const pluginDataDir = mkdtempSync(join(tmpdir(), "openusage-host-shim-plugin-"));
+    const sqlitePath = join(pluginDataDir, "state.sqlite");
+    const db = new Database(sqlitePath, { create: true });
+    db.exec("CREATE TABLE tokens (name TEXT, value TEXT); INSERT INTO tokens VALUES ('alpha', 'one');");
+    db.close();
+
+    const plugin = `
+      (function () {
+        function probe(ctx) {
+          const encrypted = ctx.host.crypto.encryptAes256Gcm("secret", "${Buffer.alloc(32, 7).toString("base64")}");
+          const decrypted = ctx.host.crypto.decryptAes256Gcm(encrypted, "${Buffer.alloc(32, 7).toString("base64")}");
+          const rows = ctx.util.tryParseJson(ctx.host.sqlite.query("${sqlitePath}", "SELECT value FROM tokens WHERE name = 'alpha'"));
+          const resp = ctx.host.http.request({ method: "GET", url: "https://example.test/host-shim" });
+          const ls = ctx.host.ls.discover({ ports: [1, 2], path: "/status" });
+          return {
+            plan: "Shim",
+            lines: [
+              ctx.line.text({ label: "Now", value: ctx.nowIso }),
+              ctx.line.text({ label: "SQLite", value: rows[0].value }),
+              ctx.line.text({ label: "HTTP", value: String(resp.status) }),
+              ctx.line.text({ label: "Crypto", value: decrypted }),
+              ctx.line.text({ label: "LS", value: String(ls) }),
+            ],
+          };
+        }
+        globalThis.__openusage_plugin = { id: "shim", probe };
+      })();
+    `;
+
+    const provider = new OpenUsagePluginProvider({
+      providerId: "synthetic",
+      name: "Synthetic",
+      scriptText: plugin,
+      pluginDataDir,
+      now: () => "2026-06-17T11:00:00.000Z",
+      request: () => ({ status: 204, headers: {}, bodyText: "" }),
+    });
+
+    const records = await provider.refresh();
+
+    expect(records[0]?.raw).toMatchObject({
+      lines: [
+        { type: "text", label: "Now", value: "2026-06-17T11:00:00.000Z" },
+        { type: "text", label: "SQLite", value: "one" },
+        { type: "text", label: "HTTP", value: "204" },
+        { type: "text", label: "Crypto", value: "secret" },
+        { type: "text", label: "LS", value: "null" },
+      ],
     });
   });
 

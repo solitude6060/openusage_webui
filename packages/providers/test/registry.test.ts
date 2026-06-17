@@ -3,13 +3,27 @@ import { OpenUsagePluginProvider, getProviders } from "../src/index";
 
 describe("provider registry", () => {
   test.each([
+    ["amp", "Amp"],
+    ["antigravity", "Antigravity"],
     ["claude-code", "Claude Code"],
     ["codex", "Codex"],
+    ["cursor", "Cursor"],
+    ["devin", "Devin"],
+    ["factory", "Factory"],
+    ["grok", "Grok"],
     ["github-copilot", "GitHub Copilot"],
-  ] as const)("registers %s through the original OpenUsage plugin adapter", (providerId, name) => {
+    ["jetbrains-ai-assistant", "JetBrains AI Assistant"],
+    ["kimi", "Kimi"],
+    ["kiro", "Kiro"],
+    ["opencode-go", "OpenCode Go"],
+    ["perplexity", "Perplexity"],
+    ["synthetic", "Synthetic"],
+    ["zai", "Z.ai"],
+  ] as const)("registers %s through the original OpenUsage plugin adapter", async (providerId, name) => {
     const provider = getProviders().find((item) => item.id === providerId);
 
     expect(provider).toBeInstanceOf(OpenUsagePluginProvider);
     expect(provider?.name).toBe(name);
+    await expect(provider?.detect()).resolves.toBe(true);
   });
 });

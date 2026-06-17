@@ -6,9 +6,22 @@
 
 目前 WebUI 適合追蹤：
 
+- Amp
+- Antigravity
 - Claude Code
 - Codex CLI
+- Cursor
+- Devin
+- Factory / Droid
+- Grok
 - GitHub Copilot CLI
+- JetBrains AI Assistant
+- Kimi
+- Kiro
+- OpenCode Go
+- Perplexity
+- Synthetic
+- Z.ai
 - Gemini CLI / Google AI Pro coding usage
 - MiniMax Token Plan quota
 - 手動記錄的使用量
@@ -76,8 +89,8 @@ bun run start:webui
 4. 到 `Sessions` 看 usage records
 5. 如果需要手動補資料，到 `Settings` 新增 manual entry
 
-如果沒有設定 MiniMax key、沒有登入 Claude/Codex/Copilot，或沒有安裝可執行的 `ccusage`，dashboard 仍可開啟，只是對應 provider 會顯示錯誤或沒有資料。
-Claude Code、Codex、GitHub Copilot 目前透過原本 OpenUsage plugin adapter refresh，不依賴 `ccusage` 才能查 quota。
+如果沒有設定 MiniMax key、沒有登入對應 coding agent，或沒有安裝可執行的 `ccusage`，dashboard 仍可開啟，只是對應 provider 會顯示錯誤或沒有資料。
+多數原本 OpenUsage provider 目前透過 plugin adapter refresh，不依賴 `ccusage` 才能查 quota。
 
 ## 5. 頁面說明
 
@@ -105,7 +118,7 @@ Providers 頁面顯示各 provider 狀態：
 - last error
 - refresh button
 
-Claude Code、Codex、GitHub Copilot 目前透過原本 OpenUsage provider plugin adapter refresh。Gemini CLI / Google AI Pro 仍主要透過 `ccusage` 匯入，因為原本 repo 目前沒有 Gemini provider plugin。
+Amp、Antigravity、Claude Code、Codex、Cursor、Devin、Factory、Grok、GitHub Copilot、JetBrains AI Assistant、Kimi、Kiro、OpenCode Go、Perplexity、Synthetic、Z.ai 目前透過原本 OpenUsage provider plugin adapter refresh。Gemini CLI / Google AI Pro 仍主要透過 `ccusage` 匯入，因為原本 repo 目前沒有 Gemini provider plugin。
 
 ### 5.3 Sessions
 
@@ -327,7 +340,7 @@ lsof -iTCP:6736 -sTCP:LISTEN
 
 停掉舊 process 後再啟動 WebUI。
 
-### 10.2 開 `6736` 閃爍或沒有反應
+### 12.2 開 `6736` 閃爍或沒有反應
 
 開發模式下，`6736` 會代理 Vite dev server。若看到閃爍：
 
@@ -346,7 +359,7 @@ curl http://127.0.0.1:6736/api/health
 {"ok":true,"version":"0.1.0","database":"ok"}
 ```
 
-### 10.3 API 有回應但頁面沒有資料
+### 12.3 API 有回應但頁面沒有資料
 
 常見原因：
 
@@ -356,7 +369,7 @@ curl http://127.0.0.1:6736/api/health
 - 目前 provider 沒有 records
 - date range / provider filter 篩掉資料
 
-## 11. 常用 API
+## 13. 常用 API
 
 Health:
 
@@ -400,7 +413,7 @@ Manual entry:
 POST /api/manual/usage
 ```
 
-## 12. 測試與驗證
+## 14. 測試與驗證
 
 WebUI 測試：
 
@@ -414,7 +427,7 @@ Build：
 bun run build:webui
 ```
 
-## 13. 目前限制
+## 15. 目前限制
 
 - 沒有 multi-user auth
 - 沒有 remote dashboard
@@ -425,7 +438,7 @@ bun run build:webui
 - MiniMax 尚未做 live API 自動驗證測試
 - `ccusage` structured output 依賴 `ccusage` 本身支援的 JSON output
 
-## 14. 建議工作流程
+## 16. 建議工作流程
 
 日常使用：
 
@@ -447,7 +460,7 @@ bun run start:webui
 3. 按 Refresh All 或單一 provider refresh
 4. 到 Sessions 檢查 records
 
-## 15. 不要做的事
+## 17. 不要做的事
 
 - 不要把 WebUI 綁到 `0.0.0.0`
 - 不要把 MiniMax API key 填進 provider settings API

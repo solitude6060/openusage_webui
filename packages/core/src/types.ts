@@ -1,12 +1,28 @@
-export type ProviderId =
-  | "ccusage"
-  | "claude-code"
-  | "codex"
-  | "github-copilot"
-  | "gemini-cli"
-  | "google-ai-pro"
-  | "minimax"
-  | "manual";
+export const PROVIDER_IDS = [
+  "ccusage",
+  "amp",
+  "antigravity",
+  "claude-code",
+  "codex",
+  "cursor",
+  "devin",
+  "factory",
+  "grok",
+  "github-copilot",
+  "jetbrains-ai-assistant",
+  "kimi",
+  "kiro",
+  "opencode-go",
+  "perplexity",
+  "synthetic",
+  "zai",
+  "gemini-cli",
+  "google-ai-pro",
+  "minimax",
+  "manual",
+] as const;
+
+export type ProviderId = (typeof PROVIDER_IDS)[number];
 
 export type UsageSource =
   | "local-log"

@@ -14,9 +14,22 @@ http://127.0.0.1:6736
 
 ## 目前支援
 
+- Amp via 原本 OpenUsage plugin adapter
+- Antigravity via 原本 OpenUsage plugin adapter
 - Claude Code via 原本 OpenUsage plugin adapter
 - Codex CLI via 原本 OpenUsage plugin adapter
+- Cursor via 原本 OpenUsage plugin adapter
+- Devin via 原本 OpenUsage plugin adapter
+- Factory / Droid via 原本 OpenUsage plugin adapter
+- Grok via 原本 OpenUsage plugin adapter
 - GitHub Copilot via 原本 OpenUsage plugin adapter
+- JetBrains AI Assistant via 原本 OpenUsage plugin adapter
+- Kimi via 原本 OpenUsage plugin adapter
+- Kiro via 原本 OpenUsage plugin adapter
+- OpenCode Go via 原本 OpenUsage plugin adapter
+- Perplexity via 原本 OpenUsage plugin adapter
+- Synthetic via 原本 OpenUsage plugin adapter
+- Z.ai via 原本 OpenUsage plugin adapter
 - Gemini CLI / Google AI Pro coding usage via `ccusage`
 - MiniMax Token Plan remains API key 查詢
 - 手動 usage entries

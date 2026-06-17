@@ -6,9 +6,22 @@ A local-first WebUI dashboard for AI coding usage on Ubuntu/Linux.
 
 ## What It Supports
 
+- Amp via the original OpenUsage plugin adapter
+- Antigravity via the original OpenUsage plugin adapter
 - Claude Code via the original OpenUsage plugin adapter
 - Codex CLI via the original OpenUsage plugin adapter
+- Cursor via the original OpenUsage plugin adapter
+- Devin via the original OpenUsage plugin adapter
+- Factory / Droid via the original OpenUsage plugin adapter
+- Grok via the original OpenUsage plugin adapter
 - GitHub Copilot via the original OpenUsage plugin adapter
+- JetBrains AI Assistant via the original OpenUsage plugin adapter
+- Kimi via the original OpenUsage plugin adapter
+- Kiro via the original OpenUsage plugin adapter
+- OpenCode Go via the original OpenUsage plugin adapter
+- Perplexity via the original OpenUsage plugin adapter
+- Synthetic via the original OpenUsage plugin adapter
+- Z.ai via the original OpenUsage plugin adapter
 - Gemini CLI / Google AI Pro coding usage via ccusage
 - MiniMax Token Plan remains via API key
 - Manual usage entries
@@ -58,7 +71,7 @@ No cloud upload.
 
 ## ccusage Notes
 
-Manual entries, MiniMax quota refresh, and Claude Code / Codex / GitHub Copilot through the original OpenUsage plugin adapter are implemented. ccusage refresh attempts `bunx ccusage` first and then `npx ccusage`, using JSON output when available. If ccusage returns non-JSON output, the WebUI stores a raw fallback record instead of brittle table parsing.
+Manual entries, MiniMax quota refresh, and original OpenUsage plugin-backed providers are implemented. ccusage refresh attempts `bunx ccusage` first and then `npx ccusage`, using JSON output when available. If ccusage returns non-JSON output, the WebUI stores a raw fallback record instead of brittle table parsing.
 
 ## Claude And Codex Notes
 

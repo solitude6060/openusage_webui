@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -137,6 +138,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
   private createContext(): Record<string, unknown> {
     const filesBase = dirname(this.pluginDataDir);
     return {
+      nowIso: this.now(),
       app: {
         version: "0.1.0",
         platform: process.platform,
@@ -178,6 +180,22 @@ export class OpenUsagePluginProvider implements UsageProvider {
         },
         crypto: {
           sha256Hex: (text: string) => createHash("sha256").update(String(text)).digest("hex"),
+          encryptAes256Gcm: encryptAes256Gcm,
+          decryptAes256Gcm: decryptAes256Gcm,
+        },
+        http: {
+          request: (opts: PluginRequestOptions) => {
+            if (!this.requestImpl) {
+              throw new Error("OpenUsage plugin HTTP host is not configured for this provider.");
+            }
+            return this.requestImpl(opts);
+          },
+        },
+        sqlite: {
+          query: (databasePath: string, sql: string) => querySqlite(databasePath, sql),
+        },
+        ls: {
+          discover: () => null,
         },
         ccusage: {
           query: () => ({ status: "no_runner", data: null }),
@@ -305,6 +323,38 @@ function curlQuote(value: string): string {
     .replace(/"/g, '\\"')
     .replace(/\r/g, "\\r")
     .replace(/\n/g, "\\n");
+}
+
+function querySqlite(databasePath: string, sql: string): string {
+  const db = new Database(expandHome(databasePath), { readonly: true, create: false });
+  try {
+    return JSON.stringify(db.query(sql).all());
+  } finally {
+    db.close();
+  }
+}
+
+function encryptAes256Gcm(plaintext: string, keyB64: string): string {
+  const key = Buffer.from(String(keyB64).trim(), "base64");
+  const iv = randomBytes(16);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const ciphertext = Buffer.concat([cipher.update(String(plaintext), "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString("base64")}:${tag.toString("base64")}:${ciphertext.toString("base64")}`;
+}
+
+function decryptAes256Gcm(envelope: string, keyB64: string): string {
+  const parts = String(envelope).trim().split(":");
+  if (parts.length !== 3) {
+    throw new Error("invalid AES-GCM envelope");
+  }
+  const key = Buffer.from(String(keyB64).trim(), "base64");
+  const iv = Buffer.from(parts[0] ?? "", "base64");
+  const tag = Buffer.from(parts[1] ?? "", "base64");
+  const ciphertext = Buffer.from(parts[2] ?? "", "base64");
+  const decipher = createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
 }
 
 function normalizePluginResult(result: unknown): { plan: string | null; lines: unknown[] } {
