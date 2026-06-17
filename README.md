@@ -70,6 +70,8 @@ Current WebUI provider support:
 - Gemini CLI / Google AI Pro coding usage via `ccusage`
 - Manual usage entries
 
+The WebUI adapter provides Linux host shims for original plugin HTTP, SQLite, local keychain, filesystem, crypto, and formatting APIs where needed. Local keychain shim data stays under `~/.openusage-webui/plugins/<provider>/keychain.json`.
+
 See [README_WEBUI.md](README_WEBUI.md) and [README_WEBUI.zh-TW.md](README_WEBUI.zh-TW.md) for local WebUI setup.
 
 ## Open Source, Community Driven

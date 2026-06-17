@@ -168,6 +168,7 @@ Copilot quota 會以原本 plugin 的 progress/text lines 存成 snapshot record
 ```text
 ~/.openusage-webui/openusage.sqlite
 ~/.openusage-webui/config.json
+~/.openusage-webui/plugins/<provider>/keychain.json
 ```
 
 目錄和檔案會盡量用 owner-only 權限建立。
@@ -180,6 +181,7 @@ Copilot quota 會以原本 plugin 的 progress/text lines 存成 snapshot record
 - 不會上傳資料到 cloud
 - 不讀 browser cookies
 - 不儲存 API key 到 WebUI database
+- 原本 OpenUsage plugin 如果寫入 keychain，WebUI 會用本機 shim 存在 `~/.openusage-webui/plugins/<provider>/keychain.json`，檔案權限會設成 owner-only。這不是 macOS Keychain，也不是 Linux secret-service。
 
 ## 常用指令
 

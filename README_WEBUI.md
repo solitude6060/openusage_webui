@@ -52,6 +52,7 @@ http://127.0.0.1:6736
 ```text
 ~/.openusage-webui/openusage.sqlite
 ~/.openusage-webui/config.json
+~/.openusage-webui/plugins/<provider>/keychain.json
 ```
 
 ## Production-Like Local Use
@@ -68,6 +69,7 @@ bun run start:webui
 The server binds to 127.0.0.1 by default.
 No telemetry.
 No cloud upload.
+Original OpenUsage plugins that write keychain items use a local WebUI shim at `~/.openusage-webui/plugins/<provider>/keychain.json` with owner-only file permissions. This is not the macOS Keychain or a Linux secret-service integration.
 
 ## ccusage Notes
 

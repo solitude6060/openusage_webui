@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { OpenUsagePluginProvider, runPluginHttpRequest } from "../src/index";
@@ -281,6 +281,93 @@ describe("OpenUsagePluginProvider", () => {
         { type: "text", label: "LS", value: "null" },
       ],
     });
+  });
+
+  test("supports original plugin sqlite exec writes", async () => {
+    const pluginDataDir = mkdtempSync(join(tmpdir(), "openusage-sqlite-exec-plugin-"));
+    const sqlitePath = join(pluginDataDir, "state.sqlite");
+    const db = new Database(sqlitePath, { create: true });
+    db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);");
+    db.close();
+
+    const plugin = `
+      (function () {
+        function probe(ctx) {
+          ctx.host.sqlite.exec(
+            "${sqlitePath}",
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('token', 'saved')"
+          );
+          const rows = ctx.util.tryParseJson(
+            ctx.host.sqlite.query("${sqlitePath}", "SELECT value FROM settings WHERE key = 'token'")
+          );
+          return {
+            plan: "SQLite Exec",
+            lines: [ctx.line.text({ label: "Token", value: rows[0].value })],
+          };
+        }
+        globalThis.__openusage_plugin = { id: "sqlite-exec", probe };
+      })();
+    `;
+
+    const provider = new OpenUsagePluginProvider({
+      providerId: "cursor",
+      name: "Cursor",
+      scriptText: plugin,
+      pluginDataDir,
+      now: () => "2026-06-17T12:00:00.000Z",
+    });
+
+    const records = await provider.refresh();
+
+    expect(records[0]?.raw).toMatchObject({
+      plan: "SQLite Exec",
+      lines: [{ type: "text", label: "Token", value: "saved" }],
+    });
+  });
+
+  test("persists original plugin keychain writes in the local WebUI plugin directory", async () => {
+    const pluginDataDir = mkdtempSync(join(tmpdir(), "openusage-keychain-plugin-"));
+    const plugin = `
+      (function () {
+        function probe(ctx) {
+          ctx.host.keychain.writeGenericPassword("cursor-access-token", "local-token");
+          ctx.host.keychain.writeGenericPasswordForCurrentUser("Claude Code-credentials", "claude-token");
+          const cursorToken = ctx.host.keychain.readGenericPassword("cursor-access-token");
+          const claudeToken = ctx.host.keychain.readGenericPasswordForCurrentUser("Claude Code-credentials");
+          ctx.host.keychain.deleteGenericPassword("cursor-access-token");
+          const deletedToken = ctx.host.keychain.readGenericPassword("cursor-access-token");
+          return {
+            plan: "Keychain",
+            lines: [
+              ctx.line.text({ label: "Cursor", value: cursorToken }),
+              ctx.line.text({ label: "Claude", value: claudeToken }),
+              ctx.line.text({ label: "Deleted", value: String(deletedToken) }),
+            ],
+          };
+        }
+        globalThis.__openusage_plugin = { id: "keychain", probe };
+      })();
+    `;
+
+    const provider = new OpenUsagePluginProvider({
+      providerId: "cursor",
+      name: "Cursor",
+      scriptText: plugin,
+      pluginDataDir,
+      now: () => "2026-06-17T12:30:00.000Z",
+    });
+
+    const records = await provider.refresh();
+
+    expect(records[0]?.raw).toMatchObject({
+      plan: "Keychain",
+      lines: [
+        { type: "text", label: "Cursor", value: "local-token" },
+        { type: "text", label: "Claude", value: "claude-token" },
+        { type: "text", label: "Deleted", value: "null" },
+      ],
+    });
+    expect(statSync(join(pluginDataDir, "keychain.json")).mode & 0o777).toBe(0o600);
   });
 
   test("adapts the original Claude plugin file OAuth usage flow", async () => {

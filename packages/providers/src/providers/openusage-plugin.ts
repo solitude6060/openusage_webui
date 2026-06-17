@@ -47,6 +47,8 @@ interface LoadedPlugin {
   probe?: (ctx: Record<string, unknown>) => unknown;
 }
 
+type LocalKeychainStore = Record<string, string>;
+
 export class OpenUsagePluginProvider implements UsageProvider {
   readonly id: ProviderId;
   readonly name: string;
@@ -167,16 +169,20 @@ export class OpenUsagePluginProvider implements UsageProvider {
           },
         },
         keychain: {
-          readGenericPassword: (service: string) => {
+          readGenericPassword: (service: string, account?: string) => {
             if (service === "gh:github.com") {
               return this.readGitHubToken();
             }
-            return null;
+            return this.readLocalKeychainPassword(service, account);
           },
-          readGenericPasswordForCurrentUser: () => null,
-          writeGenericPassword: () => undefined,
-          writeGenericPasswordForCurrentUser: () => undefined,
-          deleteGenericPassword: () => undefined,
+          readGenericPasswordForCurrentUser: (service: string) =>
+            this.readLocalKeychainPassword(service, this.currentKeychainAccount()),
+          writeGenericPassword: (service: string, password: string, account?: string) =>
+            this.writeLocalKeychainPassword(service, account, password),
+          writeGenericPasswordForCurrentUser: (service: string, password: string) =>
+            this.writeLocalKeychainPassword(service, this.currentKeychainAccount(), password),
+          deleteGenericPassword: (service: string, account?: string) =>
+            this.deleteLocalKeychainPassword(service, account),
         },
         crypto: {
           sha256Hex: (text: string) => createHash("sha256").update(String(text)).digest("hex"),
@@ -193,6 +199,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
         },
         sqlite: {
           query: (databasePath: string, sql: string) => querySqlite(databasePath, sql),
+          exec: (databasePath: string, sql: string) => execSqlite(databasePath, sql),
         },
         ls: {
           discover: () => null,
@@ -243,6 +250,58 @@ export class OpenUsagePluginProvider implements UsageProvider {
       return null;
     }
   }
+
+  private readLocalKeychainPassword(service: string, account?: string): string | null {
+    const store = this.readLocalKeychainStore();
+    const value = store[localKeychainKey(service, account)];
+    return typeof value === "string" ? value : null;
+  }
+
+  private writeLocalKeychainPassword(service: string, account: string | undefined, password: string): void {
+    const store = this.readLocalKeychainStore();
+    store[localKeychainKey(service, account)] = String(password);
+    this.writeLocalKeychainStore(store);
+  }
+
+  private deleteLocalKeychainPassword(service: string, account?: string): void {
+    const store = this.readLocalKeychainStore();
+    delete store[localKeychainKey(service, account)];
+    this.writeLocalKeychainStore(store);
+  }
+
+  private currentKeychainAccount(): string {
+    const value = this.env.USER || this.env.LOGNAME || process.env.USER || process.env.LOGNAME;
+    return typeof value === "string" && value.trim() ? value.trim() : "current-user";
+  }
+
+  private keychainStorePath(): string {
+    return join(this.pluginDataDir, "keychain.json");
+  }
+
+  private readLocalKeychainStore(): LocalKeychainStore {
+    const path = this.keychainStorePath();
+    if (!existsSync(path)) return {};
+    try {
+      const parsed = JSON.parse(readFileSync(path, "utf8"));
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+      const store: LocalKeychainStore = {};
+      for (const [key, value] of Object.entries(parsed)) {
+        if (typeof value === "string") store[key] = value;
+      }
+      return store;
+    } catch {
+      return {};
+    }
+  }
+
+  private writeLocalKeychainStore(store: LocalKeychainStore): void {
+    mkdirSync(this.pluginDataDir, { recursive: true, mode: 0o700 });
+    writeFileSync(this.keychainStorePath(), JSON.stringify(store), { mode: 0o600 });
+  }
+}
+
+function localKeychainKey(service: string, account?: string): string {
+  return `${service}\u0000${account ?? ""}`;
 }
 
 export function runPluginHttpRequest(
@@ -326,11 +385,32 @@ function curlQuote(value: string): string {
 }
 
 function querySqlite(databasePath: string, sql: string): string {
+  rejectSqliteDotCommand(sql);
   const db = new Database(expandHome(databasePath), { readonly: true, create: false });
   try {
     return JSON.stringify(db.query(sql).all());
   } finally {
     db.close();
+  }
+}
+
+function execSqlite(databasePath: string, sql: string): void {
+  rejectSqliteDotCommand(sql);
+  const target = expandHome(databasePath);
+  if (!existsSync(target)) {
+    throw new Error("SQLite database does not exist.");
+  }
+  const db = new Database(target);
+  try {
+    db.exec(sql);
+  } finally {
+    db.close();
+  }
+}
+
+function rejectSqliteDotCommand(sql: string): void {
+  if (String(sql).trimStart().startsWith(".")) {
+    throw new Error("SQLite dot-commands are not supported.");
   }
 }
 
