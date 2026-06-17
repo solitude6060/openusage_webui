@@ -1,6 +1,6 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { PluginRequestOptions, PluginRequestResponse } from "../src/index";
 
 export function readPluginScript(pluginId: string): string {
@@ -9,11 +9,15 @@ export function readPluginScript(pluginId: string): string {
 
 export async function withIsolatedHome<T>(run: (home: string) => Promise<T> | T): Promise<T> {
   const home = mkdtempSync(join(tmpdir(), "openusage-plugin-home-"));
-  return await run(home);
+  try {
+    return await run(home);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 }
 
 export function writeJson(path: string, value: unknown): void {
-  mkdirSync(resolve(path, ".."), { recursive: true });
+  mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(value));
 }
 

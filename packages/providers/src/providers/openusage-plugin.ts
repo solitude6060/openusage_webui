@@ -35,6 +35,16 @@ export type PluginCcusageQueryResult =
   | { status: "ok"; data: { daily: Array<Record<string, unknown>> } }
   | { status: "no_runner" | "runner_failed"; data: null };
 
+export type PluginCcusageRunner = (
+  command: "bunx" | "npx",
+  args: string[],
+  env: Record<string, string | undefined>,
+) => {
+  exitCode: number;
+  stdout: string | Uint8Array;
+  stderr: string | Uint8Array;
+};
+
 export interface LanguageServerDiscoveryOptions {
   processName?: string;
   markers?: string[];
@@ -66,6 +76,7 @@ export interface OpenUsagePluginProviderOptions {
   env?: Record<string, string | undefined>;
   request?: (opts: PluginRequestOptions) => PluginRequestResponse;
   ccusageQuery?: (opts: PluginCcusageQueryOptions) => PluginCcusageQueryResult;
+  ccusageRunner?: PluginCcusageRunner;
   now?: () => string;
   pluginDataDir?: string;
   homeDir?: string;
@@ -98,10 +109,12 @@ export class OpenUsagePluginProvider implements UsageProvider {
     this.scriptPath = options.scriptPath;
     this.scriptText = options.scriptText;
     this.env = options.env ?? process.env;
-    this.requestImpl = options.request ?? runPluginHttpRequest;
-    this.ccusageQueryImpl = options.ccusageQuery ?? ((opts) => runPluginCcusageQuery(opts, this.pluginId));
     this.now = options.now ?? (() => new Date().toISOString());
-    this.homeDir = options.homeDir ?? resolveHomeDir();
+    this.homeDir = normalizeHomeDir(options.homeDir);
+    this.requestImpl = options.request ?? runPluginHttpRequest;
+    this.ccusageQueryImpl =
+      options.ccusageQuery ??
+      ((opts) => runPluginCcusageQuery(opts, this.pluginId, this.homeDir, options.ccusageRunner));
     this.pluginDataDir = options.pluginDataDir ?? join(this.homeDir, ".openusage-webui", "plugins", this.id);
   }
 
@@ -205,6 +218,8 @@ export class OpenUsagePluginProvider implements UsageProvider {
         keychain: {
           readGenericPassword: (service: string, account?: string) => {
             if (service === "gh:github.com") {
+              const localToken = this.readLocalKeychainPassword(service, account);
+              if (localToken !== null) return localToken;
               return this.readGitHubToken();
             }
             return this.readLocalKeychainPassword(service, account);
@@ -271,6 +286,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
 
     try {
       const proc = Bun.spawnSync(["gh", "auth", "token"], {
+        env: { ...process.env, ...this.env, HOME: this.homeDir },
         stdin: "ignore",
         stdout: "pipe",
         stderr: "ignore",
@@ -446,6 +462,8 @@ export function runPluginHttpRequest(
 export function runPluginCcusageQuery(
   opts: PluginCcusageQueryOptions,
   pluginId?: string,
+  homeDir = resolveHomeDir(),
+  commandRunner?: PluginCcusageRunner,
 ): PluginCcusageQueryResult {
   const provider = resolvePluginCcusageProvider(opts.provider, pluginId);
   const args = [provider, "daily", "--json"];
@@ -454,15 +472,17 @@ export function runPluginCcusageQuery(
 
   let sawRunnableCommand = false;
   for (const runner of ["bunx", "npx"] as const) {
-    const env = ccusageEnvForProvider(provider, opts.homePath ?? opts.claudePath);
-    let proc: ReturnType<typeof Bun.spawnSync>;
+    const env = ccusageEnvForProvider(provider, opts.homePath ?? opts.claudePath, homeDir);
+    let proc: ReturnType<typeof Bun.spawnSync> | ReturnType<PluginCcusageRunner>;
     try {
-      proc = Bun.spawnSync([runner, "ccusage", ...args], {
-        env,
-        stdin: "ignore",
-        stdout: "pipe",
-        stderr: "pipe",
-      });
+      proc = commandRunner
+        ? commandRunner(runner, ["ccusage", ...args], env)
+        : Bun.spawnSync([runner, "ccusage", ...args], {
+            env,
+            stdin: "ignore",
+            stdout: "pipe",
+            stderr: "pipe",
+          });
     } catch {
       continue;
     }
@@ -471,7 +491,7 @@ export function runPluginCcusageQuery(
       continue;
     }
     const daily = dailyRowsFromCcusagePayload(
-      parseCcusageJsonPayload(Buffer.from(proc.stdout).toString("utf8")),
+      parseCcusageJsonPayload(outputToString(proc.stdout)),
     );
     if (daily) {
       return { status: "ok", data: { daily } };
@@ -492,13 +512,14 @@ function resolvePluginCcusageProvider(
 function ccusageEnvForProvider(
   provider: "claude" | "codex",
   homePath?: string,
+  homeDir = resolveHomeDir(),
 ): Record<string, string | undefined> {
-  if (!homePath) return process.env;
-  const env = { ...process.env };
+  const env = { ...process.env, HOME: homeDir };
+  if (!homePath) return env;
   if (provider === "codex") {
-    env.CODEX_HOME = expandHome(homePath);
+    env.CODEX_HOME = expandHome(homePath, homeDir);
   } else {
-    env.CLAUDE_CONFIG_DIR = expandHome(homePath);
+    env.CLAUDE_CONFIG_DIR = expandHome(homePath, homeDir);
   }
   return env;
 }
@@ -517,6 +538,10 @@ function dailyRowsFromCcusagePayload(value: unknown): Array<Record<string, unkno
     return dailyRowsFromCcusagePayload(value.data);
   }
   return null;
+}
+
+function outputToString(output: string | Uint8Array): string {
+  return typeof output === "string" ? output : Buffer.from(output).toString("utf8");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -806,4 +831,8 @@ function expandHome(path: string, homeDir = resolveHomeDir()): string {
 function resolveHomeDir(): string {
   const home = process.env.HOME;
   return typeof home === "string" && home.trim() ? home : homedir();
+}
+
+function normalizeHomeDir(homeDir: string | undefined): string {
+  return typeof homeDir === "string" && homeDir.trim() ? homeDir.trim() : resolveHomeDir();
 }
