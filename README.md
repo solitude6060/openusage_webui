@@ -44,6 +44,21 @@ Community contributions welcome.
 
 Want a provider that's not listed? [Open an issue.](https://github.com/robinebers/openusage/issues/new)
 
+## WebUI Fork Status
+
+The local WebUI fork keeps the original Tauri app intact and adds a localhost dashboard under `apps/web` and `apps/server`.
+
+Current WebUI provider support:
+
+- Claude Code via the original `plugins/claude/plugin.js` adapter
+- Codex via the original `plugins/codex/plugin.js` adapter
+- GitHub Copilot via the original `plugins/copilot/plugin.js` adapter
+- MiniMax via the original Token Plan remains API behavior
+- Gemini CLI / Google AI Pro coding usage via `ccusage`
+- Manual usage entries
+
+See [README_WEBUI.md](README_WEBUI.md) and [README_WEBUI.zh-TW.md](README_WEBUI.zh-TW.md) for local WebUI setup.
+
 ## Open Source, Community Driven
 
 OpenUsage is built by its users. Hundreds of people use it daily, and the project grows through community contributions: new providers, bug fixes, and ideas.
