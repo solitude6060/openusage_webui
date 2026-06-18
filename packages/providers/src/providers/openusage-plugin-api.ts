@@ -109,6 +109,7 @@ export function createUtilApi(request: (opts: PluginRequestOptions) => PluginReq
       return resp;
     },
     parseDateMs: (value: unknown) => {
+      if (value === null || value === undefined) return null;
       let parsed: number;
       if (value instanceof Date) {
         parsed = value.getTime();
@@ -187,6 +188,7 @@ function toIsoFromNumber(value: number): string | null {
 
 function timestampNumberToMs(value: number): number {
   if (!Number.isFinite(value)) return Number.NaN;
+  // Intentionally matches toIso's seconds heuristic; upstream parseDateMs lacked this normalization.
   return Math.abs(value) < 1e10 ? value * 1000 : value;
 }
 

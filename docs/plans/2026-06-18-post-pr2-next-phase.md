@@ -54,6 +54,7 @@ Turn the merged provider-adapter work into a safer, easier-to-test WebUI iterati
 - Provider status labels now distinguish ccusage-backed cards from directly detected providers.
 - GitHub token lookup tests now use an injectable runner seam instead of patching global `Bun.spawnSync` for ordinary cases.
 - `parseDateMs` now shares the same seconds-versus-milliseconds timestamp heuristic as `toIso`.
+- This intentionally diverges from the upstream OpenUsage `parseDateMs`, which lacked that heuristic, to keep WebUI plugin date utilities internally consistent for epoch-second expiry values.
 - Bundled plugin auth/config fixture tests now assert stable error fragments instead of pinning full upstream wording.
 
 ## Merge Gate

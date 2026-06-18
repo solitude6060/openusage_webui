@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 describe("WebUI app shell", () => {
   test("declares an explicit favicon to avoid browser favicon.ico probes", () => {
@@ -7,5 +7,6 @@ describe("WebUI app shell", () => {
 
     expect(html).toContain('rel="icon"');
     expect(html).toContain("/favicon.svg");
+    expect(existsSync(new URL("../public/favicon.svg", import.meta.url))).toBe(true);
   });
 });
