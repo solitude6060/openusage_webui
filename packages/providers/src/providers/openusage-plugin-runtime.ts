@@ -170,6 +170,7 @@ export function runPluginCcusageQuery(
   pluginId?: string,
   homeDir = resolveHomeDir(),
   commandRunner?: PluginCcusageRunner,
+  providerEnv: Record<string, string | undefined> = process.env,
 ): PluginCcusageQueryResult {
   const provider = resolvePluginCcusageProvider(opts.provider, pluginId);
   const args = [provider, "daily", "--json"];
@@ -178,7 +179,7 @@ export function runPluginCcusageQuery(
 
   let sawRunnableCommand = false;
   for (const runner of ["bunx", "npx"] as const) {
-    const env = ccusageEnvForProvider(provider, opts.homePath ?? opts.claudePath, homeDir);
+    const env = ccusageEnvForProvider(provider, opts.homePath ?? opts.claudePath, homeDir, providerEnv);
     let proc: ReturnType<typeof Bun.spawnSync> | ReturnType<PluginCcusageRunner>;
     try {
       proc = commandRunner
@@ -219,8 +220,9 @@ function ccusageEnvForProvider(
   provider: "claude" | "codex",
   homePath?: string,
   homeDir = resolveHomeDir(),
+  providerEnv: Record<string, string | undefined> = process.env,
 ): Record<string, string | undefined> {
-  const env = { ...process.env, HOME: homeDir };
+  const env = { ...process.env, ...providerEnv, HOME: homeDir };
   if (!homePath) return env;
   if (provider === "codex") {
     env.CODEX_HOME = expandHome(homePath, homeDir);

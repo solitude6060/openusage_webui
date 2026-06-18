@@ -2,9 +2,9 @@
 
 Date: 2026-06-17
 PR: https://github.com/solitude6060/openusage_webui/pull/1
-Branch: `codex/webui-provider-fixture-coverage`
+Branch: `codex/webui-dev-proxy-stability`
 Base: `dev` at `3329272`
-Head reviewed: local follow-up after `8f0f89f`
+Head reviewed: `8f0f89f`
 
 ## Scope
 
@@ -44,11 +44,9 @@ The triple-review lane execution is complete. The original reviewer outputs retu
 
 ## Verification After Fixes
 
-- `bun test packages/providers/test/openusage-plugin-provider.test.ts`: passed, 11 tests.
-- `bun test packages/providers/test/openusage-plugin-bundled-fixtures.test.ts`: passed, 17 tests.
-- `bun test packages/providers/test/openusage-plugin-local-fixtures.test.ts packages/providers/test/openusage-plugin-api-fixtures.test.ts`: passed, 13 tests.
+- `bun test packages/providers/test/openusage-plugin-provider.test.ts`: passed, 28 tests.
 - `bun test packages/providers/test/registry.test.ts`: passed, 17 tests.
-- `bun run test:webui`: passed, 136 tests.
+- `bun run test:webui`: passed, 122 tests.
 - `bun run build:webui`: passed.
 - Headless Chrome screenshots refreshed:
   - `docs/reviews/screenshots/webui-ui-audit-settings-after.png`

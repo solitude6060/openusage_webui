@@ -13,6 +13,7 @@ describe("OpenUsagePluginProvider isolation behavior", () => {
       name: "Codex",
       pluginId: "codex",
       homeDir: home,
+      env: { OPENUSAGE_TEST_ENV: "ccusage-env" },
       ccusageRunner: (_command, _args, env) => {
         capturedEnv.push(env);
         return {
@@ -35,6 +36,7 @@ describe("OpenUsagePluginProvider isolation behavior", () => {
     await provider.refresh();
 
     expect(capturedEnv[0]?.CODEX_HOME).toBe(join(home, "codex-home"));
+    expect(capturedEnv[0]?.OPENUSAGE_TEST_ENV).toBe("ccusage-env");
   });
 
   test("prefers locally saved GitHub keychain token before environment fallback", async () => {

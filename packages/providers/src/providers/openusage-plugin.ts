@@ -92,7 +92,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
     this.requestImpl = options.request ?? runPluginHttpRequest;
     this.ccusageQueryImpl =
       options.ccusageQuery ??
-      ((opts) => runPluginCcusageQuery(opts, this.pluginId, this.homeDir, options.ccusageRunner));
+      ((opts) => runPluginCcusageQuery(opts, this.pluginId, this.homeDir, options.ccusageRunner, this.env));
     this.pluginDataDir = options.pluginDataDir ?? join(this.homeDir, ".openusage-webui", "plugins", this.id);
   }
 
