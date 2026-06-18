@@ -25,7 +25,7 @@ describe("provider UI metadata", () => {
     expect(provider).toMatchObject({
       providerId,
       name,
-      note: "OpenUsage plugin",
+      note: "OpenUsage Plugin",
     });
     expect(isProviderRefreshable(providerId)).toBe(true);
     expect(getProviderStatusLabel(provider)).toBe("Adapter Loaded");

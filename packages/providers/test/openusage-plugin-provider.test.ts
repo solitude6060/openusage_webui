@@ -350,13 +350,25 @@ describe("OpenUsagePluginProvider", () => {
           const cursorToken = ctx.host.keychain.readGenericPassword("cursor-access-token");
           const claudeToken = ctx.host.keychain.readGenericPasswordForCurrentUser("Claude Code-credentials");
           ctx.host.keychain.deleteGenericPassword("cursor-access-token");
-          const deletedToken = ctx.host.keychain.readGenericPassword("cursor-access-token");
+          let deletedToken = "not-thrown";
+          try {
+            ctx.host.keychain.readGenericPassword("cursor-access-token");
+          } catch (error) {
+            deletedToken = String(error.message || error);
+          }
+          let missingCurrentUserToken = "not-thrown";
+          try {
+            ctx.host.keychain.readGenericPasswordForCurrentUser("missing-current-user-token");
+          } catch (error) {
+            missingCurrentUserToken = String(error.message || error);
+          }
           return {
             plan: "Keychain",
             lines: [
               ctx.line.text({ label: "Cursor", value: cursorToken }),
               ctx.line.text({ label: "Claude", value: claudeToken }),
               ctx.line.text({ label: "Deleted", value: String(deletedToken) }),
+              ctx.line.text({ label: "Current User Missing", value: String(missingCurrentUserToken) }),
             ],
           };
         }
@@ -379,7 +391,8 @@ describe("OpenUsagePluginProvider", () => {
       lines: [
         { type: "text", label: "Cursor", value: "local-token" },
         { type: "text", label: "Claude", value: "claude-token" },
-        { type: "text", label: "Deleted", value: "null" },
+        { type: "text", label: "Deleted", value: "Keychain item not found: cursor-access-token" },
+        { type: "text", label: "Current User Missing", value: "Keychain item not found: missing-current-user-token" },
       ],
     });
     expect(statSync(join(pluginDataDir, "keychain.json")).mode & 0o777).toBe(0o600);
