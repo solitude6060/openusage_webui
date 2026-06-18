@@ -55,6 +55,7 @@ export interface OpenUsagePluginProviderOptions {
   request?: (opts: PluginRequestOptions) => PluginRequestResponse;
   ccusageQuery?: (opts: PluginCcusageQueryOptions) => PluginCcusageQueryResult;
   ccusageRunner?: PluginCcusageRunner;
+  gitHubTokenRunner?: PluginGitHubTokenRunner;
   now?: () => string;
   pluginDataDir?: string;
   homeDir?: string;
@@ -67,6 +68,11 @@ interface LoadedPlugin {
 
 type LocalKeychainStore = Record<string, string>;
 
+type PluginGitHubTokenRunner = (
+  args: string[],
+  opts: { env: Record<string, string | undefined> },
+) => { exitCode: number; stdout: string | Uint8Array };
+
 export class OpenUsagePluginProvider implements UsageProvider {
   readonly id: ProviderId;
   readonly name: string;
@@ -76,6 +82,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
   private readonly env: Record<string, string | undefined>;
   private readonly requestImpl?: (opts: PluginRequestOptions) => PluginRequestResponse;
   private readonly ccusageQueryImpl: (opts: PluginCcusageQueryOptions) => PluginCcusageQueryResult;
+  private readonly gitHubTokenRunner?: PluginGitHubTokenRunner;
   private readonly now: () => string;
   private readonly pluginDataDir: string;
   private readonly homeDir: string;
@@ -93,6 +100,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
     this.ccusageQueryImpl =
       options.ccusageQuery ??
       ((opts) => runPluginCcusageQuery(opts, this.pluginId, this.homeDir, options.ccusageRunner, this.env));
+    this.gitHubTokenRunner = options.gitHubTokenRunner;
     this.pluginDataDir = options.pluginDataDir ?? join(this.homeDir, ".openusage-webui", "plugins", this.id);
   }
 
@@ -265,12 +273,15 @@ export class OpenUsagePluginProvider implements UsageProvider {
     }
 
     try {
-      const proc = Bun.spawnSync(["gh", "auth", "token"], {
-        env: { ...process.env, ...this.env, HOME: this.homeDir },
-        stdin: "ignore",
-        stdout: "pipe",
-        stderr: "ignore",
-      });
+      const env = { ...process.env, ...this.env, HOME: this.homeDir };
+      const proc = this.gitHubTokenRunner
+        ? this.gitHubTokenRunner(["gh", "auth", "token"], { env })
+        : Bun.spawnSync(["gh", "auth", "token"], {
+            env,
+            stdin: "ignore",
+            stdout: "pipe",
+            stderr: "ignore",
+          });
       if (proc.exitCode !== 0) {
         return null;
       }

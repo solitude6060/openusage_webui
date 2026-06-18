@@ -48,6 +48,12 @@ Turn the merged provider-adapter work into a safer, easier-to-test WebUI iterati
 - Keep each fix small enough for direct review.
 - Re-run `bun run test:webui`, `bun run build:webui`, and `git diff --check` before review.
 
+## Progress
+
+- Live smoke found and fixed the favicon probe noise; see `docs/reviews/2026-06-18-post-pr2-live-smoke.md`.
+- Provider status labels now distinguish ccusage-backed cards from directly detected providers.
+- GitHub token lookup tests now use an injectable runner seam instead of patching global `Bun.spawnSync` for ordinary cases.
+
 ## Merge Gate
 
 - AGY review.
