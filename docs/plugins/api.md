@@ -545,15 +545,14 @@ Queries local token usage via provider-focused ccusage commands:
 Returns a status envelope:
 
 - `ok`: query succeeded, usage data is in `data.daily`
-- `no_runner`: no package runner (`bunx/pnpm/yarn/npm/npx`) was found
+- `no_runner`: no package runner (`bunx`/`npx`) was found
 - `runner_failed`: at least one runner was available but all attempts failed
 
 ### Behavior
 
-- **Runtime runners**: Executes pinned `ccusage@20.0.2` via fallback chain `bunx -> pnpm dlx -> yarn dlx -> npm exec -> npx`
+- **Runtime runners**: The WebUI host executes `ccusage` via fallback chain `bunx -> npx`
 - **Provider-aware**: Resolves provider from `opts.provider` or plugin id (`claude`/`codex`)
 - **Focused commands**: Uses `ccusage claude daily` or `ccusage codex daily`; it intentionally does not use `ccusage daily` because that aggregates all detected agents
-- **Legacy fallback**: If `ccusage@20.0.2` cannot run through the package manager release-age policy, retries with release-age-safe `ccusage@18.0.11` for Claude or `@ccusage/codex@18.0.11` for Codex
 - **No provider API calls**: Usage is computed from local JSONL session files; the host does not call Claude/Codex (or other provider) APIs, but package runners may contact a package registry to download the `ccusage` CLI if it is not already available locally
 - **Graceful degradation**: returns `no_runner` when no runner exists, `runner_failed` when execution fails
 - **Pricing**: Uses ccusage's built-in LiteLLM pricing data

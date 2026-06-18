@@ -25,4 +25,4 @@ No payment method. Add a payment method here: https://opencode.ai/workspace/wrk_
 
 ## Triage
 
-This is an external reviewer account/billing blocker, not a repository failure and not an approval. Per user memory, opencode is the preferred third lane instead of MiniMax, so PR #2 remains unmerged until this lane completes or the required third reviewer policy is explicitly changed.
+This is an external reviewer account/billing blocker, not a repository failure and not an approval. This artifact is historical: after this attempt, the user explicitly changed the PR #2 third reviewer lane away from opencode. See `docs/PR_REVIEW_2026-06-18_PR2_FINAL_GATE.md` for the current gate state.

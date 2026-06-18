@@ -1,5 +1,8 @@
 # PR #2 Triple Review
 
+Superseded by `docs/PR_REVIEW_2026-06-18_PR2_FINAL_GATE.md`.
+This file records the earlier `f297972` review state and the historical opencode billing blocker.
+
 PR: https://github.com/solitude6060/openusage_webui/pull/2
 Base branch: `dev`
 Head branch: `codex/webui-provider-fixture-coverage`
@@ -50,6 +53,6 @@ Latest fix head: `f297972`
 
 ## Remaining Limits
 
-- The third reviewer lane is still blocked, so this triple-review gate is not green.
-- Per user memory, the third reviewer lane should use opencode instead of Claude MiniMax unless the user explicitly changes the review policy.
+- This historical gate was not green because opencode was blocked.
+- The user later explicitly changed the PR #2 third reviewer lane away from opencode. See the final gate artifact for the current state.
 - Live authenticated provider refresh remains untested locally because it requires the user's real provider accounts and installed CLIs/IDEs.

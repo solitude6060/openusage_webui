@@ -35,6 +35,6 @@ Claude reported no blocking correctness or security regressions.
 
 ## Non-Blocking Notes
 
-- `ccusageEnvForProvider` spreads `process.env`, not provider `env`; reviewer marked this latent because shipped registry providers do not set custom `env`.
+- Superseded by `88b2845`: `ccusageEnvForProvider` now receives provider `env`, and `openusage-plugin-isolation.test.ts` asserts the custom env reaches the ccusage runner.
 - `runInNewContext` should not be treated as a security boundary for future third-party plugin loading.
 - `refresh()` uses near-identical timestamps from two `now()` calls.
