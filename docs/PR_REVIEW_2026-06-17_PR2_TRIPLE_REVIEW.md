@@ -4,13 +4,13 @@ PR: https://github.com/solitude6060/openusage_webui/pull/2
 Base branch: `dev`
 Head branch: `codex/webui-provider-fixture-coverage`
 Latest technical head reviewed: `c5bd413`
-Latest fix head: `2d36bf4`
+Latest fix head: `a20f931`
 
 ## Reviewer Lanes
 
 | Reviewer | Command | Output File | Verdict |
 | --- | --- | --- | --- |
-| agy | `agy --print-timeout 15m --dangerously-skip-permissions -p "$(cat /tmp/pr2_review_prompt.txt)"` | `/tmp/pr2_review_agy.out` | REQUEST CHANGES, fixed in `9b8510f` |
+| agy | `agy --print-timeout 15m --dangerously-skip-permissions -p "$(cat /tmp/pr2_review_prompt.txt)"` | `/tmp/pr2_review_agy.out`, `/tmp/pr2_review_agy_current.out` | REQUEST CHANGES, fixed in `9b8510f` and `a20f931`; current-head approval pending |
 | claude | `claude -p "$(cat /tmp/pr2_review_prompt.txt)"` | `/tmp/pr2_review_claude_rerun.out` | REQUEST CHANGES, fixed in `2d36bf4`; post-fix approval blocked |
 | claude-mm | `CLAUDE_CONFIG_DIR=$HOME/.claude-minimax claude -p "$(cat /tmp/pr2_review_prompt.txt)"` | `/tmp/pr2_review_claude_mm.out` | BLOCKED: MiniMax 429 Token Plan usage limit |
 
@@ -28,10 +28,15 @@ Latest fix head: `2d36bf4`
 | `writeJson` used `resolve(path, "..")` instead of a parent-directory API. | agy | LOW | Helper used `resolve` to calculate parent directory. | Fixed: helper uses `dirname(path)`. Regression: `writes JSON after creating the target parent directory`. |
 | Blank `homeDir` values were accepted. | agy | LOW | Constructor used the configured `homeDir` directly. | Fixed: blank/whitespace values fall back to resolved real home. Regression: `ignores blank configured homeDir values`. |
 | `openusage-plugin.ts` is above the ~500 LOC guardrail. | claude | LOW | File is 838 LOC and the overage predates this PR. | Follow-up only; splitting it in this PR would widen a fixture-coverage change. |
+| `openusage-plugin.ts` was above the ~500 LOC guardrail as a PR-introduced file. | agy rerun | MEDIUM | `wc -l` confirmed 838 lines before `a20f931`. | Fixed in `a20f931`: split pure host helpers into `openusage-plugin-runtime.ts` and `openusage-plugin-api.ts`. |
+| Keychain misses returned `null` instead of throwing as documented. | agy rerun | MEDIUM | `docs/plugins/api.md` says keychain read throws if not found; tests showed `null`. | Fixed in `a20f931`: missing local and GitHub keychain reads now throw while original plugins continue to catch misses for fallback. |
+| Provider note copy was not titlecased. | agy rerun | LOW | `apps/web/src/provider-ui.ts` used `OpenUsage plugin`. | Fixed in `a20f931`: copy and status helper now use `OpenUsage Plugin`. |
 
 ## Verification
 
 - `bun test packages/providers/test/openusage-plugin-isolation.test.ts`: failed before the blank-local fix, then passed after the fix.
+- `bun test packages/providers/test/openusage-plugin-provider.test.ts --test-name-pattern "keychain writes"`: failed before the keychain-miss fix, then passed.
+- `bun test apps/web/src/provider-ui.test.ts`: failed before the titlecase fix, then passed.
 - `bun run test:webui`: passed, 144 tests.
 - `bun run build:webui`: passed.
 - `git diff --check`: passed.
@@ -43,6 +48,7 @@ Latest fix head: `2d36bf4`
 
 ## Remaining Limits
 
+- AGY must be rerun against `a20f931` before merge approval.
 - Claude post-fix approval is unavailable, so this triple-review gate is not green.
-- Claude MiniMax is still blocked by external Token Plan quota, not by a repository failure.
+- Per user memory, the third reviewer lane should use opencode instead of Claude MiniMax for future reruns.
 - Live authenticated provider refresh remains untested locally because it requires the user's real provider accounts and installed CLIs/IDEs.
