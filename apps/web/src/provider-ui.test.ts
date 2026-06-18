@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getProviderStatusLabel, isProviderRefreshable, providerCards } from "./provider-ui";
+import { CCUSAGE_NOTE, getProviderStatusLabel, isProviderRefreshable, providerCards } from "./provider-ui";
 
 describe("provider UI metadata", () => {
   test.each([
@@ -36,5 +36,15 @@ describe("provider UI metadata", () => {
 
     expect(provider).toBeDefined();
     expect(getProviderStatusLabel(provider!)).toBe("Detected");
+  });
+
+  test("labels ccusage-backed providers by their shared source", () => {
+    const provider = providerCards.find((item) => item.providerId === "gemini-cli");
+
+    expect(provider).toMatchObject({
+      note: CCUSAGE_NOTE,
+    });
+    expect(isProviderRefreshable("gemini-cli")).toBe(false);
+    expect(getProviderStatusLabel(provider!)).toBe("Via ccusage");
   });
 });

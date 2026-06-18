@@ -1,5 +1,7 @@
 import type { ProviderId } from "../../../packages/core/src/types";
 
+export const CCUSAGE_NOTE = "via ccusage" as const;
+
 export const providerCards: Array<{ providerId: ProviderId; name: string; note?: string }> = [
   { providerId: "ccusage", name: "ccusage" },
   { providerId: "amp", name: "Amp", note: "OpenUsage Plugin" },
@@ -18,7 +20,7 @@ export const providerCards: Array<{ providerId: ProviderId; name: string; note?:
   { providerId: "perplexity", name: "Perplexity", note: "OpenUsage Plugin" },
   { providerId: "synthetic", name: "Synthetic", note: "OpenUsage Plugin" },
   { providerId: "zai", name: "Z.ai", note: "OpenUsage Plugin" },
-  { providerId: "gemini-cli", name: "Gemini CLI / Google AI Pro", note: "via ccusage" },
+  { providerId: "gemini-cli", name: "Gemini CLI / Google AI Pro", note: CCUSAGE_NOTE },
   { providerId: "minimax", name: "MiniMax" },
   { providerId: "manual", name: "Manual" },
 ];
@@ -50,5 +52,6 @@ export function isProviderRefreshable(providerId: ProviderId): boolean {
 }
 
 export function getProviderStatusLabel(provider: { note?: string }): string {
+  if (provider.note === CCUSAGE_NOTE) return "Via ccusage";
   return provider.note === "OpenUsage Plugin" ? "Adapter Loaded" : "Detected";
 }

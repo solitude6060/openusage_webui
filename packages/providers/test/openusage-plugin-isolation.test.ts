@@ -66,108 +66,123 @@ describe("OpenUsagePluginProvider isolation behavior", () => {
   });
 
   test("falls back to environment GitHub token when local keychain entry is blank", async () => {
-    const originalSpawnSync = Bun.spawnSync;
     const pluginDataDir = mkdtempSync(join(tmpdir(), "openusage-gh-blank-local-keychain-"));
-    (Bun as unknown as { spawnSync: typeof Bun.spawnSync }).spawnSync = (() => {
-      throw new Error("gh CLI should not be used when GH_TOKEN is available");
-    }) as typeof Bun.spawnSync;
-    try {
-      const provider = new OpenUsagePluginProvider({
-        providerId: "github-copilot",
-        name: "GitHub Copilot",
-        pluginDataDir,
-        env: { GH_TOKEN: "env-gh-token" },
-        scriptText: `
-          globalThis.__openusage_plugin = {
-            id: "gh-blank-local",
-            probe(ctx) {
-              ctx.host.keychain.writeGenericPassword("gh:github.com", "   ");
-              const token = ctx.host.keychain.readGenericPassword("gh:github.com");
-              return { lines: [ctx.line.text({ label: "Token", value: token })] };
-            },
-          };
-        `,
-      });
+    const provider = new OpenUsagePluginProvider({
+      providerId: "github-copilot",
+      name: "GitHub Copilot",
+      pluginDataDir,
+      env: { GH_TOKEN: "env-gh-token" },
+      gitHubTokenRunner: () => {
+        throw new Error("gh CLI should not be used when GH_TOKEN is available");
+      },
+      scriptText: `
+        globalThis.__openusage_plugin = {
+          id: "gh-blank-local",
+          probe(ctx) {
+            ctx.host.keychain.writeGenericPassword("gh:github.com", "   ");
+            const token = ctx.host.keychain.readGenericPassword("gh:github.com");
+            return { lines: [ctx.line.text({ label: "Token", value: token })] };
+          },
+        };
+      `,
+    });
 
-      const records = await provider.refresh();
+    const records = await provider.refresh();
 
-      expect(records[0]?.raw).toMatchObject({
-        lines: [{ type: "text", label: "Token", value: "env-gh-token" }],
-      });
-    } finally {
-      (Bun as unknown as { spawnSync: typeof Bun.spawnSync }).spawnSync = originalSpawnSync;
-    }
+    expect(records[0]?.raw).toMatchObject({
+      lines: [{ type: "text", label: "Token", value: "env-gh-token" }],
+    });
   });
 
   test("runs GitHub CLI token lookup with configured homeDir environment", async () => {
-    const originalSpawnSync = Bun.spawnSync;
     const home = mkdtempSync(join(tmpdir(), "openusage-gh-home-"));
     const capturedEnv: Array<Record<string, string | undefined> | undefined> = [];
-    (Bun as unknown as { spawnSync: typeof Bun.spawnSync }).spawnSync = ((_args, opts) => {
-      capturedEnv.push(opts?.env);
-      return {
-        exitCode: 0,
-        stdout: Buffer.from("gh-cli-token\n"),
-        stderr: Buffer.from(""),
-      };
-    }) as typeof Bun.spawnSync;
-    try {
-      const provider = new OpenUsagePluginProvider({
-        providerId: "github-copilot",
-        name: "GitHub Copilot",
-        homeDir: home,
-        scriptText: `
-          globalThis.__openusage_plugin = {
-            id: "gh-env",
-            probe(ctx) {
-              const token = ctx.host.keychain.readGenericPassword("gh:github.com");
-              return { lines: [ctx.line.text({ label: "Token", value: token })] };
-            },
-          };
-        `,
-      });
+    const provider = new OpenUsagePluginProvider({
+      providerId: "github-copilot",
+      name: "GitHub Copilot",
+      homeDir: home,
+      gitHubTokenRunner: (_args, opts) => {
+        capturedEnv.push(opts.env);
+        return {
+          exitCode: 0,
+          stdout: Buffer.from("gh-cli-token\n"),
+        };
+      },
+      scriptText: `
+        globalThis.__openusage_plugin = {
+          id: "gh-env",
+          probe(ctx) {
+            const token = ctx.host.keychain.readGenericPassword("gh:github.com");
+            return { lines: [ctx.line.text({ label: "Token", value: token })] };
+          },
+        };
+      `,
+    });
 
-      await provider.refresh();
-    } finally {
-      (Bun as unknown as { spawnSync: typeof Bun.spawnSync }).spawnSync = originalSpawnSync;
-    }
+    await provider.refresh();
 
     expect(capturedEnv[0]?.HOME).toBe(home);
   });
 
+  test("uses injected GitHub token runner before the global spawn fallback", async () => {
+    const home = mkdtempSync(join(tmpdir(), "openusage-gh-runner-"));
+    const capturedEnv: Array<Record<string, string | undefined> | undefined> = [];
+    const provider = new OpenUsagePluginProvider({
+      providerId: "github-copilot",
+      name: "GitHub Copilot",
+      homeDir: home,
+      gitHubTokenRunner: (_args: string[], opts: { env?: Record<string, string | undefined> }) => {
+        capturedEnv.push(opts.env);
+        return {
+          exitCode: 0,
+          stdout: Buffer.from("runner-gh-token\n"),
+        };
+      },
+      scriptText: `
+        globalThis.__openusage_plugin = {
+          id: "gh-runner",
+          probe(ctx) {
+            const token = ctx.host.keychain.readGenericPassword("gh:github.com");
+            return { lines: [ctx.line.text({ label: "Token", value: token })] };
+          },
+        };
+      `,
+    });
+
+    const records = await provider.refresh();
+
+    expect(records[0]?.raw).toMatchObject({
+      lines: [{ type: "text", label: "Token", value: "runner-gh-token" }],
+    });
+    expect(capturedEnv[0]?.HOME).toBe(home);
+  });
+
   test("prefers locally saved GitHub keychain token before gh CLI fallback", async () => {
-    const originalSpawnSync = Bun.spawnSync;
     const pluginDataDir = mkdtempSync(join(tmpdir(), "openusage-gh-local-keychain-"));
-    (Bun as unknown as { spawnSync: typeof Bun.spawnSync }).spawnSync = (() => ({
-      exitCode: 0,
-      stdout: Buffer.from("gh-cli-token\n"),
-      stderr: Buffer.from(""),
-    })) as typeof Bun.spawnSync;
-    try {
-      const provider = new OpenUsagePluginProvider({
-        providerId: "github-copilot",
-        name: "GitHub Copilot",
-        pluginDataDir,
-        scriptText: `
-          globalThis.__openusage_plugin = {
-            id: "gh-local",
-            probe(ctx) {
-              ctx.host.keychain.writeGenericPassword("gh:github.com", "local-gh-token");
-              const token = ctx.host.keychain.readGenericPassword("gh:github.com");
-              return { lines: [ctx.line.text({ label: "Token", value: token })] };
-            },
-          };
-        `,
-      });
+    const provider = new OpenUsagePluginProvider({
+      providerId: "github-copilot",
+      name: "GitHub Copilot",
+      pluginDataDir,
+      gitHubTokenRunner: () => {
+        throw new Error("gh CLI should not be used when local keychain has a token");
+      },
+      scriptText: `
+        globalThis.__openusage_plugin = {
+          id: "gh-local",
+          probe(ctx) {
+            ctx.host.keychain.writeGenericPassword("gh:github.com", "local-gh-token");
+            const token = ctx.host.keychain.readGenericPassword("gh:github.com");
+            return { lines: [ctx.line.text({ label: "Token", value: token })] };
+          },
+        };
+      `,
+    });
 
-      const records = await provider.refresh();
+    const records = await provider.refresh();
 
-      expect(records[0]?.raw).toMatchObject({
-        lines: [{ type: "text", label: "Token", value: "local-gh-token" }],
-      });
-    } finally {
-      (Bun as unknown as { spawnSync: typeof Bun.spawnSync }).spawnSync = originalSpawnSync;
-    }
+    expect(records[0]?.raw).toMatchObject({
+      lines: [{ type: "text", label: "Token", value: "local-gh-token" }],
+    });
   });
 
   test("ignores blank configured homeDir values", async () => {

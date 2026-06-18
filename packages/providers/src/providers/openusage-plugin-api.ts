@@ -109,7 +109,16 @@ export function createUtilApi(request: (opts: PluginRequestOptions) => PluginReq
       return resp;
     },
     parseDateMs: (value: unknown) => {
-      const parsed = value instanceof Date ? value.getTime() : typeof value === "number" ? value : Date.parse(String(value));
+      if (value === null || value === undefined) return null;
+      let parsed: number;
+      if (value instanceof Date) {
+        parsed = value.getTime();
+      } else if (typeof value === "number") {
+        parsed = timestampNumberToMs(value);
+      } else {
+        const text = String(value).trim();
+        parsed = /^-?\d+(\.\d+)?$/.test(text) ? timestampNumberToMs(Number(text)) : Date.parse(text);
+      }
       return Number.isFinite(parsed) ? parsed : null;
     },
     toIso: (value: unknown) => {
@@ -172,10 +181,15 @@ function toIsoFromString(value: string): string | null {
 }
 
 function toIsoFromNumber(value: number): string | null {
-  if (!Number.isFinite(value)) return null;
-  const ms = Math.abs(value) < 1e10 ? value * 1000 : value;
+  const ms = timestampNumberToMs(value);
   const date = new Date(ms);
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
+function timestampNumberToMs(value: number): number {
+  if (!Number.isFinite(value)) return Number.NaN;
+  // Intentionally matches toIso's seconds heuristic; upstream parseDateMs lacked this normalization.
+  return Math.abs(value) < 1e10 ? value * 1000 : value;
 }
 
 function normalizeFraction(value: string): string {

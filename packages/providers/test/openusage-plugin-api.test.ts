@@ -6,10 +6,29 @@ describe("OpenUsage plugin utility API", () => {
     status: 200,
     headers: {},
     bodyText: "{}",
-  })) as { toIso: (value: unknown) => string | null };
+  })) as {
+    parseDateMs: (value: unknown) => number | null;
+    toIso: (value: unknown) => string | null;
+  };
 
   test("normalizes numeric timestamp strings as seconds", () => {
     expect(util.toIso("1781683200")).toBe("2026-06-17T08:00:00.000Z");
+  });
+
+  test("normalizes parseDateMs numeric timestamps with the same seconds heuristic", () => {
+    expect(util.parseDateMs("1781683200")).toBe(1781683200000);
+    expect(util.parseDateMs("1781683200.5")).toBe(1781683200500);
+    expect(util.parseDateMs(1781683200)).toBe(1781683200000);
+    expect(util.parseDateMs(1781683200000)).toBe(1781683200000);
+    expect(util.parseDateMs(9999999999)).toBe(9999999999000);
+    expect(util.parseDateMs(10000000000)).toBe(10000000000);
+  });
+
+  test("keeps parseDateMs null-safe and compatible with date inputs", () => {
+    expect(util.parseDateMs(null)).toBeNull();
+    expect(util.parseDateMs(undefined)).toBeNull();
+    expect(util.parseDateMs("not-a-date")).toBeNull();
+    expect(util.parseDateMs(new Date("2026-06-17T08:00:00.000Z"))).toBe(1781683200000);
   });
 
   test("normalizes original host date string variants", () => {
