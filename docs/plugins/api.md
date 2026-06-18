@@ -239,6 +239,7 @@ Reads a generic password from the macOS Keychain. Pass `account` when the servic
 
 - **macOS only**: Throws on other platforms
 - **Throws if not found**: Returns the password string if found, otherwise throws `Keychain item not found: <service>`
+- **Blank values are absent**: Empty or whitespace-only stored values are treated as not found
 - **Optional account scope**: When `account` is set, lookup uses both service and account
 
 ### Example

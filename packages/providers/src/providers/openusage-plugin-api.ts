@@ -114,9 +114,12 @@ export function createUtilApi(request: (opts: PluginRequestOptions) => PluginReq
     },
     toIso: (value: unknown) => {
       if (value === null || value === undefined) return null;
-      const ms = typeof value === "number" && Math.abs(value) < 1e10 ? value * 1000 : Number(value);
-      const date = Number.isFinite(ms) ? new Date(ms) : new Date(String(value));
-      return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+      if (typeof value === "string") return toIsoFromString(value);
+      if (typeof value === "number") return toIsoFromNumber(value);
+      if (value instanceof Date) {
+        return Number.isFinite(value.getTime()) ? value.toISOString() : null;
+      }
+      return null;
     },
     needsRefreshByExpiry: (opts: { nowMs?: number; expiresAtMs?: number; bufferMs?: number }) => {
       const nowMs = Number(opts?.nowMs);
@@ -131,4 +134,54 @@ function normalizeBase64(value: string): string {
   let text = String(value).replace(/-/g, "+").replace(/_/g, "/");
   while (text.length % 4) text += "=";
   return text;
+}
+
+function toIsoFromString(value: string): string | null {
+  let text = value.trim();
+  if (!text) return null;
+
+  if (text.includes(" ") && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(text)) {
+    text = text.replace(" ", "T");
+  }
+  if (text.endsWith(" UTC")) {
+    text = `${text.slice(0, -4)}Z`;
+  }
+
+  if (/^-?\d+(\.\d+)?$/.test(text)) {
+    return toIsoFromNumber(Number(text));
+  }
+
+  if (/[+-]\d{4}$/.test(text)) {
+    text = text.replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
+  }
+
+  const withTimezone = text.match(
+    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d+)?(Z|[+-]\d{2}:\d{2})$/,
+  );
+  if (withTimezone) {
+    text = `${withTimezone[1]}${normalizeFraction(withTimezone[2] ?? "")}${withTimezone[3]}`;
+  } else {
+    const withoutTimezone = text.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d+)?$/);
+    if (withoutTimezone) {
+      text = `${withoutTimezone[1]}${normalizeFraction(withoutTimezone[2] ?? "")}Z`;
+    }
+  }
+
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+}
+
+function toIsoFromNumber(value: number): string | null {
+  if (!Number.isFinite(value)) return null;
+  const ms = Math.abs(value) < 1e10 ? value * 1000 : value;
+  const date = new Date(ms);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
+function normalizeFraction(value: string): string {
+  if (!value) return "";
+  let digits = value.slice(1);
+  if (digits.length > 3) digits = digits.slice(0, 3);
+  while (digits.length < 3) digits = `${digits}0`;
+  return `.${digits}`;
 }
