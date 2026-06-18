@@ -48,4 +48,4 @@ API Error: Request rejected (429) · Token Plan usage limit reached: Upgrade you
 
 ## Triage
 
-This is not a code finding. The third lane remains blocked by Claude-MM quota, so PR #3 must stay draft and must not merge until this lane is retried successfully or an explicit replacement reviewer is approved and recorded.
+This is not a code finding. The Claude-MM lane remained blocked by quota after repeated attempts. On 2026-06-19, the operator explicitly approved replacing this third lane with Claude Sonnet 4.6; that replacement review is recorded in `docs/PR_REVIEW_2026-06-19_PR3_SONNET_REPLACEMENT.md`.
