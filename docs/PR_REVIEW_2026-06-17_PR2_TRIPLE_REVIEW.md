@@ -3,16 +3,16 @@
 PR: https://github.com/solitude6060/openusage_webui/pull/2
 Base branch: `dev`
 Head branch: `codex/webui-provider-fixture-coverage`
-Latest technical head reviewed: `c5bd413`
-Latest fix head: `a20f931`
+Latest technical head reviewed: `f297972`
+Latest fix head: `f297972`
 
 ## Reviewer Lanes
 
 | Reviewer | Command | Output File | Verdict |
 | --- | --- | --- | --- |
-| agy | `agy --print-timeout 15m --dangerously-skip-permissions -p "$(cat /tmp/pr2_review_prompt.txt)"` | `/tmp/pr2_review_agy.out`, `/tmp/pr2_review_agy_current.out` | REQUEST CHANGES, fixed in `9b8510f` and `a20f931`; current-head approval pending |
-| claude | `claude -p "$(cat /tmp/pr2_review_prompt.txt)"` | `/tmp/pr2_review_claude_rerun.out` | REQUEST CHANGES, fixed in `2d36bf4`; post-fix approval blocked |
-| claude-mm | `CLAUDE_CONFIG_DIR=$HOME/.claude-minimax claude -p "$(cat /tmp/pr2_review_prompt.txt)"` | `/tmp/pr2_review_claude_mm.out` | BLOCKED: MiniMax 429 Token Plan usage limit |
+| agy | `agy --print-timeout 15m --dangerously-skip-permissions -p ...` | `/tmp/pr2_review_agy_postfix.out` | APPROVE at `f297972` |
+| claude | `timeout 300s claude -p ...` | `/tmp/pr2_review_claude_current.out` | APPROVE at `f297972` |
+| opencode | `opencode run --model opencode/deepseek-v4-flash ...` | `/tmp/pr2_review_opencode_current.out` | BLOCKED: no payment method |
 
 ## Triage
 
@@ -43,12 +43,13 @@ Latest fix head: `a20f931`
 
 ## Post-Fix Reviewer Attempts
 
-- Claude post-fix rerun with `timeout 180s claude -p ...` failed with `API Error: Unable to connect to API (ConnectionRefused)`.
-- An escalated network retry was rejected by the approval reviewer because it would send repository review context to an external Claude API.
+- User explicitly approved sending repo code/diff/review context to external reviewers.
+- AGY rerun approved `f297972`.
+- Claude rerun approved `f297972`.
+- Opencode third lane did not produce a review because the account has no payment method configured.
 
 ## Remaining Limits
 
-- AGY must be rerun against `a20f931` before merge approval.
-- Claude post-fix approval is unavailable, so this triple-review gate is not green.
-- Per user memory, the third reviewer lane should use opencode instead of Claude MiniMax for future reruns.
+- The third reviewer lane is still blocked, so this triple-review gate is not green.
+- Per user memory, the third reviewer lane should use opencode instead of Claude MiniMax unless the user explicitly changes the review policy.
 - Live authenticated provider refresh remains untested locally because it requires the user's real provider accounts and installed CLIs/IDEs.
