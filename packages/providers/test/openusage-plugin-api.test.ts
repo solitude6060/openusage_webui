@@ -17,6 +17,7 @@ describe("OpenUsage plugin utility API", () => {
 
   test("normalizes parseDateMs numeric timestamps with the same seconds heuristic", () => {
     expect(util.parseDateMs("1781683200")).toBe(1781683200000);
+    expect(util.parseDateMs("1781683200.5")).toBe(1781683200500);
     expect(util.parseDateMs(1781683200)).toBe(1781683200000);
     expect(util.parseDateMs(1781683200000)).toBe(1781683200000);
     expect(util.parseDateMs(9999999999)).toBe(9999999999000);

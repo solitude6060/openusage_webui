@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getProviderStatusLabel, isProviderRefreshable, providerCards } from "./provider-ui";
+import { CCUSAGE_NOTE, getProviderStatusLabel, isProviderRefreshable, providerCards } from "./provider-ui";
 
 describe("provider UI metadata", () => {
   test.each([
@@ -42,7 +42,7 @@ describe("provider UI metadata", () => {
     const provider = providerCards.find((item) => item.providerId === "gemini-cli");
 
     expect(provider).toMatchObject({
-      note: "via ccusage",
+      note: CCUSAGE_NOTE,
     });
     expect(isProviderRefreshable("gemini-cli")).toBe(false);
     expect(getProviderStatusLabel(provider!)).toBe("Via ccusage");
