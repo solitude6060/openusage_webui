@@ -12,13 +12,13 @@ Latest reviewed head: `58d346e1778e698048e28e20753911fe6f5900eb`
 | AGY | `/tmp/pr2_review_agy_58d346e.out` | BLOCK | Code-level fixes verified. Blocks only because the required third lane is not green. |
 | Claude | `/tmp/pr2_review_claude_58d346e.out` | REQUEST CHANGES | Code-level fixes verified. Blocks on stale/conflicting review artifacts and missing current third-lane approval. |
 | Claude-MM | `/tmp/pr2_review_claude_mm_58d346e.out` | BLOCKED | External API returned 429 Token Plan usage limit reached. No review was produced. |
-| Sonnet 4.6 fallback | `/tmp/pr2_review_sonnet46_58d346e.out` | APPROVE | Code-level fallback review approved `58d346e`, but this does not satisfy the requested Claude-MM lane. |
+| Sonnet 4.6 fallback | `/tmp/pr2_review_sonnet46_58d346e.out` | APPROVE | Code-level fallback review approved `58d346e`; accepted by the user as the third reviewer replacement after Claude-MM quota failure. |
 
 ## Current Gate Status
 
-Do not merge PR #2 yet.
+PR #2 is ready to merge.
 
-The source code and automated verification are green, but the review gate is not green because the explicitly requested Claude-MM lane is blocked by external quota. The Sonnet 4.6 fallback is recorded as useful code-review evidence, not as a replacement for Claude-MM unless the user explicitly accepts that substitution as satisfying the third lane.
+The source code and automated verification are green. Claude-MM remained blocked by external quota, and the user explicitly accepted the Sonnet 4.6 fallback as the third reviewer replacement for this PR.
 
 ## Accepted Findings And Fixes
 
