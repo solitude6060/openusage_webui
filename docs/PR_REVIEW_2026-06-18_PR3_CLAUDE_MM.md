@@ -3,9 +3,12 @@
 PR: https://github.com/solitude6060/openusage_webui/pull/3
 Base: `dev`
 Head: `codex/webui-post-pr2-planning`
-Reviewed SHA: `ed5ac5c96dd4604742a04a8c6272b9b6c359b6ac`
+Initial reviewed SHA: `ed5ac5c96dd4604742a04a8c6272b9b6c359b6ac`
+Retry SHA: `c0137a6d20a6c7c9073bc1b9712e9c0ab72cb885`
 Reviewer command: `env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_MODEL -u ANTHROPIC_DEFAULT_SONNET_MODEL -u ANTHROPIC_DEFAULT_OPUS_MODEL -u ANTHROPIC_DEFAULT_HAIKU_MODEL CLAUDE_CODE_SIMPLE=1 CLAUDE_CONFIG_DIR=$HOME/.claude-minimax claude -p "$(cat /tmp/pr3_review_prompt.txt)"`
 Output file: `/tmp/pr3_review_claude_mm.out`
+Retry command: `env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_MODEL -u ANTHROPIC_DEFAULT_SONNET_MODEL -u ANTHROPIC_DEFAULT_OPUS_MODEL -u ANTHROPIC_DEFAULT_HAIKU_MODEL CLAUDE_CODE_SIMPLE=1 CLAUDE_CONFIG_DIR=$HOME/.claude-minimax claude -p "$(cat /tmp/pr3_review_prompt_current.txt)"`
+Retry output file: `/tmp/pr3_review_claude_mm_retry.out`
 
 ## Verdict
 
@@ -14,6 +17,12 @@ BLOCKED
 ## Failure
 
 The Claude-MM lane exited with code 1 before producing a review:
+
+```text
+API Error: Request rejected (429) · Token Plan usage limit reached: Upgrade your Token Plan or purchase Credits for more usage. (2056)
+```
+
+The lane was retried against the current PR head `c0137a6d20a6c7c9073bc1b9712e9c0ab72cb885` and failed with the same error:
 
 ```text
 API Error: Request rejected (429) · Token Plan usage limit reached: Upgrade your Token Plan or purchase Credits for more usage. (2056)

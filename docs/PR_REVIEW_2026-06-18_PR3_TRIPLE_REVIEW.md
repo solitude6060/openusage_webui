@@ -5,6 +5,7 @@ Base: `dev`
 Head: `codex/webui-post-pr2-planning`
 Initial reviewed SHA: `ed5ac5c96dd4604742a04a8c6272b9b6c359b6ac`
 Current SHA after fixes: `f52c884d548f90ec16d0924f57d3e4f6d2cc70a9`
+Claude-MM retry SHA: `c0137a6d20a6c7c9073bc1b9712e9c0ab72cb885`
 
 ## Reviewer Results
 
@@ -12,7 +13,7 @@ Current SHA after fixes: `f52c884d548f90ec16d0924f57d3e4f6d2cc70a9`
 | --- | --- | --- |
 | AGY | APPROVE | `docs/PR_REVIEW_2026-06-18_PR3_AGY.md` |
 | Claude | APPROVE | `docs/PR_REVIEW_2026-06-18_PR3_CLAUDE.md` |
-| Claude-MM | BLOCKED by quota | `docs/PR_REVIEW_2026-06-18_PR3_CLAUDE_MM.md` |
+| Claude-MM | BLOCKED by quota after retry | `docs/PR_REVIEW_2026-06-18_PR3_CLAUDE_MM.md` |
 
 ## Triage
 
@@ -36,4 +37,4 @@ Current SHA after fixes: `f52c884d548f90ec16d0924f57d3e4f6d2cc70a9`
 
 ## Gate Status
 
-Blocked. The AGY and Claude lanes are approved and all accepted findings are fixed, but the Claude-MM lane hit a 429 quota error. PR #3 remains draft and must not merge until the third lane is completed or explicitly replaced.
+Blocked. The AGY and Claude lanes are approved and all accepted findings are fixed, but the Claude-MM lane hit a 429 quota error on the initial run and again on a retry against `c0137a6d20a6c7c9073bc1b9712e9c0ab72cb885`. PR #3 remains draft and must not merge until the third lane is completed or explicitly replaced.
