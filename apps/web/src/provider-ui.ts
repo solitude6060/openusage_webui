@@ -50,5 +50,6 @@ export function isProviderRefreshable(providerId: ProviderId): boolean {
 }
 
 export function getProviderStatusLabel(provider: { note?: string }): string {
+  if (provider.note === "via ccusage") return "Via ccusage";
   return provider.note === "OpenUsage Plugin" ? "Adapter Loaded" : "Detected";
 }

@@ -37,4 +37,14 @@ describe("provider UI metadata", () => {
     expect(provider).toBeDefined();
     expect(getProviderStatusLabel(provider!)).toBe("Detected");
   });
+
+  test("labels ccusage-backed providers by their shared source", () => {
+    const provider = providerCards.find((item) => item.providerId === "gemini-cli");
+
+    expect(provider).toMatchObject({
+      note: "via ccusage",
+    });
+    expect(isProviderRefreshable("gemini-cli")).toBe(false);
+    expect(getProviderStatusLabel(provider!)).toBe("Via ccusage");
+  });
 });
