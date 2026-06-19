@@ -526,6 +526,103 @@ textarea {
   font-size: 0.9rem;
 }
 
+.usage-card {
+  min-height: auto;
+  gap: 0;
+}
+
+.usage-lines {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.usage-progress {
+  display: grid;
+  gap: 6px;
+}
+
+.usage-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.usage-progress-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.usage-progress-value {
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.usage-progress-bar {
+  height: 6px;
+  background: var(--surface-muted);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.usage-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 300ms ease;
+}
+
+.usage-progress-fill.warning {
+  background: var(--warning);
+}
+
+.usage-progress-reset {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-text-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+}
+
+.usage-text-line > span:first-child {
+  font-size: 0.78rem;
+  color: var(--muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-text-line > span:last-child {
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-secondary);
+  text-align: right;
+  flex-shrink: 0;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-card-footer {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
 @media (max-width: 980px) {
   .app-shell {
     grid-template-columns: 1fr;
