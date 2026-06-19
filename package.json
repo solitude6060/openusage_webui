@@ -21,6 +21,8 @@
     "test:watch": "vitest --watch",
     "test:coverage": "vitest run --coverage.enabled",
     "start:webui": "bun run --cwd apps/server start",
+    "status": "bun apps/server/src/cli-status.ts",
+    "status:refresh": "bun apps/server/src/cli-status.ts --refresh",
     "tauri": "tauri"
   },
   "dependencies": {
