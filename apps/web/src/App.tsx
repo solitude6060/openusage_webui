@@ -337,9 +337,19 @@ function ProvidersPage({
   onRefresh: (providerId: ProviderId) => Promise<void>;
   onToggle: (providerId: ProviderId, enabled: boolean) => Promise<void>;
 }) {
+  const sorted = useMemo(() =>
+    [...providerCards].sort((a, b) => {
+      const aEnabled = providerMap.get(a.providerId)?.enabled !== false;
+      const bEnabled = providerMap.get(b.providerId)?.enabled !== false;
+      if (aEnabled !== bEnabled) return aEnabled ? -1 : 1;
+      return 0;
+    }),
+    [providerMap],
+  );
+
   return (
     <section className="provider-grid">
-      {providerCards.map((provider) => {
+      {sorted.map((provider) => {
         const status = providerMap.get(provider.providerId);
         const isEnabled = status?.enabled !== false;
         const refreshable = isProviderRefreshable(provider.providerId);
