@@ -3,14 +3,12 @@ import type {
   ProviderId,
   ProviderStatus,
   UsageRecord,
-  UsageSummary,
 } from "../../../packages/core/src/types";
 import {
   createManualUsage,
   getHealth,
   getProviders,
   getUsageRecords,
-  getUsageSummary,
   refreshAllProviders,
   refreshProvider,
   setProviderEnabled,
@@ -31,7 +29,6 @@ export function App() {
   const [page, setPage] = useState<Page>(pageFromPath(window.location.pathname));
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [providers, setProviders] = useState<ProviderStatus[]>([]);
-  const [summary, setSummary] = useState<UsageSummary | null>(null);
   const [records, setRecords] = useState<UsageRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -40,15 +37,13 @@ export function App() {
   async function loadData() {
     setError(null);
     try {
-      const [healthData, providerData, summaryData, recordData] = await Promise.all([
+      const [healthData, providerData, recordData] = await Promise.all([
         getHealth(),
         getProviders(),
-        getUsageSummary(),
         getUsageRecords({ limit: 100 }),
       ]);
       setHealth(healthData);
       setProviders(providerData);
-      setSummary(summaryData);
       setRecords(recordData);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load data");
@@ -149,7 +144,6 @@ export function App() {
           <DashboardPage
             providers={providers}
             providerMap={providerMap}
-            summary={summary}
             records={records}
           />
         ) : null}
@@ -191,12 +185,10 @@ export function App() {
 function DashboardPage({
   providers,
   providerMap,
-  summary,
   records,
 }: {
   providers: ProviderStatus[];
   providerMap: Map<ProviderId, ProviderStatus>;
-  summary: UsageSummary | null;
   records: UsageRecord[];
 }) {
   const latestByProvider = useMemo(() => {
@@ -222,13 +214,6 @@ function DashboardPage({
 
   return (
     <section className="page-grid">
-      <div className="metric-band">
-        <Metric label="Today Tokens" value={formatNumber(summary?.today.totalTokens ?? 0)} />
-        <Metric label="Today Cost" value={formatMoney(summary?.today.costUsd ?? 0)} />
-        <Metric label="Month Tokens" value={formatNumber(summary?.month.totalTokens ?? 0)} />
-        <Metric label="Month Cost" value={formatMoney(summary?.month.costUsd ?? 0)} />
-      </div>
-
       {activeProviders.length > 0 ? (
         <div className="provider-grid">
           {activeProviders.map(({ providerId, plan, lines, status }) => (
@@ -737,15 +722,6 @@ function SettingsPage({
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="metric">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
 function StatusPill({
   children,
   tone,
@@ -763,12 +739,6 @@ function pageFromPath(pathname: string): Page {
   }
   const match = pages.find((page) => page.path === pathname);
   return match?.id ?? "dashboard";
-}
-
-function statusLabel(status?: ProviderStatus): string {
-  if (!status) return "Not Configured";
-  if (status.lastError) return "Error";
-  return status.detected ? "Ready" : "Not Detected";
 }
 
 function formatNumber(value: number): string {
