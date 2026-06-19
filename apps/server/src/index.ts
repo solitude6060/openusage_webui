@@ -64,7 +64,7 @@ export function createRequestHandler(
   frontendDistPath?: string,
 ): (request: Request) => Promise<Response> {
   return async (request) => {
-    if (!isAllowedHost(request.headers.get("host"), serverInfo.port)) {
+    if (!isAllowedHost(request.headers.get("host"), serverInfo.port, request.url)) {
       return jsonError("FORBIDDEN_HOST", "Host header is not allowed", 403);
     }
 
@@ -364,11 +364,21 @@ async function readJsonObject(request: Request): Promise<Record<string, unknown>
   }
 }
 
-function isAllowedHost(host: string | null, port: number): boolean {
+function isAllowedHost(hostHeader: string | null, port: number, requestUrl?: string): boolean {
+  const host = hostHeader ?? deriveHostFromUrl(requestUrl);
   if (!host) {
-    return true;
+    return false;
   }
   return host === `127.0.0.1:${port}` || host === `localhost:${port}`;
+}
+
+function deriveHostFromUrl(url?: string): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
+  }
 }
 
 function safeDecodePath(pathname: string): string {

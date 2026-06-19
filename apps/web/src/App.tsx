@@ -15,7 +15,7 @@ import {
   refreshProvider,
   type HealthResponse,
 } from "./lib/api";
-import { getProviderStatusLabel, isProviderRefreshable, providerCards } from "./provider-ui";
+import { getProviderStatusLabel, isProviderRefreshable, providerCards, providerLabel } from "./provider-ui";
 
 type Page = "dashboard" | "providers" | "sessions" | "settings";
 
@@ -26,30 +26,6 @@ const pages: Array<{ id: Page; label: string; path: string }> = [
   { id: "settings", label: "Settings", path: "/settings" },
 ];
 
-const providerLabels: Record<ProviderId, string> = {
-  ccusage: "ccusage",
-  amp: "Amp",
-  antigravity: "Antigravity",
-  "claude-code": "Claude Code",
-  codex: "Codex",
-  cursor: "Cursor",
-  devin: "Devin",
-  factory: "Factory",
-  grok: "Grok",
-  "github-copilot": "GitHub Copilot",
-  "jetbrains-ai-assistant": "JetBrains AI Assistant",
-  kimi: "Kimi",
-  kiro: "Kiro",
-  "opencode-go": "OpenCode Go",
-  perplexity: "Perplexity",
-  synthetic: "Synthetic",
-  zai: "Z.ai",
-  "gemini-cli": "Gemini CLI",
-  "google-ai-pro": "Google AI Pro",
-  minimax: "MiniMax",
-  manual: "Manual",
-};
-
 export function App() {
   const [page, setPage] = useState<Page>(pageFromPath(window.location.pathname));
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -58,6 +34,7 @@ export function App() {
   const [records, setRecords] = useState<UsageRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   async function loadData() {
     setError(null);
@@ -74,12 +51,20 @@ export function App() {
       setRecords(recordData);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load data");
+    } finally {
+      setLoading(false);
     }
   }
 
   useEffect(() => {
     void loadData();
   }, []);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 3000);
+    return () => clearTimeout(timer);
+  }, [notice]);
 
   useEffect(() => {
     function handlePopState() {
@@ -138,7 +123,7 @@ export function App() {
             </button>
           ))}
         </nav>
-        <div className="server-chip">127.0.0.1:6736</div>
+        <div className="server-chip">{health ? `${health.host}:${health.port}` : "127.0.0.1:6736"}</div>
       </aside>
 
       <main className="content">
@@ -155,14 +140,18 @@ export function App() {
         {error ? <div className="alert error">{error}</div> : null}
         {notice ? <div className="alert success">{notice}</div> : null}
 
-        {page === "dashboard" ? (
+        {loading ? (
+          <div className="loading-indicator">Loading...</div>
+        ) : null}
+
+        {!loading && page === "dashboard" ? (
           <DashboardPage
             providers={providers}
             providerMap={providerMap}
             summary={summary}
           />
         ) : null}
-        {page === "providers" ? (
+        {!loading && page === "providers" ? (
           <ProvidersPage
             providerMap={providerMap}
             onRefresh={async (providerId) => {
@@ -179,8 +168,8 @@ export function App() {
             }}
           />
         ) : null}
-        {page === "sessions" ? <SessionsPage records={records} onRecords={setRecords} /> : null}
-        {page === "settings" ? (
+        {!loading && page === "sessions" ? <SessionsPage records={records} onRecords={setRecords} /> : null}
+        {!loading && page === "settings" ? (
           <SettingsPage health={health} onCreated={loadData} />
         ) : null}
       </main>
@@ -233,7 +222,7 @@ function DashboardPage({
                 const status = providerMap.get(row.providerId);
                 return (
                   <tr key={row.providerId}>
-                    <td>{providerLabels[row.providerId]}</td>
+                    <td>{providerLabel(row.providerId)}</td>
                     <td>{row.records}</td>
                     <td>{formatNumber(row.totalTokens)}</td>
                     <td>{formatMoney(row.costUsd)}</td>
@@ -355,9 +344,9 @@ function SessionsPage({
             onChange={(event) => setFilters({ ...filters, providerId: event.target.value })}
           >
             <option value="">All</option>
-            {Object.entries(providerLabels).map(([id, label]) => (
-              <option key={id} value={id}>
-                {label}
+            {providerCards.map((card) => (
+              <option key={card.providerId} value={card.providerId}>
+                {card.name}
               </option>
             ))}
           </select>
@@ -422,7 +411,7 @@ function SessionsPage({
               records.map((record) => (
                 <tr key={record.id}>
                   <td>{formatDate(record.startedAt)}</td>
-                  <td>{providerLabels[record.providerId]}</td>
+                  <td>{providerLabel(record.providerId)}</td>
                   <td>{record.tool ?? "-"}</td>
                   <td>{record.model ?? "-"}</td>
                   <td>{formatNumber(record.inputTokens ?? 0)}</td>
@@ -494,11 +483,11 @@ function SettingsPage({
         <dl className="detail-list wide">
           <div>
             <dt>Server Bind Host</dt>
-            <dd>127.0.0.1</dd>
+            <dd>{health?.host ?? "127.0.0.1"}</dd>
           </div>
           <div>
             <dt>Port</dt>
-            <dd>6736</dd>
+            <dd>{health?.port ?? 6736}</dd>
           </div>
           <div>
             <dt>Database Path</dt>
@@ -653,6 +642,10 @@ function StatusPill({
 }
 
 function pageFromPath(pathname: string): Page {
+  if (pathname === "/") {
+    window.history.replaceState(null, "", "/dashboard");
+    return "dashboard";
+  }
   const match = pages.find((page) => page.path === pathname);
   return match?.id ?? "dashboard";
 }

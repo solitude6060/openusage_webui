@@ -55,3 +55,9 @@ export function getProviderStatusLabel(provider: { note?: string }): string {
   if (provider.note === CCUSAGE_NOTE) return "Via ccusage";
   return provider.note === "OpenUsage Plugin" ? "Adapter Loaded" : "Detected";
 }
+
+const providerLabelMap = new Map(providerCards.map((card) => [card.providerId, card.name]));
+
+export function providerLabel(providerId: ProviderId): string {
+  return providerLabelMap.get(providerId) ?? providerId;
+}

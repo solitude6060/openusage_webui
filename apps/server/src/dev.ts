@@ -38,8 +38,9 @@ async function waitForFrontend(url: string): Promise<void> {
         return;
       }
     } catch {
-      await Bun.sleep(100);
+      // fetch threw — server not up yet
     }
+    await Bun.sleep(100);
   }
   throw new Error("Vite dev server did not become ready");
 }
