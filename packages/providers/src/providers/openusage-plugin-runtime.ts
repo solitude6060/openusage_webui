@@ -258,7 +258,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function runCurlConfig(args: string[], stdin: string): ReturnType<PluginHttpRunner> {
   const proc = Bun.spawnSync(args, {
-    stdin,
+    stdin: Buffer.from(stdin, "utf8"),
     stdout: "pipe",
     stderr: "pipe",
   });
