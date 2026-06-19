@@ -13,6 +13,7 @@ import {
   getUsageSummary,
   refreshAllProviders,
   refreshProvider,
+  setProviderEnabled,
   type HealthResponse,
 } from "./lib/api";
 import { getProviderStatusLabel, isProviderRefreshable, providerCards, providerLabel } from "./provider-ui";
@@ -165,6 +166,15 @@ export function App() {
                 await loadData();
               } catch (refreshError) {
                 setError(refreshError instanceof Error ? refreshError.message : "Refresh failed");
+              }
+            }}
+            onToggle={async (providerId, enabled) => {
+              setError(null);
+              try {
+                await setProviderEnabled(providerId, enabled);
+                await loadData();
+              } catch (toggleError) {
+                setError(toggleError instanceof Error ? toggleError.message : "Toggle failed");
               }
             }}
           />
@@ -336,17 +346,23 @@ function formatRelativeTime(isoString: string): string {
 function ProvidersPage({
   providerMap,
   onRefresh,
+  onToggle,
 }: {
   providerMap: Map<ProviderId, ProviderStatus>;
   onRefresh: (providerId: ProviderId) => Promise<void>;
+  onToggle: (providerId: ProviderId, enabled: boolean) => Promise<void>;
 }) {
   return (
     <section className="provider-grid">
       {providerCards.map((provider) => {
         const status = providerMap.get(provider.providerId);
+        const isEnabled = status?.enabled !== false;
         const refreshable = isProviderRefreshable(provider.providerId);
         return (
-          <article className="provider-card" key={provider.providerId}>
+          <article
+            className={`provider-card${isEnabled ? "" : " disabled-card"}`}
+            key={provider.providerId}
+          >
             <div>
               <div className="provider-title-row">
                 <h3>{provider.name}</h3>
@@ -364,9 +380,14 @@ function ProvidersPage({
                 <div>
                   <dt>Enabled</dt>
                   <dd>
-                    <StatusPill tone={status?.enabled === false ? "muted" : "success"}>
-                      {status?.enabled === false ? "No" : "Yes"}
-                    </StatusPill>
+                    <label className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={isEnabled}
+                        onChange={() => onToggle(provider.providerId, !isEnabled)}
+                      />
+                      <span className="toggle-slider" />
+                    </label>
                   </dd>
                 </div>
                 <div>
@@ -383,7 +404,7 @@ function ProvidersPage({
             </div>
             <button
               className="secondary-button"
-              disabled={!refreshable}
+              disabled={!refreshable || !isEnabled}
               onClick={() => onRefresh(provider.providerId)}
               type="button"
             >

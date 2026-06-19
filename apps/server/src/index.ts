@@ -118,6 +118,25 @@ async function handleApi(
     return json({ ok: true, results });
   }
 
+  const providerEnabledMatch = url.pathname.match(/^\/api\/providers\/([^/]+)\/enabled$/);
+  if (request.method === "PATCH" && providerEnabledMatch) {
+    const providerId = parseProviderId(providerEnabledMatch[1]);
+    const body = await readJsonObject(request);
+    if (typeof body.enabled !== "boolean") {
+      throw new HttpError("BAD_REQUEST", "enabled must be a boolean", 400);
+    }
+    const existing = (await storage.listProviderStatus()).find((s) => s.providerId === providerId);
+    await storage.upsertProviderStatus({
+      providerId,
+      name: existing?.name ?? providerId,
+      enabled: body.enabled,
+      detected: existing?.detected ?? false,
+      lastRefreshAt: existing?.lastRefreshAt,
+      lastError: existing?.lastError,
+    });
+    return json({ ok: true, providerId, enabled: body.enabled });
+  }
+
   if (request.method === "GET" && url.pathname === "/api/usage/summary") {
     return json(await storage.getUsageSummary());
   }
@@ -211,8 +230,17 @@ async function refreshProviders(
     return [{ providerId, ok: false, error: "Provider is not refreshable yet" }];
   }
 
+  const statusMap = new Map(
+    (await storage.listProviderStatus()).map((s) => [s.providerId, s]),
+  );
+
   const results: RefreshResult[] = [];
   for (const provider of refreshableProviders) {
+    const existing = statusMap.get(provider.id);
+    if (existing && !existing.enabled && !providerId) {
+      continue;
+    }
+    const isEnabled = existing?.enabled ?? true;
     console.log(JSON.stringify({ event: "provider_refresh_started", providerId: provider.id }));
     let detected = false;
     try {
@@ -222,7 +250,7 @@ async function refreshProviders(
       await storage.upsertProviderStatus({
         providerId: provider.id,
         name: provider.name,
-        enabled: true,
+        enabled: isEnabled,
         detected,
         lastRefreshAt: new Date().toISOString(),
       });
@@ -239,7 +267,7 @@ async function refreshProviders(
       await storage.upsertProviderStatus({
         providerId: provider.id,
         name: provider.name,
-        enabled: true,
+        enabled: isEnabled,
         detected,
         lastRefreshAt: new Date().toISOString(),
         lastError: message,
