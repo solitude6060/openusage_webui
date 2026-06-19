@@ -3,6 +3,8 @@
   var STATE_DBS = [
     "~/Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb",
     "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb",
+    "~/.config/Antigravity IDE/User/globalStorage/state.vscdb",
+    "~/.config/Antigravity/User/globalStorage/state.vscdb",
   ]
   var AGY_KEYCHAIN_SERVICE = "gemini"
   var AGY_KEYCHAIN_ACCOUNT = "antigravity"
