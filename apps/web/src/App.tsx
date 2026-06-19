@@ -149,6 +149,7 @@ export function App() {
             providers={providers}
             providerMap={providerMap}
             summary={summary}
+            records={records}
           />
         ) : null}
         {!loading && page === "providers" ? (
@@ -181,12 +182,34 @@ function DashboardPage({
   providers,
   providerMap,
   summary,
+  records,
 }: {
   providers: ProviderStatus[];
   providerMap: Map<ProviderId, ProviderStatus>;
   summary: UsageSummary | null;
+  records: UsageRecord[];
 }) {
-  const breakdown = summary?.byProvider ?? [];
+  const latestByProvider = useMemo(() => {
+    const map = new Map<ProviderId, UsageRecord>();
+    for (const record of records) {
+      if (!map.has(record.providerId) && isPlainObject(record.raw) && Array.isArray((record.raw as Record<string, unknown>).lines)) {
+        map.set(record.providerId, record);
+      }
+    }
+    return map;
+  }, [records]);
+
+  const activeProviders = useMemo(() => {
+    return [...latestByProvider.entries()]
+      .map(([providerId, record]) => {
+        const raw = record.raw as Record<string, unknown>;
+        const lines = (raw.lines as Array<Record<string, unknown>>) ?? [];
+        const plan = typeof raw.plan === "string" ? raw.plan : undefined;
+        return { providerId, plan, lines, status: providerMap.get(providerId) };
+      })
+      .sort((a, b) => providerLabel(a.providerId).localeCompare(providerLabel(b.providerId)));
+  }, [latestByProvider, providerMap]);
+
   return (
     <section className="page-grid">
       <div className="metric-band">
@@ -196,47 +219,118 @@ function DashboardPage({
         <Metric label="Month Cost" value={formatMoney(summary?.month.costUsd ?? 0)} />
       </div>
 
-      <section className="panel">
-        <div className="panel-header">
-          <h3>Provider Breakdown</h3>
-          <span>{providers.length} Providers</span>
+      {activeProviders.length > 0 ? (
+        <div className="provider-grid">
+          {activeProviders.map(({ providerId, plan, lines, status }) => (
+            <article className="provider-card usage-card" key={providerId}>
+              <div className="provider-title-row">
+                <h3>{providerLabel(providerId)}</h3>
+                {plan ? <span className="value-chip">{plan}</span> : null}
+              </div>
+              <div className="usage-lines">
+                {lines.map((line, i) => (
+                  <UsageLine key={`${String(line.label)}-${i}`} line={line} />
+                ))}
+              </div>
+              {status?.lastRefreshAt ? (
+                <div className="usage-card-footer">
+                  Updated {formatDate(status.lastRefreshAt)}
+                </div>
+              ) : null}
+            </article>
+          ))}
         </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Provider</th>
-              <th>Records</th>
-              <th>Tokens</th>
-              <th>Estimated Cost</th>
-              <th>Last Refresh</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {breakdown.length === 0 ? (
-              <tr>
-                <td colSpan={6}>No Usage Records Yet</td>
-              </tr>
-            ) : (
-              breakdown.map((row) => {
-                const status = providerMap.get(row.providerId);
-                return (
-                  <tr key={row.providerId}>
-                    <td>{providerLabel(row.providerId)}</td>
-                    <td>{row.records}</td>
-                    <td>{formatNumber(row.totalTokens)}</td>
-                    <td>{formatMoney(row.costUsd)}</td>
-                    <td>{formatDate(status?.lastRefreshAt)}</td>
-                    <td>{statusLabel(status)}</td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </section>
+      ) : (
+        <section className="panel">
+          <div className="panel-header">
+            <h3>Provider Breakdown</h3>
+            <span>{providers.length} Providers</span>
+          </div>
+          <div style={{ padding: "24px 18px", color: "var(--muted)", fontSize: "0.875rem" }}>
+            No usage data yet. Click Refresh All to fetch provider data.
+          </div>
+        </section>
+      )}
     </section>
   );
+}
+
+function UsageLine({ line }: { line: Record<string, unknown> }) {
+  if (line.type === "progress") {
+    const used = Number(line.used) || 0;
+    const limit = Number(line.limit) || 100;
+    const percent = Math.min(100, Math.round((used / limit) * 100));
+    const remaining = Math.max(0, limit - used);
+    const format = line.format as Record<string, unknown> | undefined;
+    const formatKind = isPlainObject(format) ? String(format.kind ?? "percent") : "percent";
+    const suffix = isPlainObject(format) && typeof format.suffix === "string" ? format.suffix : "";
+    const resetsAt = typeof line.resetsAt === "string" ? line.resetsAt : undefined;
+
+    let usageText: string;
+    if (formatKind === "percent") {
+      usageText = `${used}% used · ${remaining}% left`;
+    } else if (formatKind === "dollars") {
+      usageText = `$${used.toFixed(2)} / $${limit.toFixed(2)}`;
+    } else {
+      usageText = `${formatNumber(used)} / ${formatNumber(limit)} ${suffix}`;
+    }
+
+    return (
+      <div className="usage-progress">
+        <div className="usage-progress-header">
+          <span className="usage-progress-label">{String(line.label)}</span>
+          <span className="usage-progress-value">{usageText}</span>
+        </div>
+        <div className="usage-progress-bar">
+          <div
+            className={`usage-progress-fill${percent >= 90 ? " warning" : ""}`}
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+        {resetsAt ? (
+          <div className="usage-progress-reset">
+            Resets {formatRelativeTime(resetsAt)}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (line.type === "text") {
+    return (
+      <div className="usage-text-line">
+        <span>{String(line.label)}</span>
+        <span style={typeof line.color === "string" ? { color: line.color } : undefined}>
+          {String(line.value ?? "")}
+        </span>
+      </div>
+    );
+  }
+
+  if (line.type === "badge") {
+    return (
+      <div className="usage-text-line">
+        <span>{String(line.label)}</span>
+        <span className="value-chip">{String(line.text ?? "")}</span>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function formatRelativeTime(isoString: string): string {
+  const target = new Date(isoString).getTime();
+  const now = Date.now();
+  const diffMs = target - now;
+  if (diffMs <= 0) return "now";
+  const minutes = Math.floor(diffMs / 60_000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (days > 0) return `in ${days}d ${hours % 24}h`;
+  if (hours > 0) return `in ${hours}h ${minutes % 60}m`;
+  if (minutes > 0) return `in ${minutes}m`;
+  return "in <1m";
 }
 
 function ProvidersPage({
