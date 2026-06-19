@@ -94,6 +94,18 @@ If file-based OAuth credentials are missing, invalid, or fail with an auth/sessi
 
 Keychain fallback is available on macOS only.
 
+## WebUI Adapter Notes
+
+The Linux WebUI runs the original `plugins/codex/plugin.js` through a local host adapter instead of rewriting the provider logic.
+
+Because Linux WebUI does not use the macOS keychain, the adapter relies on file credential paths:
+
+1. `CODEX_HOME/auth.json` when `CODEX_HOME` is set
+2. `~/.config/codex/auth.json`
+3. `~/.codex/auth.json`
+
+The original plugin may refresh OAuth tokens and write the updated credential JSON back to the same file source. Browser cookies are not used.
+
 Expected auth payload shape (file or keychain JSON value):
 
 ```jsonc

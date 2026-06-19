@@ -92,6 +92,17 @@ Keychain values use the same JSON structure as the legacy credentials file:
 
 **Fallback:** `~/.claude/.credentials.json`. This file can be left behind by older Claude Code versions, so it is treated as a fallback when Keychain does not contain usable credentials.
 
+## WebUI Adapter Notes
+
+The Linux WebUI runs the original `plugins/claude/plugin.js` through a local host adapter instead of rewriting the provider logic.
+
+Because Linux WebUI does not use the macOS keychain, the adapter relies on the file credential path:
+
+1. `CLAUDE_CONFIG_DIR/.credentials.json` when `CLAUDE_CONFIG_DIR` is set
+2. `~/.claude/.credentials.json`
+
+The original plugin may refresh OAuth tokens and write the updated credential JSON back to the same file source. Browser cookies are not used.
+
 ### Token Refresh
 
 Access tokens are short-lived JWTs. Refreshed proactively 5 minutes before expiration, or reactively on 401/403.
