@@ -84,6 +84,18 @@ export async function createManualUsage(input: ManualUsageInput): Promise<{
   });
 }
 
+export async function setProviderEnabled(providerId: string, enabled: boolean): Promise<{
+  ok: true;
+  providerId: string;
+  enabled: boolean;
+}> {
+  return request(`/api/providers/${encodeURIComponent(providerId)}/enabled`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
   const body = await response.json().catch(() => undefined);
