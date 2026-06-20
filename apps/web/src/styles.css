@@ -97,8 +97,8 @@ button:disabled {
 .sidebar {
   display: flex;
   flex-direction: column;
-  gap: 28px;
-  padding: 28px 16px;
+  gap: 24px;
+  padding: 24px 12px;
   color: var(--sidebar-text);
   background: var(--sidebar-bg);
   border-right: 1px solid var(--sidebar-border);
