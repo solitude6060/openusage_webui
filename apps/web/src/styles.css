@@ -177,7 +177,10 @@ button:disabled {
 
 .content {
   padding: 32px;
-  overflow: auto;
+  overflow-y: auto;
+}
+
+.content > * {
   max-width: 1280px;
 }
 
