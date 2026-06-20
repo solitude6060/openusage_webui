@@ -194,7 +194,10 @@ function DashboardPage({
   const latestByProvider = useMemo(() => {
     const map = new Map<ProviderId, UsageRecord>();
     for (const record of records) {
-      if (!map.has(record.providerId) && isPlainObject(record.raw) && Array.isArray((record.raw as Record<string, unknown>).lines)) {
+      if (map.has(record.providerId)) continue;
+      if (!isPlainObject(record.raw)) continue;
+      const raw = record.raw as Record<string, unknown>;
+      if (Array.isArray(raw.lines) || isPlainObject(raw.quota)) {
         map.set(record.providerId, record);
       }
     }
@@ -205,8 +208,8 @@ function DashboardPage({
     return [...latestByProvider.entries()]
       .map(([providerId, record]) => {
         const raw = record.raw as Record<string, unknown>;
-        const lines = (raw.lines as Array<Record<string, unknown>>) ?? [];
-        const plan = typeof raw.plan === "string" ? raw.plan : undefined;
+        const lines = linesFromRaw(raw);
+        const plan = typeof raw.plan === "string" ? raw.plan : typeof raw.planName === "string" ? raw.planName : undefined;
         return { providerId, plan, lines, status: providerMap.get(providerId) };
       })
       .sort((a, b) => providerLabel(a.providerId).localeCompare(providerLabel(b.providerId)));
@@ -250,6 +253,33 @@ function DashboardPage({
   );
 }
 
+function linesFromRaw(raw: Record<string, unknown>): Array<Record<string, unknown>> {
+  if (Array.isArray(raw.lines)) return raw.lines as Array<Record<string, unknown>>;
+  if (isPlainObject(raw.quota)) {
+    const q = raw.quota as Record<string, unknown>;
+    const lines: Array<Record<string, unknown>> = [];
+    const format = q.format === "count"
+      ? { kind: "count", suffix: typeof q.suffix === "string" ? q.suffix : "prompts" }
+      : { kind: "percent" };
+    lines.push({
+      type: "progress",
+      label: "Usage",
+      used: Number(q.used) || 0,
+      limit: Number(q.limit) || 100,
+      format,
+      resetsAt: typeof q.resetsAt === "string" ? q.resetsAt : undefined,
+    });
+    if (typeof raw.planName === "string") {
+      lines.push({ type: "text", label: "Plan", value: raw.planName });
+    }
+    if (typeof raw.region === "string") {
+      lines.push({ type: "text", label: "Region", value: raw.region });
+    }
+    return lines;
+  }
+  return [];
+}
+
 function UsageLine({ line }: { line: Record<string, unknown> }) {
   if (line.type === "progress") {
     const used = Number(line.used) || 0;
@@ -263,7 +293,9 @@ function UsageLine({ line }: { line: Record<string, unknown> }) {
 
     let usageText: string;
     if (formatKind === "percent") {
-      usageText = `${used}% used · ${remaining}% left`;
+      const usedDisplay = parseFloat(used.toFixed(1));
+      const remainingDisplay = parseFloat(remaining.toFixed(1));
+      usageText = `${usedDisplay}% used · ${remainingDisplay}% left`;
     } else if (formatKind === "dollars") {
       usageText = `$${used.toFixed(2)} / $${limit.toFixed(2)}`;
     } else {
