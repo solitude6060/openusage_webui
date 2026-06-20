@@ -281,11 +281,18 @@
   // --- LS discovery ---
 
   function discoverLs(ctx) {
-    return ctx.host.ls.discover({
+    var result = ctx.host.ls.discover({
       processName: "language_server",
       markers: ["antigravity", "antigravity-ide"],
       csrfFlag: "--csrf_token",
       portFlag: "--extension_server_port",
+    })
+    if (result) return result
+    return ctx.host.ls.discover({
+      processName: "language_server",
+      markers: ["antigravity", "antigravity-ide"],
+      csrfFlag: "--csrf_token",
+      portFlag: null,
     })
   }
 

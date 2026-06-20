@@ -33,6 +33,7 @@ import type { UsageProvider } from "../types";
 export {
   discoverLanguageServer,
   discoverLanguageServerFromCommandLines,
+  parseListeningPortsFromProc,
   runPluginCcusageQuery,
   runPluginHttpRequest,
   type LanguageServerDiscovery,
