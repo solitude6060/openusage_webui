@@ -106,12 +106,23 @@ describe("OpenUsagePluginProvider", () => {
     expect(parseListeningPortsFromProc(fdSocketInodes, tcpLines)).toEqual([]);
   });
 
-  test("skips non-loopback listening sockets", () => {
+  test("includes wildcard 0.0.0.0 listening sockets (reachable via loopback)", () => {
     const tcpLines = [
       "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode",
       "   0: 00000000:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 112233 1 0000000000000000 100 0 0 10 0",
     ];
-    // 0.0.0.0:8080 — not loopback, should be excluded
+    // 0.0.0.0:8080 — wildcard, includes loopback traffic
+    const fdSocketInodes = [112233];
+
+    expect(parseListeningPortsFromProc(fdSocketInodes, tcpLines)).toEqual([8080]);
+  });
+
+  test("skips non-local listening sockets (specific remote IP)", () => {
+    const tcpLines = [
+      "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode",
+      "   0: 0200A8C0:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 112233 1 0000000000000000 100 0 0 10 0",
+    ];
+    // 192.168.0.2:8080 — specific non-local IP, should be excluded
     const fdSocketInodes = [112233];
 
     expect(parseListeningPortsFromProc(fdSocketInodes, tcpLines)).toEqual([]);

@@ -206,8 +206,11 @@ function readSocketInodesFromFd(pid: number): number[] {
   return inodes;
 }
 
-const LOOPBACK_IPV4 = "0100007F";
-const LOOPBACK_IPV6 = "00000000000000000000000001000000";
+const LOOPBACK_OR_WILDCARD_IPV4 = new Set(["0100007F", "00000000"]);
+const LOOPBACK_OR_WILDCARD_IPV6 = new Set([
+  "00000000000000000000000001000000",
+  "00000000000000000000000000000000",
+]);
 const TCP_LISTEN_STATE = "0A";
 
 export function parseListeningPortsFromProc(
@@ -239,7 +242,7 @@ export function parseListeningPortsFromProc(
     const ip = localAddr.slice(0, colonIdx);
     const portHex = localAddr.slice(colonIdx + 1);
 
-    if (ip !== LOOPBACK_IPV4 && ip !== LOOPBACK_IPV6) continue;
+    if (!LOOPBACK_OR_WILDCARD_IPV4.has(ip) && !LOOPBACK_OR_WILDCARD_IPV6.has(ip)) continue;
 
     const inode = Number(parts[9]);
     if (!inodeSet.has(inode)) continue;
