@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { Database } from "bun:sqlite";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, readlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { parseCcusageJsonPayload } from "./ccusage-parser";
@@ -67,7 +67,47 @@ export type PluginHttpRunner = (
 export function discoverLanguageServer(
   opts: LanguageServerDiscoveryOptions,
 ): LanguageServerDiscovery | null {
-  return discoverLanguageServerFromCommandLines(readLinuxProcCommandLines(), opts);
+  if (process.platform !== "linux") return null;
+
+  const entries = readLinuxProcEntries();
+  const processName = opts.processName?.trim();
+  const markers = (opts.markers ?? []).map((m) => m.trim()).filter(Boolean);
+  const csrfFlag = opts.csrfFlag?.trim();
+  const portFlag = opts.portFlag === null ? null : opts.portFlag?.trim();
+
+  for (const { pid, argv } of entries) {
+    if (!argvMatchesDiscovery(argv, processName, markers)) continue;
+
+    const csrf = csrfFlag ? readFlagValue(argv, csrfFlag) ?? "" : "";
+
+    if (portFlag === null) {
+      const ports = discoverListeningPorts(pid);
+      return {
+        csrf,
+        extensionPort: ports[0],
+        ports,
+      };
+    }
+
+    const port = portFlag ? readFlagPort(argv, portFlag) : null;
+    if (port === null) continue;
+
+    if (port === 0) {
+      const ports = discoverListeningPorts(pid);
+      if (ports.length > 0) {
+        return { csrf, extensionPort: ports[0], ports };
+      }
+      continue;
+    }
+
+    return {
+      csrf,
+      extensionPort: port,
+      ports: [port],
+    };
+  }
+
+  return null;
 }
 
 export function discoverLanguageServerFromCommandLines(
@@ -104,7 +144,12 @@ export function discoverLanguageServerFromCommandLines(
   return null;
 }
 
-function readLinuxProcCommandLines(): string[][] {
+interface ProcEntry {
+  pid: number;
+  argv: string[];
+}
+
+function readLinuxProcEntries(): ProcEntry[] {
   if (process.platform !== "linux") return [];
   let entries: string[];
   try {
@@ -113,18 +158,97 @@ function readLinuxProcCommandLines(): string[][] {
     return [];
   }
 
-  const commandLines: string[][] = [];
+  const result: ProcEntry[] = [];
   for (const entry of entries) {
     if (!/^\d+$/.test(entry)) continue;
     try {
       const text = readFileSync(`/proc/${entry}/cmdline`, "utf8");
       const argv = text.split("\0").filter(Boolean);
-      if (argv.length > 0) commandLines.push(argv);
+      if (argv.length > 0) result.push({ pid: Number(entry), argv });
     } catch {
       continue;
     }
   }
-  return commandLines;
+  return result;
+}
+
+export function discoverListeningPorts(pid: number): number[] {
+  const fdSocketInodes = readSocketInodesFromFd(pid);
+  if (fdSocketInodes.length === 0) return [];
+
+  const tcpLines: string[] = [];
+  try {
+    tcpLines.push(...readFileSync("/proc/net/tcp", "utf8").split("\n"));
+  } catch { /* /proc/net/tcp may not exist */ }
+  try {
+    tcpLines.push(...readFileSync("/proc/net/tcp6", "utf8").split("\n"));
+  } catch { /* /proc/net/tcp6 may not exist */ }
+
+  return parseListeningPortsFromProc(fdSocketInodes, tcpLines);
+}
+
+function readSocketInodesFromFd(pid: number): number[] {
+  let fdEntries: string[];
+  try {
+    fdEntries = readdirSync(`/proc/${pid}/fd`);
+  } catch {
+    return [];
+  }
+
+  const inodes: number[] = [];
+  for (const fd of fdEntries) {
+    try {
+      const target = readlinkSync(`/proc/${pid}/fd/${fd}`);
+      const match = String(target).match(/^socket:\[(\d+)\]$/);
+      if (match) inodes.push(Number(match[1]));
+    } catch { /* fd may have closed between readdir and readlink */ }
+  }
+  return inodes;
+}
+
+const LOOPBACK_IPV4 = "0100007F";
+const LOOPBACK_IPV6 = "00000000000000000000000001000000";
+const TCP_LISTEN_STATE = "0A";
+
+export function parseListeningPortsFromProc(
+  fdSocketInodes: number[],
+  tcpLines: string[],
+): number[] {
+  if (fdSocketInodes.length === 0 || tcpLines.length === 0) return [];
+
+  const inodeSet = new Set(fdSocketInodes);
+  const ports: number[] = [];
+
+  for (const line of tcpLines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("sl")) continue;
+
+    //   0: 0100007F:9C91 00000000:0000 0A ... inode
+    const parts = trimmed.split(/\s+/);
+    if (parts.length < 10) continue;
+
+    const localAddr = parts[1];
+    const state = parts[3];
+
+    if (state !== TCP_LISTEN_STATE) continue;
+    if (!localAddr) continue;
+
+    const colonIdx = localAddr.lastIndexOf(":");
+    if (colonIdx < 0) continue;
+
+    const ip = localAddr.slice(0, colonIdx);
+    const portHex = localAddr.slice(colonIdx + 1);
+
+    if (ip !== LOOPBACK_IPV4 && ip !== LOOPBACK_IPV6) continue;
+
+    const inode = Number(parts[9]);
+    if (!inodeSet.has(inode)) continue;
+
+    const port = parseInt(portHex, 16);
+    if (port > 0 && port <= 65535) ports.push(port);
+  }
+
+  return ports;
 }
 
 function argvMatchesDiscovery(argv: string[], processName: string | undefined, markers: string[]): boolean {

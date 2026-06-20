@@ -5,6 +5,7 @@ export {
   discoverLanguageServer,
   discoverLanguageServerFromCommandLines,
   OpenUsagePluginProvider,
+  parseListeningPortsFromProc,
   runPluginCcusageQuery,
   runPluginHttpRequest,
   type LanguageServerDiscovery,
