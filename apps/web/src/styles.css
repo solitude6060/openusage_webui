@@ -98,7 +98,6 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 28px;
-  justify-content: space-between;
   padding: 28px 16px;
   color: var(--sidebar-text);
   background: var(--sidebar-bg);
@@ -166,6 +165,7 @@ button:disabled {
 }
 
 .server-chip {
+  margin-top: auto;
   padding: 8px 12px;
   color: var(--sidebar-muted);
   font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
