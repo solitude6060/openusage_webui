@@ -91,7 +91,7 @@ button:disabled {
 .app-shell {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
-  min-height: 100vh;
+  height: 100vh;
 }
 
 .sidebar {
@@ -103,6 +103,7 @@ button:disabled {
   color: var(--sidebar-text);
   background: var(--sidebar-bg);
   border-right: 1px solid var(--sidebar-border);
+  overflow-y: auto;
 }
 
 .sidebar h1,
