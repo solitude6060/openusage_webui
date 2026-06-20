@@ -6,6 +6,7 @@ import { join } from "node:path";
 import {
   discoverLanguageServerFromCommandLines,
   OpenUsagePluginProvider,
+  parseListeningPortsFromProc,
   runPluginHttpRequest,
 } from "../src/index";
 
@@ -66,6 +67,65 @@ describe("OpenUsagePluginProvider", () => {
       extensionPort: 6738,
       ports: [6738],
     });
+  });
+
+  test("discovers listening ports from /proc socket inodes and tcp entries", () => {
+    // /proc/net/tcp format: each line has hex local_address (ip:port), state (0A=LISTEN), and inode
+    const tcpLines = [
+      "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode",
+      "   0: 0100007F:9C91 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 112233 1 0000000000000000 100 0 0 10 0",
+      "   1: 0100007F:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 445566 1 0000000000000000 100 0 0 10 0",
+      "   2: 0100007F:01BB 00000000:0000 01 00000000:00000000 00:00000000 00000000  1000        0 778899 1 0000000000000000 100 0 0 10 0",
+    ];
+    // 0x9C91 = 40081, 0x1F90 = 8080, 0x01BB = 443
+    // Only first two are LISTEN (0A); third is ESTABLISHED (01)
+    // Process owns inodes 112233 and 778899, but only 112233 is LISTEN
+    const fdSocketInodes = [112233, 778899];
+
+    expect(parseListeningPortsFromProc(fdSocketInodes, tcpLines)).toEqual([40081]);
+  });
+
+  test("discovers ports from /proc/net/tcp6 entries on IPv6 loopback", () => {
+    const tcpLines = [
+      "  sl  local_address                         rem_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode",
+      "   0: 00000000000000000000000001000000:9C91 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 112233 1 0000000000000000 100 0 0 10 0",
+    ];
+    // ::1 in /proc/net/tcp6 is 00000000000000000000000001000000
+    const fdSocketInodes = [112233];
+
+    expect(parseListeningPortsFromProc(fdSocketInodes, tcpLines)).toEqual([40081]);
+  });
+
+  test("returns empty array when no socket inodes match listening entries", () => {
+    const tcpLines = [
+      "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode",
+      "   0: 0100007F:9C91 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 999999 1 0000000000000000 100 0 0 10 0",
+    ];
+    const fdSocketInodes = [111111];
+
+    expect(parseListeningPortsFromProc(fdSocketInodes, tcpLines)).toEqual([]);
+  });
+
+  test("includes wildcard 0.0.0.0 listening sockets (reachable via loopback)", () => {
+    const tcpLines = [
+      "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode",
+      "   0: 00000000:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 112233 1 0000000000000000 100 0 0 10 0",
+    ];
+    // 0.0.0.0:8080 — wildcard, includes loopback traffic
+    const fdSocketInodes = [112233];
+
+    expect(parseListeningPortsFromProc(fdSocketInodes, tcpLines)).toEqual([8080]);
+  });
+
+  test("skips non-local listening sockets (specific remote IP)", () => {
+    const tcpLines = [
+      "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode",
+      "   0: 0200A8C0:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 112233 1 0000000000000000 100 0 0 10 0",
+    ];
+    // 192.168.0.2:8080 — specific non-local IP, should be excluded
+    const fdSocketInodes = [112233];
+
+    expect(parseListeningPortsFromProc(fdSocketInodes, tcpLines)).toEqual([]);
   });
 
   test("runs an original OpenUsage plugin and stores its lines as a usage snapshot", async () => {

@@ -91,18 +91,18 @@ button:disabled {
 .app-shell {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
-  min-height: 100vh;
+  height: 100vh;
 }
 
 .sidebar {
   display: flex;
   flex-direction: column;
-  gap: 28px;
-  justify-content: space-between;
-  padding: 28px 16px;
+  gap: 24px;
+  padding: 24px 12px;
   color: var(--sidebar-text);
   background: var(--sidebar-bg);
   border-right: 1px solid var(--sidebar-border);
+  overflow-y: auto;
 }
 
 .sidebar h1,
@@ -165,6 +165,7 @@ button:disabled {
 }
 
 .server-chip {
+  margin-top: auto;
   padding: 8px 12px;
   color: var(--sidebar-muted);
   font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
@@ -176,7 +177,10 @@ button:disabled {
 
 .content {
   padding: 32px;
-  overflow: auto;
+  overflow-y: auto;
+}
+
+.content > * {
   max-width: 1280px;
 }
 

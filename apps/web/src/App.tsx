@@ -1,4 +1,19 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useCallback, FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  rectSortingStrategy,
+  useSortable,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type {
   ProviderId,
   ProviderStatus,
@@ -182,6 +197,25 @@ export function App() {
   );
 }
 
+const CARD_ORDER_KEY = "openusage-dashboard-card-order";
+
+function loadCardOrder(): ProviderId[] {
+  try {
+    const raw = localStorage.getItem(CARD_ORDER_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCardOrder(order: ProviderId[]): void {
+  try {
+    localStorage.setItem(CARD_ORDER_KEY, JSON.stringify(order));
+  } catch { /* quota exceeded — ignore */ }
+}
+
 function DashboardPage({
   providers,
   providerMap,
@@ -204,40 +238,90 @@ function DashboardPage({
     return map;
   }, [records]);
 
-  const activeProviders = useMemo(() => {
-    return [...latestByProvider.entries()]
-      .map(([providerId, record]) => {
-        const raw = record.raw as Record<string, unknown>;
-        const lines = linesFromRaw(raw);
-        const plan = typeof raw.plan === "string" ? raw.plan : typeof raw.planName === "string" ? raw.planName : undefined;
-        return { providerId, plan, lines, status: providerMap.get(providerId) };
-      })
-      .sort((a, b) => providerLabel(a.providerId).localeCompare(providerLabel(b.providerId)));
+  const providerDataMap = useMemo(() => {
+    const map = new Map<ProviderId, { providerId: ProviderId; plan?: string; lines: Array<Record<string, unknown>>; status?: ProviderStatus }>();
+    for (const [providerId, record] of latestByProvider.entries()) {
+      const raw = record.raw as Record<string, unknown>;
+      const lines = linesFromRaw(raw);
+      const plan = typeof raw.plan === "string" ? raw.plan : typeof raw.planName === "string" ? raw.planName : undefined;
+      map.set(providerId, { providerId, plan, lines, status: providerMap.get(providerId) });
+    }
+    return map;
   }, [latestByProvider, providerMap]);
+
+  const [cardOrder, setCardOrder] = useState<ProviderId[]>(() => {
+    const saved = loadCardOrder();
+    const activeIds = [...providerDataMap.keys()];
+    if (saved.length > 0) {
+      const activeSet = new Set(activeIds);
+      const ordered = saved.filter((id) => activeSet.has(id));
+      const missing = activeIds.filter((id) => !saved.includes(id));
+      return [...ordered, ...missing.sort((a, b) => providerLabel(a).localeCompare(providerLabel(b)))];
+    }
+    return activeIds.sort((a, b) => providerLabel(a).localeCompare(providerLabel(b)));
+  });
+
+  useEffect(() => {
+    const activeIds = [...providerDataMap.keys()];
+    const activeSet = new Set(activeIds);
+    setCardOrder((prev) => {
+      const ordered = prev.filter((id) => activeSet.has(id));
+      const missing = activeIds.filter((id) => !prev.includes(id));
+      if (missing.length === 0 && ordered.length === prev.length) return prev;
+      return [...ordered, ...missing.sort((a, b) => providerLabel(a).localeCompare(providerLabel(b)))];
+    });
+  }, [providerDataMap]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setCardOrder((prev) => {
+      const oldIndex = prev.indexOf(active.id as ProviderId);
+      const newIndex = prev.indexOf(over.id as ProviderId);
+      if (oldIndex < 0 || newIndex < 0) return prev;
+      const next = arrayMove(prev, oldIndex, newIndex);
+      saveCardOrder(next);
+      return next;
+    });
+  }, []);
+
+  const sortedProviders = useMemo(() => {
+    return cardOrder
+      .map((id) => providerDataMap.get(id))
+      .filter(Boolean) as Array<{ providerId: ProviderId; plan?: string; lines: Array<Record<string, unknown>>; status?: ProviderStatus }>;
+  }, [cardOrder, providerDataMap]);
 
   return (
     <section className="page-grid">
-      {activeProviders.length > 0 ? (
-        <div className="provider-grid">
-          {activeProviders.map(({ providerId, plan, lines, status }) => (
-            <article className="provider-card usage-card" key={providerId}>
-              <div className="provider-title-row">
-                <h3>{providerLabel(providerId)}</h3>
-                {plan ? <span className="value-chip">{plan}</span> : null}
-              </div>
-              <div className="usage-lines">
-                {lines.map((line, i) => (
-                  <UsageLine key={`${String(line.label)}-${i}`} line={line} />
-                ))}
-              </div>
-              {status?.lastRefreshAt ? (
-                <div className="usage-card-footer">
-                  Updated {formatDate(status.lastRefreshAt)}
-                </div>
-              ) : null}
-            </article>
-          ))}
-        </div>
+      {sortedProviders.length > 0 ? (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={cardOrder} strategy={rectSortingStrategy}>
+            <div className="provider-grid">
+              {sortedProviders.map(({ providerId, plan, lines, status }) => (
+                <SortableCard key={providerId} id={providerId}>
+                  <div className="provider-title-row">
+                    <h3>{providerLabel(providerId)}</h3>
+                    {plan ? <span className="value-chip">{plan}</span> : null}
+                  </div>
+                  <div className="usage-lines">
+                    {lines.map((line, i) => (
+                      <UsageLine key={`${String(line.label)}-${i}`} line={line} />
+                    ))}
+                  </div>
+                  {status?.lastRefreshAt ? (
+                    <div className="usage-card-footer">
+                      Updated {formatDate(status.lastRefreshAt)}
+                    </div>
+                  ) : null}
+                </SortableCard>
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       ) : (
         <section className="panel">
           <div className="panel-header">
@@ -250,6 +334,21 @@ function DashboardPage({
         </section>
       )}
     </section>
+  );
+}
+
+function SortableCard({ id, children }: { id: string; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    cursor: "grab",
+  };
+  return (
+    <article ref={setNodeRef} style={style} className="provider-card usage-card" {...attributes} {...listeners}>
+      {children}
+    </article>
   );
 }
 
