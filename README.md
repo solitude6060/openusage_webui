@@ -1,3 +1,40 @@
+# OpenUsage WebUI — Linux CLI & Web Dashboard
+
+> **Fork note:** This is a Linux-compatible fork of [OpenUsage](https://github.com/robinebers/openusage). The original is a macOS Tauri menu bar app. This fork replaces the Tauri shell with a **Bun server + React WebUI** and a **CLI status tool**, so it runs on Ubuntu/Linux without Tauri or macOS-specific dependencies.
+
+### Quick Start (Linux)
+
+```bash
+# Install Bun if you don't have it
+curl -fsSL https://bun.sh/install | bash
+
+# Clone and install
+git clone https://github.com/solitude6060/openusage_webui.git
+cd openusage_webui && bun install
+
+# Start the WebUI (opens at http://127.0.0.1:6736)
+bun run dev:webui
+
+# Or check usage from terminal
+bun run status
+bun run status:refresh   # refresh all providers first
+```
+
+### What's Different from the Original
+
+| | Original (macOS) | This Fork (Linux) |
+|---|---|---|
+| Shell | Tauri menu bar app | Bun HTTP server + React SPA |
+| Platform | macOS only | Linux (Ubuntu tested) |
+| CLI | — | `bun run status` with ANSI progress bars |
+| Antigravity | cmdline port flag | Socket-based `/proc` port discovery |
+| Dashboard | — | Drag-and-drop card reordering |
+| Plugins | Bundled, same | Bundled, same (with Linux shims) |
+
+All original OpenUsage plugins run unmodified via a `node:vm` sandbox with Linux host shims for HTTP (curl), SQLite, keychain, and filesystem APIs.
+
+---
+
 # Track all your AI coding subscriptions in one place
 
 See your usage at a glance from your menu bar. No digging through dashboards.
