@@ -77,11 +77,18 @@ export function discoverLanguageServerFromCommandLines(
   const processName = opts.processName?.trim();
   const markers = (opts.markers ?? []).map((marker) => marker.trim()).filter(Boolean);
   const csrfFlag = opts.csrfFlag?.trim();
-  const portFlag = opts.portFlag?.trim();
+  const portFlag = opts.portFlag === null ? null : opts.portFlag?.trim();
 
   for (const argv of commandLines) {
     if (!argvMatchesDiscovery(argv, processName, markers)) {
       continue;
+    }
+    if (portFlag === null) {
+      return {
+        csrf: csrfFlag ? readFlagValue(argv, csrfFlag) ?? "" : "",
+        extensionPort: undefined,
+        ports: [],
+      };
     }
     const port = portFlag ? readFlagPort(argv, portFlag) : null;
     if (port === null) {
