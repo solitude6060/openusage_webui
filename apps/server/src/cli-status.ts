@@ -135,7 +135,9 @@ async function main() {
 
         let valueText: string;
         if (kind === "percent") {
-          valueText = `${used}% used, ${remaining}% left`;
+          const usedDisplay = parseFloat(used.toFixed(1));
+          const remainingDisplay = parseFloat(remaining.toFixed(1));
+          valueText = `${usedDisplay}% used, ${remainingDisplay}% left`;
         } else {
           const suffix = isPlainObject(format) && typeof format.suffix === "string" ? ` ${format.suffix}` : "";
           valueText = `${used}/${limit}${suffix}`;

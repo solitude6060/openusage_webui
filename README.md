@@ -2,6 +2,16 @@
 
 > **Fork note:** This is a Linux-compatible fork of [OpenUsage](https://github.com/robinebers/openusage). The original is a macOS Tauri menu bar app. This fork replaces the Tauri shell with a **Bun server + React WebUI** and a **CLI status tool**, so it runs on Ubuntu/Linux without Tauri or macOS-specific dependencies.
 
+### Screenshots
+
+**Web Dashboard** — every provider at a glance, with progress bars and reset timers:
+
+![OpenUsage WebUI dashboard](docs/screenshots/webui-dashboard.png)
+
+**Terminal Status** — `ou-status` in your shell, with colored usage bars:
+
+![ou-status terminal output](docs/screenshots/cli-status.png)
+
 ### Quick Start (Linux)
 
 ```bash
@@ -19,6 +29,20 @@ bun run dev:webui
 bun run status
 bun run status:refresh   # refresh all providers first
 ```
+
+### Terminal Alias (`ou-status`)
+
+Add a shortcut so you can run the status tool from any directory. The same `alias`
+line works in both shells — put it in `~/.bashrc` for bash, or `~/.zshrc` for zsh:
+
+```bash
+alias ou-status='bun run --cwd /path/to/openusage_webui status'
+alias ou-status-refresh='bun run --cwd /path/to/openusage_webui status:refresh'
+```
+
+Replace `/path/to/openusage_webui` with your clone path, then reload the shell
+(`source ~/.bashrc` or `source ~/.zshrc`). Now `ou-status` prints usage from anywhere,
+and `ou-status-refresh` fetches fresh data from every provider before printing.
 
 ### What's Different from the Original
 
