@@ -76,6 +76,7 @@ When you write the summary at the end, skip the technical jargon. Write like you
 
 ## Before Creating Pull Request
 
+- This repo is a GitHub fork of `robinebers/openusage`, so GitHub points `gh` at the parent repo by default and `gh pr create` fails with a "does not have the correct permissions" error. The default repo is pinned to this fork via `gh repo set-default solitude6060/openusage_webui`; if that resets, target it explicitly with `gh pr create -R solitude6060/openusage_webui ...`. There is intentionally no `upstream` remote — add one only to pull the original's updates, then remove it again.
 - Before creating a PR or pushing to main, ensure that `README.md` is updated with what plugins are supported.
 - On any plugin change/new plugin, audit plugin-exposed request/response fields against `src-tauri/src/plugin_engine/host_api.rs` redaction lists and add/update tests for gaps. Compare with existing plugins for patterns.
 - In `plugin.json`, set `brandColor` to the provider's real brand color.
