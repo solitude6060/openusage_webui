@@ -10,6 +10,8 @@ const OAUTH_TOKEN_KEY = "antigravityUnifiedStateSync.oauthToken"
 const OAUTH_TOKEN_SENTINEL = "oauthTokenInfoSentinelKey"
 const STATE_DB_V2 = "~/Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb"
 const STATE_DB_V1 = "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb"
+const STATE_DB_V2_LINUX = "~/.config/Antigravity IDE/User/globalStorage/state.vscdb"
+const STATE_DB_V1_LINUX = "~/.config/Antigravity/User/globalStorage/state.vscdb"
 const LOGIN_MESSAGE = "Start Antigravity or run `agy` and try again."
 
 // --- Fixtures ---
@@ -234,8 +236,15 @@ describe("antigravity plugin", () => {
       processName: "language_server",
       markers: ["antigravity", "antigravity-ide"],
       csrfFlag: "--csrf_token",
+      portFlag: "--extension_server_port",
     }))
     expect(ctx.host.ls.discover).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      processName: "language_server",
+      markers: ["antigravity", "antigravity-ide"],
+      csrfFlag: "--csrf_token",
+      portFlag: null,
+    }))
+    expect(ctx.host.ls.discover).toHaveBeenNthCalledWith(3, expect.objectContaining({
       processName: "agy",
       markers: [],
       csrfFlag: "",
@@ -611,7 +620,7 @@ describe("antigravity plugin", () => {
     const plugin = await loadPlugin()
     plugin.probe(ctx)
 
-    expect(ctx.host.sqlite.query.mock.calls.map((call) => call[0])).toEqual([STATE_DB_V2, STATE_DB_V1])
+    expect(ctx.host.sqlite.query.mock.calls.map((call) => call[0])).toEqual([STATE_DB_V2, STATE_DB_V1, STATE_DB_V2_LINUX, STATE_DB_V1_LINUX])
     expect(capturedAuths[0]).toBe("Bearer ya29.v2-token")
   })
 
