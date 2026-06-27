@@ -1,5 +1,28 @@
 import { describe, expect, test } from "bun:test";
-import { createUtilApi } from "../src/providers/openusage-plugin-api";
+import { createLineApi, createUtilApi } from "../src/providers/openusage-plugin-api";
+
+describe("OpenUsage plugin line API", () => {
+  const line = createLineApi() as {
+    badge: (opts: Record<string, unknown>) => Record<string, unknown>;
+  };
+
+  test("badge passes through the urgency tone", () => {
+    expect(line.badge({ label: "Reset Credit Expiry", text: "Ends today", tone: "urgent" })).toEqual({
+      type: "badge",
+      label: "Reset Credit Expiry",
+      text: "Ends today",
+      tone: "urgent",
+    });
+  });
+
+  test("badge omits tone when not provided", () => {
+    expect(line.badge({ label: "Status", text: "ok" })).toEqual({
+      type: "badge",
+      label: "Status",
+      text: "ok",
+    });
+  });
+});
 
 describe("OpenUsage plugin utility API", () => {
   const util = createUtilApi(() => ({

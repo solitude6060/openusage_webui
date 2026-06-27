@@ -111,6 +111,7 @@ export const makeCtx = () => {
       const line = { type: "badge", label: opts.label, text: opts.text }
       if (opts.color) line.color = opts.color
       if (opts.subtitle) line.subtitle = opts.subtitle
+      if (opts.tone) line.tone = opts.tone
       return line
     },
     barChart: (opts) => {
