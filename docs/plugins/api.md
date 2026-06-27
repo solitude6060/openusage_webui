@@ -414,9 +414,13 @@ Creates a badge line (status indicator).
 ```typescript
 ctx.line.badge({
   label: string,      // Required: label shown on the left
-  text: string,       // Required: badge text
+  text?: string,      // Badge text (omit when using expiresAt — see below)
   color?: string,     // Optional: hex color for badge border/text
-  subtitle?: string   // Optional: smaller text below the line
+  subtitle?: string,  // Optional: smaller text below the line
+  tone?: string,      // Optional: semantic urgency — "expired" | "urgent" | "soon" | "week" | "normal".
+                      //   The UI maps it to a themed status pill (no hardcoded color needed).
+  expiresAt?: string  // Optional: ISO 8601 timestamp. When present, the UI renders the exact
+                      //   date plus a live countdown (kept fresh between refreshes) instead of `text`.
 }): MetricLine
 ```
 
@@ -425,6 +429,8 @@ ctx.line.badge({
 ```javascript
 ctx.line.badge({ label: "Plan", text: "Pro", color: "#000000" })
 ctx.line.badge({ label: "Status", text: "Connected", color: "#22c55e" })
+// Reset-credit expiry: exact date + live countdown, colored by urgency.
+ctx.line.badge({ label: "Reset Credit", tone: "urgent", expiresAt: "2026-07-03T20:00:00Z" })
 ```
 
 ### `ctx.line.barChart(opts)`
