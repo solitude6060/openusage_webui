@@ -21,7 +21,7 @@ export function createLineApi(): Record<string, unknown> {
         "progress",
       ),
     badge: (opts: Record<string, unknown>) =>
-      copyKnown(opts, ["type", "label", "text", "color", "subtitle", "tone"], "badge"),
+      copyKnown(opts, ["type", "label", "text", "color", "subtitle", "tone", "expiresAt"], "badge"),
     barChart: (opts: Record<string, unknown>) => copyKnown(opts, ["type", "label", "points", "note", "color"], "barChart"),
   };
 }

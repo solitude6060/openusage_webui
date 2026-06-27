@@ -2058,59 +2058,65 @@ describe("codex plugin", () => {
     return ctx
   }
 
-  const probeResetBadge = async (creditsBody) => {
+  const probeResetCreditBadges = async (creditsBody) => {
     const ctx = setupResetCredits(creditsBody)
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    return result.lines.find((line) => line.label === "Reset Credit Expiry")
+    return result.lines.filter((line) => line.type === "badge" && line.label === "Reset Credit")
   }
 
-  it("surfaces the soonest available reset-credit expiry as an urgency badge", async () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date("2026-06-28T00:00:00.000Z"))
-    try {
-      const badge = await probeResetBadge({
-        credits: [
-          { id: "later", status: "available", expires_at: "2026-07-03T00:00:00.000Z" }, // 5d -> week
-          { id: "soonest", status: "available", expires_at: "2026-06-28T18:00:00.000Z" }, // 18h -> urgent
-        ],
-        available_count: 2,
-      })
-      expect(badge).toBeTruthy()
-      expect(badge.type).toBe("badge")
-      expect(badge.tone).toBe("urgent")
-      expect(badge.text).toBe("Ends today")
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
   it.each([
-    ["2026-06-28T12:00:00.000Z", "urgent", "Ends today"], // 12h -> <=1d
-    ["2026-06-30T00:00:00.000Z", "soon", "in 2d"], // 2d -> <=3d
-    ["2026-07-01T00:00:00.000Z", "soon", "in 3d"], // 3d exactly -> still soon
-    ["2026-07-03T00:00:00.000Z", "week", "in 5d"], // 5d -> <=7d
-    ["2026-07-28T00:00:00.000Z", "normal", "in 30d"], // 30d -> normal
-    ["2026-06-27T23:00:00.000Z", "expired", "Expired"], // 1h ago -> expired
-  ])("maps reset-credit expiry %s to tone=%s text=%s", async (expiresAt, tone, text) => {
+    ["2026-06-28T12:00:00.000Z", "urgent"], // 12h -> <=1d
+    ["2026-06-30T00:00:00.000Z", "soon"], // 2d -> <=3d
+    ["2026-07-01T00:00:00.000Z", "soon"], // 3d exactly -> still soon
+    ["2026-07-03T00:00:00.000Z", "week"], // 5d -> <=7d
+    ["2026-07-28T00:00:00.000Z", "normal"], // 30d -> normal
+    ["2026-06-27T23:00:00.000Z", "expired"], // 1h ago -> expired
+  ])("maps reset-credit expiry %s to tone=%s and carries the exact timestamp", async (expiresAt, tone) => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-06-28T00:00:00.000Z"))
     try {
-      const badge = await probeResetBadge({
+      const badges = await probeResetCreditBadges({
         credits: [{ id: "c", status: "available", expires_at: expiresAt }],
         available_count: 1,
       })
-      expect(badge).toMatchObject({ type: "badge", label: "Reset Credit Expiry", tone, text })
+      expect(badges).toHaveLength(1)
+      // No baked text: the dashboard derives the exact date + live countdown from expiresAt.
+      expect(badges[0]).toMatchObject({ type: "badge", label: "Reset Credit", tone, expiresAt })
+      expect(badges[0]).not.toHaveProperty("text")
     } finally {
       vi.useRealTimers()
     }
   })
 
-  it("picks the soonest available credit and ignores non-available + malformed ones (tolerant decode)", async () => {
+  it("emits one badge per available credit, soonest expiry first", async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-06-28T00:00:00.000Z"))
     try {
-      const badge = await probeResetBadge({
+      const badges = await probeResetCreditBadges({
+        credits: [
+          { id: "later", status: "available", expires_at: "2026-07-05T00:00:00.000Z" }, // 7d -> week
+          { id: "soonest", status: "available", expires_at: "2026-06-28T18:00:00.000Z" }, // 18h -> urgent
+          { id: "middle", status: "available", expires_at: "2026-06-30T00:00:00.000Z" }, // 2d -> soon
+        ],
+        available_count: 3,
+      })
+      expect(badges.map((b) => b.tone)).toEqual(["urgent", "soon", "week"])
+      expect(badges.map((b) => b.expiresAt)).toEqual([
+        "2026-06-28T18:00:00.000Z",
+        "2026-06-30T00:00:00.000Z",
+        "2026-07-05T00:00:00.000Z",
+      ])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("ignores non-available and malformed credits (tolerant decode)", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-06-28T00:00:00.000Z"))
+    try {
+      const badges = await probeResetCreditBadges({
         credits: [
           null, // malformed: not an object
           "nope", // malformed: not an object
@@ -2119,23 +2125,24 @@ describe("codex plugin", () => {
           { id: "good", status: "AVAILABLE", expires_at: "2026-07-01T00:00:00.000Z" }, // 3d, case-insensitive
         ],
       })
-      expect(badge).toMatchObject({ tone: "soon", text: "in 3d" })
+      expect(badges).toHaveLength(1)
+      expect(badges[0]).toMatchObject({ tone: "soon", expiresAt: "2026-07-01T00:00:00.000Z" })
     } finally {
       vi.useRealTimers()
     }
   })
 
-  it("emits no expiry badge when no available credit has a parseable expiry", async () => {
-    const badge = await probeResetBadge({
+  it("emits no reset-credit badges when none are available with a parseable expiry", async () => {
+    const badges = await probeResetCreditBadges({
       credits: [{ id: "u", status: "used", expires_at: "2026-07-01T00:00:00.000Z" }],
       available_count: 0,
     })
-    expect(badge).toBeUndefined()
+    expect(badges).toHaveLength(0)
   })
 
-  it("emits no expiry badge when the reset-credits payload has no credits array", async () => {
-    const badge = await probeResetBadge({ available_count: 0 })
-    expect(badge).toBeUndefined()
+  it("emits no reset-credit badges when the payload has no credits array", async () => {
+    const badges = await probeResetCreditBadges({ available_count: 0 })
+    expect(badges).toHaveLength(0)
   })
 
   it("keeps the usage card intact when the reset-credits endpoint throws", async () => {
@@ -2143,7 +2150,7 @@ describe("codex plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
-    expect(result.lines.find((line) => line.label === "Reset Credit Expiry")).toBeUndefined()
+    expect(result.lines.filter((line) => line.label === "Reset Credit")).toHaveLength(0)
   })
 
   it("emits no badge when the reset-credits endpoint returns a non-2xx status", async () => {
@@ -2151,6 +2158,6 @@ describe("codex plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
-    expect(result.lines.find((line) => line.label === "Reset Credit Expiry")).toBeUndefined()
+    expect(result.lines.filter((line) => line.label === "Reset Credit")).toHaveLength(0)
   })
 })

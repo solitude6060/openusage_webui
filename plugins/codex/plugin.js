@@ -382,17 +382,28 @@
     return null
   }
 
-  // Build an urgency badge for the soonest-expiring AVAILABLE reset credit.
-  // Reset credits ("reset stash") are banked, use-it-or-lose-it grants that can zero
-  // your usage window; each carries its own expires_at, so one can lapse while others
-  // remain. Returns null when no available credit has a parseable expiry (no fake data).
-  // Tolerant by design: a single malformed credit is skipped, never fatal.
-  function resetCreditExpiryLine(ctx, creditsData, nowSec) {
-    if (!creditsData || typeof creditsData !== "object") return null
-    const credits = Array.isArray(creditsData.credits) ? creditsData.credits : null
-    if (!credits) return null
+  // Map seconds-until-expiry to an urgency tone. Thresholds mirror codex-reset-watcher:
+  // expired / ends-today (<=1d) / soon (<=3d) / this week (<=7d) / plenty of time.
+  function resetCreditExpiryTone(secondsUntil) {
+    if (secondsUntil <= 0) return "expired"
+    if (secondsUntil <= DAY_SECONDS) return "urgent"
+    if (secondsUntil <= 3 * DAY_SECONDS) return "soon"
+    if (secondsUntil <= 7 * DAY_SECONDS) return "week"
+    return "normal"
+  }
 
-    let soonestSec = null
+  // One badge per AVAILABLE reset credit, soonest expiry first. Reset credits
+  // ("reset stash") are banked, use-it-or-lose-it grants that can zero a usage window;
+  // each carries its own expires_at, so they can lapse independently. Each line carries
+  // the exact expiry timestamp + a tone; the dashboard shows the precise date and a live
+  // countdown. Tolerant: malformed/unparseable/non-available credits are skipped.
+  // Returns [] when there is nothing available to show (no fake data).
+  function resetCreditExpiryLines(ctx, creditsData, nowSec) {
+    if (!creditsData || typeof creditsData !== "object") return []
+    const credits = Array.isArray(creditsData.credits) ? creditsData.credits : null
+    if (!credits) return []
+
+    const expirySecs = []
     for (let i = 0; i < credits.length; i++) {
       const credit = credits[i]
       if (!credit || typeof credit !== "object") continue
@@ -400,34 +411,17 @@
       if (status.toLowerCase() !== "available") continue
       const expiresMs = ctx.util.parseDateMs(credit.expires_at)
       if (typeof expiresMs !== "number" || !Number.isFinite(expiresMs)) continue
-      const expiresSec = Math.floor(expiresMs / 1000)
-      if (soonestSec === null || expiresSec < soonestSec) {
-        soonestSec = expiresSec
-      }
+      expirySecs.push(Math.floor(expiresMs / 1000))
     }
-    if (soonestSec === null) return null
+    expirySecs.sort(function (a, b) { return a - b })
 
-    const secondsUntil = soonestSec - nowSec
-    let tone
-    let text
-    if (secondsUntil <= 0) {
-      tone = "expired"
-      text = "Expired"
-    } else if (secondsUntil <= DAY_SECONDS) {
-      tone = "urgent"
-      text = "Ends today"
-    } else {
-      text = "in " + Math.floor(secondsUntil / DAY_SECONDS) + "d"
-      if (secondsUntil <= 3 * DAY_SECONDS) {
-        tone = "soon"
-      } else if (secondsUntil <= 7 * DAY_SECONDS) {
-        tone = "week"
-      } else {
-        tone = "normal"
-      }
-    }
-
-    return ctx.line.badge({ label: "Reset Credit Expiry", text: text, tone: tone })
+    return expirySecs.map(function (expiresSec) {
+      return ctx.line.badge({
+        label: "Reset Credit",
+        tone: resetCreditExpiryTone(expiresSec - nowSec),
+        expiresAt: ctx.util.toIso(expiresSec),
+      })
+    })
   }
 
   // Period durations in milliseconds
@@ -925,8 +919,8 @@
           const creditsResp = fetchResetCredits(ctx, accessToken, accountId)
           if (creditsResp && creditsResp.status >= 200 && creditsResp.status < 300) {
             const creditsData = ctx.util.tryParseJson(creditsResp.bodyText)
-            const expiryLine = resetCreditExpiryLine(ctx, creditsData, nowSec)
-            if (expiryLine) lines.push(expiryLine)
+            const expiryLines = resetCreditExpiryLines(ctx, creditsData, nowSec)
+            for (let i = 0; i < expiryLines.length; i++) lines.push(expiryLines[i])
           } else if (creditsResp) {
             ctx.host.log.warn("reset-credits request returned status=" + creditsResp.status)
           }

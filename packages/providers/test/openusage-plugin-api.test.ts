@@ -6,12 +6,12 @@ describe("OpenUsage plugin line API", () => {
     badge: (opts: Record<string, unknown>) => Record<string, unknown>;
   };
 
-  test("badge passes through the urgency tone", () => {
-    expect(line.badge({ label: "Reset Credit Expiry", text: "Ends today", tone: "urgent" })).toEqual({
+  test("badge passes through the urgency tone and exact expiry timestamp", () => {
+    expect(line.badge({ label: "Reset Credit", tone: "urgent", expiresAt: "2026-07-03T00:00:00.000Z" })).toEqual({
       type: "badge",
-      label: "Reset Credit Expiry",
-      text: "Ends today",
+      label: "Reset Credit",
       tone: "urgent",
+      expiresAt: "2026-07-03T00:00:00.000Z",
     });
   });
 

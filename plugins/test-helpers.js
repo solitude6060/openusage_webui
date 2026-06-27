@@ -108,10 +108,13 @@ export const makeCtx = () => {
       return line
     },
     badge: (opts) => {
-      const line = { type: "badge", label: opts.label, text: opts.text }
+      // Mirror createLineApi/copyKnown: omit fields that were not provided.
+      const line = { type: "badge", label: opts.label }
+      if (opts.text !== undefined) line.text = opts.text
       if (opts.color) line.color = opts.color
       if (opts.subtitle) line.subtitle = opts.subtitle
       if (opts.tone) line.tone = opts.tone
+      if (opts.expiresAt) line.expiresAt = opts.expiresAt
       return line
     },
     barChart: (opts) => {
