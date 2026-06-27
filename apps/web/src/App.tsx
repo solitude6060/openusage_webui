@@ -29,7 +29,7 @@ import {
   setProviderEnabled,
   type HealthResponse,
 } from "./lib/api";
-import { badgeToneClassName, getProviderStatusLabel, isProviderRefreshable, providerCards, providerLabel, resetCreditExpiryView } from "./provider-ui";
+import { getProviderStatusLabel, isProviderRefreshable, plainBadgeText, providerCards, providerLabel, resetCreditExpiryView } from "./provider-ui";
 
 type Page = "dashboard" | "providers" | "sessions" | "settings";
 
@@ -460,10 +460,14 @@ function UsageLine({ line }: { line: Record<string, unknown> }) {
         </div>
       );
     }
+    // Plain badge (no expiry): render the chip only when there's text, so a fieldless
+    // badge degrades to just its label instead of an empty pill. Urgency tone only applies
+    // to the stacked expiry layout above, so the plain chip stays a neutral value-chip.
+    const badgeText = plainBadgeText(line.text);
     return (
       <div className="usage-text-line">
         <span>{String(line.label)}</span>
-        <span className={badgeToneClassName(tone)}>{String(line.text ?? "")}</span>
+        {badgeText !== null ? <span className="value-chip">{badgeText}</span> : null}
       </div>
     );
   }

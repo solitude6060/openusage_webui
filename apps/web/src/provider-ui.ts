@@ -86,3 +86,10 @@ export function resetCreditExpiryView(
   const expired = valid && ms <= nowMs;
   return { valid, expired, toneClass: badgeToneClassName(expired ? "expired" : tone) };
 }
+
+// The text to show in a plain (non-expiry) badge pill, or null when there is nothing to
+// show. Returning null lets the renderer skip the pill entirely instead of drawing an
+// empty chip when a badge arrives without its text (e.g. partial/garbled plugin data).
+export function plainBadgeText(text: unknown): string | null {
+  return typeof text === "string" && text.trim() !== "" ? text : null;
+}
