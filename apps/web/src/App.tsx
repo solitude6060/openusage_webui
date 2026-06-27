@@ -434,10 +434,26 @@ function UsageLine({ line }: { line: Record<string, unknown> }) {
   }
 
   if (line.type === "badge") {
+    const tone = typeof line.tone === "string" ? line.tone : undefined;
+    const expiresAt = typeof line.expiresAt === "string" ? line.expiresAt : undefined;
+    // Reset-credit badges carry an exact expiry timestamp: show the precise date plus a
+    // live countdown that stays fresh between refreshes (computed here, not baked).
+    if (expiresAt) {
+      const expired = tone === "expired" || new Date(expiresAt).getTime() <= Date.now();
+      return (
+        <div className="usage-credit-expiry">
+          <div className="usage-credit-expiry-header">
+            <span className="usage-credit-expiry-label">{String(line.label)}</span>
+            <span className={badgeToneClassName(tone)}>{expired ? "Expired" : formatRelativeTime(expiresAt)}</span>
+          </div>
+          <div className="usage-credit-expiry-date">Expires {formatDate(expiresAt)}</div>
+        </div>
+      );
+    }
     return (
       <div className="usage-text-line">
         <span>{String(line.label)}</span>
-        <span className={badgeToneClassName(line.tone)}>{String(line.text ?? "")}</span>
+        <span className={badgeToneClassName(tone)}>{String(line.text ?? "")}</span>
       </div>
     );
   }
