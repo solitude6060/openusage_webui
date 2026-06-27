@@ -61,3 +61,12 @@ const providerLabelMap = new Map(providerCards.map((card) => [card.providerId, c
 export function providerLabel(providerId: ProviderId): string {
   return providerLabelMap.get(providerId) ?? providerId;
 }
+
+// Urgency tones emitted by plugins on a `badge` line (e.g. codex reset-credit
+// expiry). Known tones render as a colored status pill; anything else falls back
+// to the neutral value chip so legacy badges look unchanged.
+const RESET_BADGE_TONES = new Set(["expired", "urgent", "soon", "week", "normal"]);
+
+export function badgeToneClassName(tone: unknown): string {
+  return typeof tone === "string" && RESET_BADGE_TONES.has(tone) ? `status-pill reset-${tone}` : "value-chip";
+}

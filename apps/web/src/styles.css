@@ -19,6 +19,8 @@
   --accent-soft: #dcefeb;
   --warning: #a94332;
   --warning-soft: #fdebec;
+  --caution: #b06b1f;
+  --caution-soft: #fbf0e0;
   --success: #2f6c40;
   --success-soft: #edf3ec;
   --sidebar-bg: #111111;
@@ -44,6 +46,8 @@
     --accent-soft: #1a2e2b;
     --warning: #e5796b;
     --warning-soft: #2e1a17;
+    --caution: #e0a458;
+    --caution-soft: #2a2113;
     --success: #5db870;
     --success-soft: #1a2e1d;
     --sidebar-bg: #0a0a0a;
@@ -425,6 +429,38 @@ dd {
 }
 
 .status-pill.muted {
+  color: var(--muted);
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+}
+
+/* Reset-credit expiry urgency pills (codex). Color ramps from spent/neutral to
+   alarming as the soonest banked reset credit approaches its expiry. */
+.status-pill.reset-expired {
+  color: var(--muted);
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+}
+
+.status-pill.reset-urgent {
+  color: var(--warning);
+  background: var(--warning-soft);
+  border: 1px solid transparent;
+}
+
+.status-pill.reset-soon {
+  color: var(--caution);
+  background: var(--caution-soft);
+  border: 1px solid transparent;
+}
+
+.status-pill.reset-week {
+  color: var(--ink-secondary);
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+}
+
+.status-pill.reset-normal {
   color: var(--muted);
   background: var(--surface-muted);
   border: 1px solid var(--line);

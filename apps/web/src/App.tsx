@@ -29,7 +29,7 @@ import {
   setProviderEnabled,
   type HealthResponse,
 } from "./lib/api";
-import { getProviderStatusLabel, isProviderRefreshable, providerCards, providerLabel } from "./provider-ui";
+import { badgeToneClassName, getProviderStatusLabel, isProviderRefreshable, providerCards, providerLabel } from "./provider-ui";
 
 type Page = "dashboard" | "providers" | "sessions" | "settings";
 
@@ -437,7 +437,7 @@ function UsageLine({ line }: { line: Record<string, unknown> }) {
     return (
       <div className="usage-text-line">
         <span>{String(line.label)}</span>
-        <span className="value-chip">{String(line.text ?? "")}</span>
+        <span className={badgeToneClassName(line.tone)}>{String(line.text ?? "")}</span>
       </div>
     );
   }
