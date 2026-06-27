@@ -2027,4 +2027,181 @@ describe("codex plugin", () => {
     expect(saved.tokens.refresh_token).toBe("new-refresh")
     expect(saved.tokens.id_token).toBe(idToken)
   })
+
+  const setupResetCredits = (creditsBody) => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: {
+        access_token: makeJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
+        account_id: "acc",
+      },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("rate-limit-reset-credits")) {
+        if (creditsBody instanceof Error) throw creditsBody
+        if (typeof creditsBody === "number") {
+          return { status: creditsBody, headers: {}, bodyText: "" }
+        }
+        return { status: 200, headers: {}, bodyText: JSON.stringify(creditsBody) }
+      }
+      return {
+        status: 200,
+        headers: {},
+        bodyText: JSON.stringify({
+          plan_type: "pro",
+          rate_limit: { primary_window: { reset_after_seconds: 60, used_percent: 10 } },
+          rate_limit_reset_credits: { available_count: 2 },
+        }),
+      }
+    })
+    return ctx
+  }
+
+  const probeResetCreditBadges = async (creditsBody) => {
+    const ctx = setupResetCredits(creditsBody)
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    return result.lines.filter((line) => line.type === "badge" && line.label === "Reset Credit")
+  }
+
+  it.each([
+    ["2026-06-28T12:00:00.000Z", "urgent"], // 12h -> <=1d
+    ["2026-06-30T00:00:00.000Z", "soon"], // 2d -> <=3d
+    ["2026-07-01T00:00:00.000Z", "soon"], // 3d exactly -> still soon
+    ["2026-07-03T00:00:00.000Z", "week"], // 5d -> <=7d
+    ["2026-07-28T00:00:00.000Z", "normal"], // 30d -> normal
+    ["2026-06-27T23:00:00.000Z", "expired"], // 1h ago -> expired
+  ])("maps reset-credit expiry %s to tone=%s and carries the exact timestamp", async (expiresAt, tone) => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-06-28T00:00:00.000Z"))
+    try {
+      const badges = await probeResetCreditBadges({
+        credits: [{ id: "c", status: "available", expires_at: expiresAt }],
+        available_count: 1,
+      })
+      expect(badges).toHaveLength(1)
+      // No baked text: the dashboard derives the exact date + live countdown from expiresAt.
+      expect(badges[0]).toMatchObject({ type: "badge", label: "Reset Credit", tone, expiresAt })
+      expect(badges[0]).not.toHaveProperty("text")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("emits one badge per available credit, soonest expiry first", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-06-28T00:00:00.000Z"))
+    try {
+      const badges = await probeResetCreditBadges({
+        credits: [
+          { id: "later", status: "available", expires_at: "2026-07-05T00:00:00.000Z" }, // 7d -> week
+          { id: "soonest", status: "available", expires_at: "2026-06-28T18:00:00.000Z" }, // 18h -> urgent
+          { id: "middle", status: "available", expires_at: "2026-06-30T00:00:00.000Z" }, // 2d -> soon
+        ],
+        available_count: 3,
+      })
+      expect(badges.map((b) => b.tone)).toEqual(["urgent", "soon", "week"])
+      expect(badges.map((b) => b.expiresAt)).toEqual([
+        "2026-06-28T18:00:00.000Z",
+        "2026-06-30T00:00:00.000Z",
+        "2026-07-05T00:00:00.000Z",
+      ])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("ignores non-available and malformed credits (tolerant decode)", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-06-28T00:00:00.000Z"))
+    try {
+      const badges = await probeResetCreditBadges({
+        credits: [
+          null, // malformed: not an object
+          "nope", // malformed: not an object
+          { id: "redeemed", status: "redeemed", expires_at: "2026-06-28T06:00:00.000Z" }, // not available
+          { id: "bad-date", status: "available", expires_at: "not-a-date" }, // unparseable expiry
+          { id: "good", status: "AVAILABLE", expires_at: "2026-07-01T00:00:00.000Z" }, // 3d, case-insensitive
+        ],
+      })
+      expect(badges).toHaveLength(1)
+      expect(badges[0]).toMatchObject({ tone: "soon", expiresAt: "2026-07-01T00:00:00.000Z" })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("emits no reset-credit badges when none are available with a parseable expiry", async () => {
+    const badges = await probeResetCreditBadges({
+      credits: [{ id: "u", status: "used", expires_at: "2026-07-01T00:00:00.000Z" }],
+      available_count: 0,
+    })
+    expect(badges).toHaveLength(0)
+  })
+
+  it("emits no reset-credit badges when the payload has no credits array", async () => {
+    const badges = await probeResetCreditBadges({ available_count: 0 })
+    expect(badges).toHaveLength(0)
+  })
+
+  it("keeps the usage card intact when the reset-credits endpoint throws", async () => {
+    const ctx = setupResetCredits(new Error("network down"))
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(result.lines.filter((line) => line.label === "Reset Credit")).toHaveLength(0)
+  })
+
+  it("emits no badge when the reset-credits endpoint returns a non-2xx status", async () => {
+    const ctx = setupResetCredits(500)
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(result.lines.filter((line) => line.label === "Reset Credit")).toHaveLength(0)
+  })
+
+  it("parses a numeric (unix seconds) expires_at the same way production does", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-06-28T00:00:00.000Z"))
+    try {
+      const numericSeconds = Math.floor(Date.parse("2026-07-01T00:00:00.000Z") / 1000) // 3d -> soon
+      const badges = await probeResetCreditBadges({
+        credits: [{ id: "num", status: "available", expires_at: numericSeconds }],
+        available_count: 1,
+      })
+      expect(badges).toHaveLength(1)
+      expect(badges[0]).toMatchObject({ tone: "soon", expiresAt: "2026-07-01T00:00:00.000Z" })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("does not call the reset-credits endpoint when available_count is 0", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: {
+        access_token: makeJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
+        account_id: "acc",
+      },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockImplementation((opts) => ({
+      status: 200,
+      headers: {},
+      bodyText: String(opts.url).includes("rate-limit-reset-credits")
+        ? JSON.stringify({ credits: [], available_count: 0 })
+        : JSON.stringify({
+            plan_type: "pro",
+            rate_limit: { primary_window: { reset_after_seconds: 60, used_percent: 10 } },
+            rate_limit_reset_credits: { available_count: 0 },
+          }),
+    }))
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+    const hitResetEndpoint = ctx.host.http.request.mock.calls.some((call) =>
+      String(call[0].url).includes("rate-limit-reset-credits"),
+    )
+    expect(hitResetEndpoint).toBe(false)
+  })
 })

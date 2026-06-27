@@ -19,6 +19,8 @@
   --accent-soft: #dcefeb;
   --warning: #a94332;
   --warning-soft: #fdebec;
+  --caution: #9c5e18;
+  --caution-soft: #fbf0e0;
   --success: #2f6c40;
   --success-soft: #edf3ec;
   --sidebar-bg: #111111;
@@ -44,6 +46,8 @@
     --accent-soft: #1a2e2b;
     --warning: #e5796b;
     --warning-soft: #2e1a17;
+    --caution: #e0a458;
+    --caution-soft: #2a2113;
     --success: #5db870;
     --success-soft: #1a2e1d;
     --sidebar-bg: #0a0a0a;
@@ -430,6 +434,58 @@ dd {
   border: 1px solid var(--line);
 }
 
+/* Reset-credit expiry urgency pills (codex). The color ramp goes from spent/quiet
+   (expired) through alarming (urgent / ends today) to calm (plenty of time). A
+   leading dot in currentColor makes the state glanceable and keeps the signal off
+   color alone — the pill text ("Ends today", "in 5d") always says it too. */
+.status-pill[class*="reset-"] {
+  gap: 6px;
+  border: 1px solid transparent;
+}
+
+.status-pill[class*="reset-"]::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-pill.reset-expired {
+  color: var(--muted);
+  background: var(--surface-muted);
+  border-color: var(--line);
+}
+
+/* Expired is over and done — show a hollow dot so it reads as spent, not active. */
+.status-pill.reset-expired::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+}
+
+.status-pill.reset-urgent {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.status-pill.reset-soon {
+  color: var(--caution);
+  background: var(--caution-soft);
+}
+
+.status-pill.reset-week {
+  color: var(--ink-secondary);
+  background: var(--surface-muted);
+  border-color: var(--line);
+}
+
+.status-pill.reset-normal {
+  color: var(--muted);
+  background: var(--surface-muted);
+  border-color: var(--line);
+}
+
 .error-text {
   color: var(--warning);
 }
@@ -638,6 +694,36 @@ textarea {
 }
 
 .usage-progress-reset {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Reset-credit expiry line: a header (label + live-countdown urgency pill) over the
+   exact expiry date — mirrors the progress line so the pill is not a direct
+   `.usage-text-line > span:last-child`, letting its urgency color win. */
+.usage-credit-expiry {
+  display: grid;
+  gap: 6px;
+}
+
+.usage-credit-expiry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.usage-credit-expiry-label {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-credit-expiry-date {
   font-size: 0.72rem;
   color: var(--muted);
   font-variant-numeric: tabular-nums;

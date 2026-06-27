@@ -1,5 +1,55 @@
 import { describe, expect, test } from "bun:test";
-import { CCUSAGE_NOTE, getProviderStatusLabel, isProviderRefreshable, providerCards } from "./provider-ui";
+import {
+  badgeToneClassName,
+  CCUSAGE_NOTE,
+  getProviderStatusLabel,
+  isProviderRefreshable,
+  providerCards,
+  resetCreditExpiryView,
+} from "./provider-ui";
+
+describe("resetCreditExpiryView", () => {
+  const NOW = Date.parse("2026-06-28T00:00:00.000Z");
+
+  test("rejects an invalid or missing expiry without throwing (crash guard)", () => {
+    expect(resetCreditExpiryView("not-a-date", "urgent", NOW)).toMatchObject({ valid: false });
+    expect(resetCreditExpiryView(undefined, "urgent", NOW)).toMatchObject({ valid: false });
+    expect(resetCreditExpiryView("", "urgent", NOW)).toMatchObject({ valid: false });
+  });
+
+  test("a future credit is valid, not expired, and keeps its tone class", () => {
+    expect(resetCreditExpiryView("2026-07-03T00:00:00.000Z", "week", NOW)).toEqual({
+      valid: true,
+      expired: false,
+      toneClass: "status-pill reset-week",
+    });
+  });
+
+  test("a lapsed credit uses the expired styling even if the baked tone was urgent", () => {
+    expect(resetCreditExpiryView("2026-06-27T00:00:00.000Z", "urgent", NOW)).toEqual({
+      valid: true,
+      expired: true,
+      toneClass: "status-pill reset-expired",
+    });
+  });
+});
+
+describe("badge urgency tone class", () => {
+  test.each([
+    ["expired", "status-pill reset-expired"],
+    ["urgent", "status-pill reset-urgent"],
+    ["soon", "status-pill reset-soon"],
+    ["week", "status-pill reset-week"],
+    ["normal", "status-pill reset-normal"],
+  ] as const)("maps reset tone %s to %s", (tone, expected) => {
+    expect(badgeToneClassName(tone)).toBe(expected);
+  });
+
+  test("falls back to the default chip for missing or unknown tone", () => {
+    expect(badgeToneClassName(undefined)).toBe("value-chip");
+    expect(badgeToneClassName("bogus")).toBe("value-chip");
+  });
+});
 
 describe("provider UI metadata", () => {
   test.each([

@@ -5,7 +5,9 @@
   const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
   const REFRESH_URL = "https://auth.openai.com/oauth/token"
   const USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
+  const RESET_CREDITS_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
   const CREDIT_USD_RATE = 0.04
+  const DAY_SECONDS = 24 * 60 * 60
   const REFRESH_AGE_MS = 8 * 24 * 60 * 60 * 1000
   const ACCESS_TOKEN_REFRESH_WINDOW_MS = 5 * 60 * 1000
   const ERR_NOT_LOGGED_IN = "Not logged in. Run `codex` to authenticate."
@@ -323,6 +325,23 @@
     })
   }
 
+  function fetchResetCredits(ctx, accessToken, accountId) {
+    const headers = {
+      Authorization: "Bearer " + accessToken,
+      Accept: "application/json",
+      "User-Agent": "OpenUsage",
+    }
+    if (accountId) {
+      headers["ChatGPT-Account-Id"] = accountId
+    }
+    return ctx.util.request({
+      method: "GET",
+      url: RESET_CREDITS_URL,
+      headers,
+      timeoutMs: 10000,
+    })
+  }
+
   function readPercent(value) {
     const n = Number(value)
     return Number.isFinite(n) ? n : null
@@ -361,6 +380,48 @@
       return ctx.util.toIso(nowSec + window.reset_after_seconds)
     }
     return null
+  }
+
+  // Map seconds-until-expiry to an urgency tone. Thresholds mirror codex-reset-watcher:
+  // expired / ends-today (<=1d) / soon (<=3d) / this week (<=7d) / plenty of time.
+  function resetCreditExpiryTone(secondsUntil) {
+    if (secondsUntil <= 0) return "expired"
+    if (secondsUntil <= DAY_SECONDS) return "urgent"
+    if (secondsUntil <= 3 * DAY_SECONDS) return "soon"
+    if (secondsUntil <= 7 * DAY_SECONDS) return "week"
+    return "normal"
+  }
+
+  // One badge per AVAILABLE reset credit, soonest expiry first. Reset credits
+  // ("reset stash") are banked, use-it-or-lose-it grants that can zero a usage window;
+  // each carries its own expires_at, so they can lapse independently. Each line carries
+  // the exact expiry timestamp + a tone; the dashboard shows the precise date and a live
+  // countdown. Tolerant: malformed/unparseable/non-available credits are skipped.
+  // Returns [] when there is nothing available to show (no fake data).
+  function resetCreditExpiryLines(ctx, creditsData, nowSec) {
+    if (!creditsData || typeof creditsData !== "object") return []
+    const credits = Array.isArray(creditsData.credits) ? creditsData.credits : null
+    if (!credits) return []
+
+    const expirySecs = []
+    for (let i = 0; i < credits.length; i++) {
+      const credit = credits[i]
+      if (!credit || typeof credit !== "object") continue
+      const status = typeof credit.status === "string" ? credit.status : ""
+      if (status.toLowerCase() !== "available") continue
+      const expiresMs = ctx.util.parseDateMs(credit.expires_at)
+      if (typeof expiresMs !== "number" || !Number.isFinite(expiresMs)) continue
+      expirySecs.push(Math.floor(expiresMs / 1000))
+    }
+    expirySecs.sort(function (a, b) { return a - b })
+
+    return expirySecs.map(function (expiresSec) {
+      return ctx.line.badge({
+        label: "Reset Credit",
+        tone: resetCreditExpiryTone(expiresSec - nowSec),
+        expiresAt: ctx.util.toIso(expiresSec),
+      })
+    })
   }
 
   // Period durations in milliseconds
@@ -848,6 +909,24 @@
           label: "Credits",
           value: "$" + usdValue + " · " + remaining + " credits",
         }))
+      }
+
+      // Per-credit expiry for banked reset credits. Only hit this secondary endpoint
+      // when the usage summary already reports available reset credits — no credits,
+      // no extra request. A failure here must never break the usage card: log and skip.
+      if (resetCredits !== null && resetCredits > 0) {
+        try {
+          const creditsResp = fetchResetCredits(ctx, accessToken, accountId)
+          if (creditsResp && creditsResp.status >= 200 && creditsResp.status < 300) {
+            const creditsData = ctx.util.tryParseJson(creditsResp.bodyText)
+            const expiryLines = resetCreditExpiryLines(ctx, creditsData, nowSec)
+            for (let i = 0; i < expiryLines.length; i++) lines.push(expiryLines[i])
+          } else if (creditsResp) {
+            ctx.host.log.warn("reset-credits request returned status=" + creditsResp.status)
+          }
+        } catch (e) {
+          ctx.host.log.warn("reset-credits request failed (non-fatal): " + String(e))
+        }
       }
 
       let plan = null

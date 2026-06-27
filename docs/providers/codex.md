@@ -70,6 +70,38 @@ equivalent at `$0.04` per credit. For example, `820.6969075` renders as
 When available, OpenUsage displays the on-demand reset count as the first detail text metric,
 for example `1 available`.
 
+### GET /backend-api/wham/rate-limit-reset-credits
+
+Returns the banked **reset credits** ("reset stash") — use-it-or-lose-it grants that can
+zero a usage window. Each credit expires independently. OpenUsage fetches this endpoint only
+when `/wham/usage` reports `rate_limit_reset_credits.available_count > 0` (no credits, no
+extra request).
+
+#### Headers
+
+Same as `/wham/usage` (`Authorization: Bearer`, `Accept: application/json`, optional
+`ChatGPT-Account-Id`).
+
+#### Response
+
+```jsonc
+{
+  "credits": [
+    {
+      "id": "rc_123",
+      "status": "available",                 // only "available" credits are shown
+      "expires_at": "2026-07-03T20:00:00Z"   // ISO 8601 — when this credit lapses
+    }
+  ],
+  "available_count": 1
+}
+```
+
+For each available credit (soonest expiry first), OpenUsage shows a row with the **exact
+expiry date** and a **live countdown**, colored by urgency: expired · ends today (≤1d) ·
+soon (≤3d) · this week (≤7d) · normal. Decoding is tolerant — a malformed or unparseable
+credit is skipped — and a failure of this secondary endpoint never breaks the usage card.
+
 ## Authentication
 
 ### Credential Storage Locations
