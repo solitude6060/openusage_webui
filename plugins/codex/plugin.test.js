@@ -2160,4 +2160,48 @@ describe("codex plugin", () => {
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
     expect(result.lines.filter((line) => line.label === "Reset Credit")).toHaveLength(0)
   })
+
+  it("parses a numeric (unix seconds) expires_at the same way production does", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-06-28T00:00:00.000Z"))
+    try {
+      const numericSeconds = Math.floor(Date.parse("2026-07-01T00:00:00.000Z") / 1000) // 3d -> soon
+      const badges = await probeResetCreditBadges({
+        credits: [{ id: "num", status: "available", expires_at: numericSeconds }],
+        available_count: 1,
+      })
+      expect(badges).toHaveLength(1)
+      expect(badges[0]).toMatchObject({ tone: "soon", expiresAt: "2026-07-01T00:00:00.000Z" })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("does not call the reset-credits endpoint when available_count is 0", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: {
+        access_token: makeJwt({ exp: Math.floor(Date.now() / 1000) + 3600 }),
+        account_id: "acc",
+      },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockImplementation((opts) => ({
+      status: 200,
+      headers: {},
+      bodyText: String(opts.url).includes("rate-limit-reset-credits")
+        ? JSON.stringify({ credits: [], available_count: 0 })
+        : JSON.stringify({
+            plan_type: "pro",
+            rate_limit: { primary_window: { reset_after_seconds: 60, used_percent: 10 } },
+            rate_limit_reset_credits: { available_count: 0 },
+          }),
+    }))
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+    const hitResetEndpoint = ctx.host.http.request.mock.calls.some((call) =>
+      String(call[0].url).includes("rate-limit-reset-credits"),
+    )
+    expect(hitResetEndpoint).toBe(false)
+  })
 })

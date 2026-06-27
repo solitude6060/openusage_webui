@@ -5,7 +5,34 @@ import {
   getProviderStatusLabel,
   isProviderRefreshable,
   providerCards,
+  resetCreditExpiryView,
 } from "./provider-ui";
+
+describe("resetCreditExpiryView", () => {
+  const NOW = Date.parse("2026-06-28T00:00:00.000Z");
+
+  test("rejects an invalid or missing expiry without throwing (crash guard)", () => {
+    expect(resetCreditExpiryView("not-a-date", "urgent", NOW)).toMatchObject({ valid: false });
+    expect(resetCreditExpiryView(undefined, "urgent", NOW)).toMatchObject({ valid: false });
+    expect(resetCreditExpiryView("", "urgent", NOW)).toMatchObject({ valid: false });
+  });
+
+  test("a future credit is valid, not expired, and keeps its tone class", () => {
+    expect(resetCreditExpiryView("2026-07-03T00:00:00.000Z", "week", NOW)).toEqual({
+      valid: true,
+      expired: false,
+      toneClass: "status-pill reset-week",
+    });
+  });
+
+  test("a lapsed credit uses the expired styling even if the baked tone was urgent", () => {
+    expect(resetCreditExpiryView("2026-06-27T00:00:00.000Z", "urgent", NOW)).toEqual({
+      valid: true,
+      expired: true,
+      toneClass: "status-pill reset-expired",
+    });
+  });
+});
 
 describe("badge urgency tone class", () => {
   test.each([

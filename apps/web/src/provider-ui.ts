@@ -70,3 +70,19 @@ const RESET_BADGE_TONES = new Set(["expired", "urgent", "soon", "week", "normal"
 export function badgeToneClassName(tone: unknown): string {
   return typeof tone === "string" && RESET_BADGE_TONES.has(tone) ? `status-pill reset-${tone}` : "value-chip";
 }
+
+// Decide how a reset-credit badge renders, given its raw expiry string, baked tone, and the
+// current time. Validating here keeps the render path from feeding an invalid date into
+// Intl.DateTimeFormat (which throws and, with no error boundary, would blank the dashboard).
+// A credit that has already lapsed gets the "expired" styling regardless of the baked tone,
+// so the pill color/dot match the "Expired" text once it crosses the line between refreshes.
+export function resetCreditExpiryView(
+  expiresAt: unknown,
+  tone: unknown,
+  nowMs: number,
+): { valid: boolean; expired: boolean; toneClass: string } {
+  const ms = typeof expiresAt === "string" ? new Date(expiresAt).getTime() : Number.NaN;
+  const valid = Number.isFinite(ms);
+  const expired = valid && ms <= nowMs;
+  return { valid, expired, toneClass: badgeToneClassName(expired ? "expired" : tone) };
+}

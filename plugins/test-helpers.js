@@ -245,20 +245,20 @@ export const makeCtx = () => {
       return resp
     },
     parseDateMs: (value) => {
+      // Mirror createUtilApi.parseDateMs: numeric values (and numeric strings) get the
+      // seconds-vs-ms heuristic (|v| < 1e10 => seconds => *1000); other strings -> Date.parse.
+      const toMs = (n) => (Math.abs(n) < 1e10 ? n * 1000 : n)
+      if (value === null || value === undefined) return null
+      let parsed
       if (value instanceof Date) {
-        const dateMs = value.getTime()
-        return Number.isFinite(dateMs) ? dateMs : null
+        parsed = value.getTime()
+      } else if (typeof value === "number") {
+        parsed = toMs(value)
+      } else {
+        const text = String(value).trim()
+        parsed = /^-?\d+(\.\d+)?$/.test(text) ? toMs(Number(text)) : Date.parse(text)
       }
-      if (typeof value === "number") {
-        return Number.isFinite(value) ? value : null
-      }
-      if (typeof value === "string") {
-        const parsed = Date.parse(value)
-        if (Number.isFinite(parsed)) return parsed
-        const n = Number(value)
-        return Number.isFinite(n) ? n : null
-      }
-      return null
+      return Number.isFinite(parsed) ? parsed : null
     },
     toIso: (value) => {
       if (value === null || value === undefined) return null

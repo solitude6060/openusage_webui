@@ -29,7 +29,7 @@ import {
   setProviderEnabled,
   type HealthResponse,
 } from "./lib/api";
-import { badgeToneClassName, getProviderStatusLabel, isProviderRefreshable, providerCards, providerLabel } from "./provider-ui";
+import { badgeToneClassName, getProviderStatusLabel, isProviderRefreshable, providerCards, providerLabel, resetCreditExpiryView } from "./provider-ui";
 
 type Page = "dashboard" | "providers" | "sessions" | "settings";
 
@@ -48,6 +48,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [, setNowTick] = useState(0);
 
   async function loadData() {
     setError(null);
@@ -69,6 +70,13 @@ export function App() {
 
   useEffect(() => {
     void loadData();
+  }, []);
+
+  // Re-render once a minute so live countdowns (reset-credit expiry, window resets) stay
+  // fresh and flip to "Expired" on time, without waiting for the next data poll.
+  useEffect(() => {
+    const id = setInterval(() => setNowTick((tick) => tick + 1), 60_000);
+    return () => clearInterval(id);
   }, []);
 
   useEffect(() => {
@@ -437,14 +445,16 @@ function UsageLine({ line }: { line: Record<string, unknown> }) {
     const tone = typeof line.tone === "string" ? line.tone : undefined;
     const expiresAt = typeof line.expiresAt === "string" ? line.expiresAt : undefined;
     // Reset-credit badges carry an exact expiry timestamp: show the precise date plus a
-    // live countdown that stays fresh between refreshes (computed here, not baked).
-    if (expiresAt) {
-      const expired = tone === "expired" || new Date(expiresAt).getTime() <= Date.now();
+    // live countdown (kept fresh by the dashboard's minute tick). resetCreditExpiryView
+    // validates the timestamp first so an invalid value never reaches Intl (which throws),
+    // and returns the effective tone class so a lapsed credit looks expired, not urgent.
+    const view = expiresAt ? resetCreditExpiryView(expiresAt, tone, Date.now()) : null;
+    if (expiresAt && view && view.valid) {
       return (
         <div className="usage-credit-expiry">
           <div className="usage-credit-expiry-header">
             <span className="usage-credit-expiry-label">{String(line.label)}</span>
-            <span className={badgeToneClassName(tone)}>{expired ? "Expired" : formatRelativeTime(expiresAt)}</span>
+            <span className={view.toneClass}>{view.expired ? "Expired" : formatRelativeTime(expiresAt)}</span>
           </div>
           <div className="usage-credit-expiry-date">Expires {formatDate(expiresAt)}</div>
         </div>
