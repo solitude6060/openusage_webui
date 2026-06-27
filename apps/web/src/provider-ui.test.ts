@@ -4,9 +4,25 @@ import {
   CCUSAGE_NOTE,
   getProviderStatusLabel,
   isProviderRefreshable,
+  plainBadgeText,
   providerCards,
   resetCreditExpiryView,
 } from "./provider-ui";
+
+describe("plainBadgeText", () => {
+  test("returns the text for a non-empty string badge", () => {
+    expect(plainBadgeText("Connected")).toBe("Connected");
+    expect(plainBadgeText("No usage data")).toBe("No usage data");
+  });
+
+  test("returns null when there is nothing to show, so no empty pill renders", () => {
+    expect(plainBadgeText("")).toBeNull();
+    expect(plainBadgeText("   ")).toBeNull();
+    expect(plainBadgeText(undefined)).toBeNull();
+    expect(plainBadgeText(null)).toBeNull();
+    expect(plainBadgeText(123)).toBeNull();
+  });
+});
 
 describe("resetCreditExpiryView", () => {
   const NOW = Date.parse("2026-06-28T00:00:00.000Z");
