@@ -225,3 +225,41 @@ today") · `<=3d` → soon · `<=7d` → week · else → normal.
   call. Acceptable; matches existing codex plugin test pattern.
 - **Visual regression (Task 3):** mitigate with before/after screenshots + keeping changes
   inside the existing design-token system.
+
+---
+
+## 9. Revision (2026-06-28, in-flight feedback)
+
+Two pieces of user feedback during implementation, plus one bug caught by visual
+verification:
+
+1. **Codex-only — confirmed, no change.** Reset credits are a Codex-only mechanism. The
+   detection lives solely in `plugins/codex/plugin.js`; only the Codex card emits these
+   lines. The line-API/UI plumbing (`tone`, `expiresAt`) is generic, but no other provider
+   produces such badges, so it is Codex-only in effect.
+
+2. **Exact date per credit (display redesign).** The original design showed a single badge
+   for the *soonest* credit with a rounded, fuzzy label ("Ends today", "in 5d"). The user
+   asked to see the **exact countdown date for each** reset credit. New design:
+   - Plugin emits **one line per available credit** (soonest first), each carrying the
+     **exact `expiresAt` timestamp** + an urgency `tone` — no baked text.
+   - The dashboard renders a stacked row: a header (label + a **live countdown** pill that
+     stays fresh between refreshes, computed in the UI) over the **exact expiry date**
+     (`Intl.DateTimeFormat` medium date + short time, e.g. "Jul 3, 2026, 8:00 PM").
+   - Tier thresholds unchanged (expired / urgent ≤1d / soon ≤3d / week ≤7d / normal).
+
+3. **CSS specificity bug (found via computed-style probe, fixed).** The first cut put the
+   urgency pill as a direct `.usage-text-line > span:last-child` (specificity 0,0,2,1),
+   which outranks `.status-pill.reset-*` (0,0,2,0) and forced the muted color onto every
+   pill — only the background tints showed. A screenshot alone could have missed it;
+   `getComputedStyle` caught that `color` was `rgb(85,85,85)` everywhere. Fix: the stacked
+   layout nests the pill inside `.usage-credit-expiry-header`, so it is no longer that
+   direct last-child and its own tier color wins. Verified: urgent→`--warning`,
+   soon→`--caution`, week→`--ink-secondary`, expired/normal→`--muted`.
+
+4. **Task 3 signature.** A leading status dot (`currentColor`) on each urgency pill —
+   solid for active tiers, a hollow ring for `expired` — makes urgency glanceable and keeps
+   the signal off color alone (the pill text always says it too). Boldness spent in this one
+   place; the rest of the card stays quiet.
+
+Screenshots (light + dark): `docs/reviews/screenshots/2026-06-28-codex-reset-credit-expiry-{light,dark}.png`.
