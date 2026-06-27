@@ -54,5 +54,19 @@ failure isolation, docs accuracy) were independently re-confirmed.
 
 ## Outcome
 
-Fixes land in TDD order (see `docs/fix-logs/2026-06-28-codex-reset-credit-expiry-fix-log.md`),
-then an independent re-review (Codex) must return APPROVE before merge.
+Fixes landed in TDD order (see `docs/fix-logs/2026-06-28-codex-reset-credit-expiry-fix-log.md`).
+
+**Re-review: APPROVE (both passes).**
+
+- **Codex (re-check of its two MEDIUM findings):** APPROVE. Confirmed the 60s ticker
+  (correct `clearInterval` cleanup, no leak) and the crash guard (invalid `expiresAt` can no
+  longer reach `Intl`); tests + build green; no new blockers.
+- **Claude adversarial verifier (all six fixes):** APPROVE. Independently verified every
+  edge case of `resetCreditExpiryView` (empty/undefined/"Invalid Date"/valid), the `formatDate`
+  guard, the ticker's re-render cascade (Strict-Mode safe), the `parseDateMs` alignment as
+  functionally identical to production (incl. NaN), that the numeric/skip-at-0 plugin tests
+  would fail under the old behavior, and recomputed the `--caution` contrast at 4.63:1.
+  No regressions.
+
+Automated gate: `vitest` 1138, provider/web 33, web build, 4.63:1 contrast — all green.
+Merged into `main` per the user's decision.
