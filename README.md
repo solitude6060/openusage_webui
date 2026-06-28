@@ -8,7 +8,7 @@
 
 ![OpenUsage WebUI dashboard](docs/screenshots/webui-dashboard.png)
 
-**Terminal Status** — `ou-status` in your shell, with colored usage bars:
+**Terminal Status** — `ou-status` in your shell, with colored usage bars and Codex reset-credit expiry (live countdown + exact date, matching the dashboard):
 
 ![ou-status terminal output](docs/screenshots/cli-status.png)
 
