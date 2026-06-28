@@ -4,10 +4,10 @@
 
 ### What's New
 
-**2026-06-29** — Codex **reset-credit expiry** now shows in the terminal `ou-status` CLI too
-(live countdown + exact date), matching the web dashboard. Alongside a WebUI accessibility &
-polish pass: an active-page indicator bar in the sidebar, WCAG-AA text contrast, reduced-motion
-support, keyboard focus rings, and a locally-bundled Inter font (no CDN).
+**2026-06-29**
+
+- **Credit Reset Sync:** You can now see the exact date and live countdown for your credit reset on both the CLI and the web dashboard.
+- **WebUI Upgrades:** We've made several visual and accessibility improvements to the web interface, including better navigation and improved text contrast for a smoother user experience.
 
 ### Screenshots
 
