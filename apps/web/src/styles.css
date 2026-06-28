@@ -1,6 +1,6 @@
 :root {
   color-scheme: light dark;
-  font-family: "Inter", "IBM Plex Sans", "Aptos", "Segoe UI", system-ui, sans-serif;
+  font-family: "Inter Variable", "Inter", "IBM Plex Sans", "Aptos", "Segoe UI", system-ui, sans-serif;
   font-synthesis: none;
   line-height: 1.45;
   text-rendering: optimizeLegibility;
@@ -238,6 +238,13 @@ button:disabled {
     color: #111111;
     background: var(--accent);
     border-color: var(--accent);
+  }
+
+  /* A light shadow vanishes on the dark canvas — deepen it and add a hairline
+     border so a floating toast still reads as separated from the content. */
+  .app-toasts .alert {
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+    border-color: var(--line-strong);
   }
 }
 
@@ -555,6 +562,40 @@ textarea {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+/* Fixed region for global alerts: floats them over the page so showing/hiding an
+   error or notice never pushes the content below it down (no layout reflow). */
+.app-toasts {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  /* sit above all page content — the topmost global layer in this app */
+  z-index: 1000;
+  display: grid;
+  gap: 8px;
+  width: min(420px, calc(100vw - 48px));
+  /* Informational, text-only toasts: keep the whole region click-through so a
+     floating toast can never cover and block a control beneath it. pointer-events
+     none cascades to the .alert children (no override), so nothing here steals
+     clicks from the page. */
+  pointer-events: none;
+}
+
+.app-toasts .alert {
+  margin: 0;
+  /* a restrained lift so the toast separates from whatever it floats over — the
+     one spot a shadow earns its place in this otherwise-flat design */
+  box-shadow: 0 6px 20px rgba(17, 17, 17, 0.16);
+}
+
+@media (max-width: 640px) {
+  .app-toasts {
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    width: auto;
+  }
 }
 
 .alert {
