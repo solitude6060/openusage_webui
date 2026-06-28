@@ -46,6 +46,8 @@ bun install
 bun run dev:webui
 ```
 
+Backend code edits hot-reload automatically — the API server runs under `bun --watch`, and the Vite frontend has its own HMR. No manual restart is needed after pulling changes.
+
 ## Open
 
 ```text

@@ -452,7 +452,9 @@ class HttpError extends Error {
 }
 
 if (import.meta.main) {
-  // In dev, the orchestrator (dev.ts) runs this under `bun --watch` and points it at the
-  // Vite dev server via this env var. In production it is unset and the built dist is served.
+  // OPENUSAGE_WEBUI_DEV_FRONTEND_URL is an INTERNAL, dev-only var that dev.ts sets to point
+  // the API at the Vite dev server. Do NOT set it in production: `bun src/index.ts`
+  // (start:webui) must leave it unset so the built dist is served instead of proxying to a
+  // Vite server that isn't running.
   await startServer({ devFrontendUrl: process.env.OPENUSAGE_WEBUI_DEV_FRONTEND_URL || undefined });
 }

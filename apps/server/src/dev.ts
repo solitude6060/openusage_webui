@@ -1,6 +1,8 @@
 import { join } from "node:path";
 
 const FRONTEND_URL = "http://127.0.0.1:6737";
+const FRONTEND_TIMEOUT_MS = 30_000;
+const SHUTDOWN_GRACE_MS = 5_000;
 const serverCwd = join(import.meta.dir, "..");
 const webCwd = join(import.meta.dir, "../../web");
 
@@ -11,37 +13,57 @@ const vite = Bun.spawn(["bun", "run", "dev", "--", "--host", "127.0.0.1", "--por
   stderr: "inherit",
 });
 
-await waitForFrontend(FRONTEND_URL);
+let api: ReturnType<typeof Bun.spawn> | null = null;
+let shuttingDown = false;
+
+async function shutdown(code = 0): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  api?.kill();
+  vite.kill();
+  // Wait for the children to actually exit so we never leave an orphan behind, but don't
+  // hang forever if one ignores SIGTERM.
+  await Promise.race([
+    Promise.all([vite.exited, api ? api.exited : Promise.resolve(0)]),
+    Bun.sleep(SHUTDOWN_GRACE_MS),
+  ]);
+  process.exit(code);
+}
+
+// Register cleanup BEFORE any await: a Ctrl+C or a failed/slow frontend wait during startup
+// must still tear down the already-spawned Vite child instead of orphaning it.
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.on(signal, () => void shutdown(0));
+}
+
+try {
+  await waitForFrontend(FRONTEND_URL);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  await shutdown(1);
+}
 
 // The API server runs under `--watch`, so backend edits (including the shared providers
 // package) hot-reload without a manual restart. It's a separate process from Vite, so a
 // backend reload never disturbs the frontend dev server or orphans it.
-const api = Bun.spawn(["bun", "--watch", "src/index.ts"], {
+api = Bun.spawn(["bun", "--watch", "src/index.ts"], {
   cwd: serverCwd,
   env: { ...process.env, OPENUSAGE_WEBUI_DEV_FRONTEND_URL: FRONTEND_URL },
   stdout: "inherit",
   stderr: "inherit",
 });
 
-let shuttingDown = false;
-function shutdown(): void {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  api.kill();
-  vite.kill();
-  process.exit(0);
-}
-
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.on(signal, shutdown);
-}
-
-// If either child exits on its own, tear the other down too.
-await Promise.race([vite.exited, api.exited]);
-shutdown();
+// If either child exits on its own, tear the other down too, propagating a failure code.
+const exited = await Promise.race([
+  vite.exited.then((code: number) => ({ who: "Vite", code })),
+  api.exited.then((code: number) => ({ who: "API server", code })),
+]);
+console.error(`${exited.who} exited (code ${exited.code ?? "unknown"}); shutting down dev server.`);
+await shutdown(exited.code ?? 1);
 
 async function waitForFrontend(url: string): Promise<void> {
-  for (let attempt = 0; attempt < 80; attempt += 1) {
+  const deadline = Date.now() + FRONTEND_TIMEOUT_MS;
+  while (Date.now() < deadline) {
     if (vite.exitCode !== null) {
       throw new Error("Vite dev server exited before it became ready");
     }
@@ -55,5 +77,5 @@ async function waitForFrontend(url: string): Promise<void> {
     }
     await Bun.sleep(100);
   }
-  throw new Error("Vite dev server did not become ready");
+  throw new Error("Vite dev server did not become ready in time");
 }
