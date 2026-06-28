@@ -55,5 +55,18 @@ left as-is.
 
 ## Outcome
 
-Findings fixed in `f710c76`. Re-review (Codex, the REQUEST_CHANGES pass) must return APPROVE
-before merge.
+Findings #1–#6 fixed in `f710c76`. The independent re-review then split:
+
+- **Codex (re-check of its blocking findings):** APPROVE — handlers before `await`, exit-code
+  propagation, async shutdown (grace + guard) all correct, build + tests green, no new issues.
+- **Claude verifier:** found one further concurrency defect (#7 in the fix log) — a catch
+  fall-through that could orphan the API when a signal races the frontend wait. Fixed by
+  gating the API spawn on `if (!shuttingDown)`, then **re-reviewed APPROVE** (both the throw
+  and success sub-cases close; no new TOCTOU race; normal path identical).
+
+All findings resolved across all passes. Clear to merge.
+
+Note on tests: `dev.ts` (startup/shutdown orchestration) has no unit test on `main` and the
+race is impractical to unit-test without a process-level signal-interleaving harness; per the
+fix log this is verified by live behavior (hot-reload keeps the Vite PID stable; SIGTERM to
+the orchestrator leaves no orphan). Documented TDD exception for dev tooling.
