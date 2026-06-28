@@ -2,6 +2,13 @@
 
 > **Fork note:** This is a Linux-compatible fork of [OpenUsage](https://github.com/robinebers/openusage). The original is a macOS Tauri menu bar app. This fork replaces the Tauri shell with a **Bun server + React WebUI** and a **CLI status tool**, so it runs on Ubuntu/Linux without Tauri or macOS-specific dependencies.
 
+### What's New
+
+**2026-06-29** — Codex **reset-credit expiry** now shows in the terminal `ou-status` CLI too
+(live countdown + exact date), matching the web dashboard. Alongside a WebUI accessibility &
+polish pass: an active-page indicator bar in the sidebar, WCAG-AA text contrast, reduced-motion
+support, keyboard focus rings, and a locally-bundled Inter font (no CDN).
+
 ### Screenshots
 
 **Web Dashboard** — every provider at a glance, with progress bars and reset timers:
