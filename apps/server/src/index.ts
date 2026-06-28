@@ -452,5 +452,7 @@ class HttpError extends Error {
 }
 
 if (import.meta.main) {
-  await startServer();
+  // In dev, the orchestrator (dev.ts) runs this under `bun --watch` and points it at the
+  // Vite dev server via this env var. In production it is unset and the built dist is served.
+  await startServer({ devFrontendUrl: process.env.OPENUSAGE_WEBUI_DEV_FRONTEND_URL || undefined });
 }

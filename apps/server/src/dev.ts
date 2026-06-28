@@ -1,31 +1,44 @@
 import { join } from "node:path";
-import { startServer } from "./index";
 
+const FRONTEND_URL = "http://127.0.0.1:6737";
+const serverCwd = join(import.meta.dir, "..");
 const webCwd = join(import.meta.dir, "../../web");
+
+// Vite stays up for the whole dev session and manages its own HMR for the frontend.
 const vite = Bun.spawn(["bun", "run", "dev", "--", "--host", "127.0.0.1", "--port", "6737"], {
   cwd: webCwd,
   stdout: "inherit",
   stderr: "inherit",
 });
 
-await waitForFrontend("http://127.0.0.1:6737");
+await waitForFrontend(FRONTEND_URL);
 
-const server = await startServer({
-  host: "127.0.0.1",
-  port: 6736,
-  devFrontendUrl: "http://127.0.0.1:6737",
+// The API server runs under `--watch`, so backend edits (including the shared providers
+// package) hot-reload without a manual restart. It's a separate process from Vite, so a
+// backend reload never disturbs the frontend dev server or orphans it.
+const api = Bun.spawn(["bun", "--watch", "src/index.ts"], {
+  cwd: serverCwd,
+  env: { ...process.env, OPENUSAGE_WEBUI_DEV_FRONTEND_URL: FRONTEND_URL },
+  stdout: "inherit",
+  stderr: "inherit",
 });
 
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.on(signal, () => {
-    server.stop();
-    vite.kill();
-    process.exit(0);
-  });
+let shuttingDown = false;
+function shutdown(): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  api.kill();
+  vite.kill();
+  process.exit(0);
 }
 
-await vite.exited;
-server.stop();
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.on(signal, shutdown);
+}
+
+// If either child exits on its own, tear the other down too.
+await Promise.race([vite.exited, api.exited]);
+shutdown();
 
 async function waitForFrontend(url: string): Promise<void> {
   for (let attempt = 0; attempt < 80; attempt += 1) {
