@@ -557,6 +557,37 @@ textarea {
   gap: 12px;
 }
 
+/* Fixed region for global alerts: floats them over the page so showing/hiding an
+   error or notice never pushes the content below it down (no layout reflow). */
+.app-toasts {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 50;
+  display: grid;
+  gap: 8px;
+  width: min(420px, calc(100vw - 48px));
+  /* clicks fall through the empty gaps; each toast re-enables them on itself */
+  pointer-events: none;
+}
+
+.app-toasts .alert {
+  margin: 0;
+  pointer-events: auto;
+  /* a restrained lift so the toast separates from whatever it floats over — the
+     one spot a shadow earns its place in this otherwise-flat design */
+  box-shadow: 0 6px 20px rgba(17, 17, 17, 0.16);
+}
+
+@media (max-width: 640px) {
+  .app-toasts {
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    width: auto;
+  }
+}
+
 .alert {
   margin-bottom: 14px;
   padding: 10px 14px;

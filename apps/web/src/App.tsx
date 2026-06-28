@@ -142,8 +142,12 @@ export function App() {
           </button>
         </header>
 
-        {error ? <div className="alert error">{error}</div> : null}
-        {notice ? <div className="alert success">{notice}</div> : null}
+        {/* Float global alerts in a fixed region so showing/hiding them never reflows
+            the page below. aria-live lets screen readers announce them. */}
+        <div className="app-toasts" aria-live="polite">
+          {error ? <div className="alert error">{error}</div> : null}
+          {notice ? <div className="alert success">{notice}</div> : null}
+        </div>
 
         {loading ? (
           <div className="loading-indicator">Loading...</div>
