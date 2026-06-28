@@ -24,6 +24,24 @@ before fixing. No flashy redesign — changes are consistent with the existing l
 - Visual: active-nav accent bar confirmed via headless screenshot
   (`docs/screenshots/webui-a11y-nav-after.png`).
 
+## Triple review (independent, multi-model)
+
+- **codex (GPT)** — NO BLOCKERS ("only adjusts CSS accessibility affordances… no correctness,
+  security, performance, or maintainability issue").
+- **opencode (deepseek-v4)** — NO BLOCKERS; verified all four changes in detail (no `@keyframes`
+  exist, dnd-kit drag is transform-based and unaffected, dark-mode `--muted` is a separate token,
+  no overflow clipping).
+- **agy (Gemini)** — raised 1 blocker + 1 major + 1 minor + 1 nit:
+
+| # | Finding (severity) | Verdict | Note |
+|---|--------------------|---------|------|
+| 1 | reduced-motion reset breaks dnd-kit + "minute-tick CSS animation" (blocker) | **FALSE POSITIVE** | `grep` → zero CSS animations; minute-tick is a JS `setInterval`; `0.01ms` is the canonical library-safe pattern (preserves `transitionend`). Confirmed by opencode. |
+| 2 | `--muted` darkening regresses dark mode (major) | **FALSE POSITIVE** | Dark mode re-declares `--muted: #888888` (styles.css:38); the edit was to light `:root` (line 11). Dark mode unaffected. |
+| 3 | `.nav-item.active` is the wrong selector (minor) | **FALSE POSITIVE** | App.tsx:122 sets `"nav-item active"`; selector is correct (and the screenshot renders it). |
+| 4 | inset box-shadow bar rounds at the 6px corners (nit) | **VALID — fixed** | Replaced the inset shadow with a `::before` pseudo-element (inset 6px top/bottom, 3px radius) for a crisp pill bar; bottom-edge variant at ≤980px. |
+
+Re-reviewed after the nit fix; all three APPROVE.
+
 ## Not changed (skill suggested, deliberately skipped)
 
 - **Dark-only OLED palette / Fira Code / Fira Sans / slate+green tokens** (from the

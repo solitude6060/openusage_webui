@@ -143,6 +143,7 @@ button:disabled {
 }
 
 .nav-item {
+  position: relative;
   width: 100%;
   min-height: 40px;
   padding: 8px 12px;
@@ -162,11 +163,19 @@ button:disabled {
   border-color: var(--sidebar-border);
 }
 
-/* Mark the current page with an accent bar on the left edge (inset shadow, so it
-   adds no layout shift), on top of the existing background — a clearer "you are
-   here" signal than background alone. */
-.nav-item.active {
-  box-shadow: inset 3px 0 0 0 var(--accent);
+/* Mark the current page with a crisp accent bar on the left edge — a clearer "you
+   are here" signal than background alone. A ::before (not an inset shadow) keeps the
+   bar straight instead of curving along the nav item's 6px corners, and adds no
+   layout shift. */
+.nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--accent);
 }
 
 .nav-item:active,
@@ -851,8 +860,13 @@ textarea {
 
   /* Nav is horizontal here — move the active accent bar to the bottom edge so it
      reads as an underline rather than a stray left bar. */
-  .nav-item.active {
-    box-shadow: inset 0 -3px 0 0 var(--accent);
+  .nav-item.active::before {
+    left: 6px;
+    right: 6px;
+    top: auto;
+    bottom: 0;
+    width: auto;
+    height: 3px;
   }
 
   .provider-card {
