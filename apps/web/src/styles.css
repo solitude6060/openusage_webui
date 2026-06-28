@@ -239,6 +239,13 @@ button:disabled {
     background: var(--accent);
     border-color: var(--accent);
   }
+
+  /* A light shadow vanishes on the dark canvas — deepen it and add a hairline
+     border so a floating toast still reads as separated from the content. */
+  .app-toasts .alert {
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+    border-color: var(--line-strong);
+  }
 }
 
 .page-grid,
@@ -563,7 +570,8 @@ textarea {
   position: fixed;
   right: 24px;
   bottom: 24px;
-  z-index: 50;
+  /* sit above all page content — the topmost global layer in this app */
+  z-index: 1000;
   display: grid;
   gap: 8px;
   width: min(420px, calc(100vw - 48px));

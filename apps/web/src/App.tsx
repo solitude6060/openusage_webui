@@ -145,7 +145,9 @@ export function App() {
         {/* Float global alerts in a fixed region so showing/hiding them never reflows
             the page below. aria-live lets screen readers announce them. */}
         <div className="app-toasts" aria-live="polite">
-          {error ? <div className="alert error">{error}</div> : null}
+          {/* role="alert" on the error makes screen readers announce failures
+              immediately (assertive); the polite container handles success notices. */}
+          {error ? <div className="alert error" role="alert">{error}</div> : null}
           {notice ? <div className="alert success">{notice}</div> : null}
         </div>
 
