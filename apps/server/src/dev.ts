@@ -43,23 +43,30 @@ try {
   await shutdown(1);
 }
 
-// The API server runs under `--watch`, so backend edits (including the shared providers
-// package) hot-reload without a manual restart. It's a separate process from Vite, so a
-// backend reload never disturbs the frontend dev server or orphans it.
-api = Bun.spawn(["bun", "--watch", "src/index.ts"], {
-  cwd: serverCwd,
-  env: { ...process.env, OPENUSAGE_WEBUI_DEV_FRONTEND_URL: FRONTEND_URL },
-  stdout: "inherit",
-  stderr: "inherit",
-});
+// Only start the API if a signal hasn't already begun shutdown during the frontend wait.
+// Otherwise the in-flight shutdown (which ran `api?.kill()` while `api` was still null) would
+// never kill a freshly spawned API, orphaning it on port 6736 — its own process.exit ends us
+// here instead. The check and the spawn are synchronous (no await between), so no signal can
+// land in the gap.
+if (!shuttingDown) {
+  // The API server runs under `--watch`, so backend edits (including the shared providers
+  // package) hot-reload without a manual restart. It's a separate process from Vite, so a
+  // backend reload never disturbs the frontend dev server or orphans it.
+  api = Bun.spawn(["bun", "--watch", "src/index.ts"], {
+    cwd: serverCwd,
+    env: { ...process.env, OPENUSAGE_WEBUI_DEV_FRONTEND_URL: FRONTEND_URL },
+    stdout: "inherit",
+    stderr: "inherit",
+  });
 
-// If either child exits on its own, tear the other down too, propagating a failure code.
-const exited = await Promise.race([
-  vite.exited.then((code: number) => ({ who: "Vite", code })),
-  api.exited.then((code: number) => ({ who: "API server", code })),
-]);
-console.error(`${exited.who} exited (code ${exited.code ?? "unknown"}); shutting down dev server.`);
-await shutdown(exited.code ?? 1);
+  // If either child exits on its own, tear the other down too, propagating a failure code.
+  const exited = await Promise.race([
+    vite.exited.then((code: number) => ({ who: "Vite", code })),
+    api.exited.then((code: number) => ({ who: "API server", code })),
+  ]);
+  console.error(`${exited.who} exited (code ${exited.code ?? "unknown"}); shutting down dev server.`);
+  await shutdown(exited.code ?? 1);
+}
 
 async function waitForFrontend(url: string): Promise<void> {
   const deadline = Date.now() + FRONTEND_TIMEOUT_MS;

@@ -53,6 +53,19 @@ Fix commit: `f710c76`
   under `bun --watch`, Vite HMR), no manual restart needed.
 - **Files:** `README_WEBUI.md`.
 
+## #7 — Catch fall-through orphans the API when a signal races the frontend wait (re-review verifier, critical)
+
+- **Repro:** if a signal fires `shutdown(0)` *during* `waitForFrontend` (setting
+  `shuttingDown = true`) and `waitForFrontend` then throws on timeout, the catch's
+  `await shutdown(1)` hits the `shuttingDown` early-return guard and does nothing (no
+  `process.exit`). Execution falls through and spawns the API — which the in-flight shutdown
+  (it ran `api?.kill()` while `api` was null) never kills → orphan holding port 6736. Narrow
+  window (a direct `kill -TERM` to the orchestrator during a slow startup), but a real orphan.
+- **Fix:** gate the API spawn + watch loop on `if (!shuttingDown)`. The check and the spawn
+  are synchronous (no `await` between), so no signal can land in the gap; if shutdown already
+  began, the spawn is skipped and the in-flight shutdown's `process.exit` ends the process.
+- **Files:** `apps/server/src/dev.ts`.
+
 ## Verification after fixes
 - `bun build` of `index.ts` + `dev.ts`: compile clean.
 - `apps/server` tests: 16 passed.
