@@ -97,9 +97,9 @@ Same as `/wham/usage` (`Authorization: Bearer`, `Accept: application/json`, opti
 }
 ```
 
-For each available credit (soonest expiry first), OpenUsage shows a row with the **exact
-expiry date** and a **live countdown**, colored by urgency: expired · ends today (≤1d) ·
-soon (≤3d) · this week (≤7d) · normal. Decoding is tolerant — a malformed or unparseable
+For each available credit (soonest expiry first), OpenUsage shows a row — in both the WebUI
+dashboard and the `ou-status` CLI — with the **exact expiry date** and a **live countdown**,
+colored by urgency: expired · ends today (≤1d) · soon (≤3d) · this week (≤7d) · normal. Decoding is tolerant — a malformed or unparseable
 credit is skipped — and a failure of this secondary endpoint never breaks the usage card.
 
 ## Authentication

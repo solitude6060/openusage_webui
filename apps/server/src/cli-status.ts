@@ -19,8 +19,8 @@ const BG_WARN = "\x1b[48;5;124m";
 
 const BAR_WIDTH = 30;
 
-function formatRelative(isoString: string): string {
-  const diff = new Date(isoString).getTime() - Date.now();
+function formatRelative(isoString: string, nowMs: number = Date.now()): string {
+  const diff = new Date(isoString).getTime() - nowMs;
   if (diff <= 0) return "now";
   const m = Math.floor(diff / 60_000);
   const h = Math.floor(m / 60);
@@ -29,6 +29,30 @@ function formatRelative(isoString: string): string {
   if (h > 0) return `${h}h ${m % 60}m`;
   if (m > 0) return `${m}m`;
   return "<1m";
+}
+
+// Render a `badge` line for the terminal. Reset-credit badges carry their payload in
+// `expiresAt` (plus a baked urgency `tone`), NOT `text` — so mirror the WebUI: show a
+// live countdown (or "Expired") and the exact expiry date, colored by urgency
+// (urgent = red, soon = amber, otherwise grey). A badge without a valid `expiresAt`
+// falls back to its plain `text`.
+export function formatBadgeLine(line: Record<string, unknown>, nowMs: number = Date.now()): string {
+  const label = String(line.label ?? "");
+  const expiresAt = typeof line.expiresAt === "string" ? line.expiresAt : undefined;
+  const expiresMs = expiresAt ? new Date(expiresAt).getTime() : Number.NaN;
+
+  if (expiresAt && Number.isFinite(expiresMs)) {
+    const expired = expiresMs <= nowMs;
+    // A lapsed credit reads as expired regardless of the baked tone (mirrors the WebUI).
+    const tone = expired ? "expired" : typeof line.tone === "string" ? line.tone : "";
+    const color = tone === "urgent" ? RED : tone === "soon" ? YELLOW : DIM;
+    const when = expired ? "Expired" : formatRelative(expiresAt, nowMs);
+    const date = new Date(expiresMs).toLocaleString();
+    return `  ${DIM}${label.padEnd(16)}${RESET} ${color}${when}${RESET} ${DIM}(expires ${date})${RESET}`;
+  }
+
+  const text = String(line.text ?? "");
+  return `  ${DIM}${label.padEnd(16)}${RESET} ${YELLOW}${text}${RESET}`;
 }
 
 function progressBar(used: number, limit: number): string {
@@ -150,9 +174,7 @@ async function main() {
         const value = String(line.value ?? "");
         console.log(`  ${DIM}${label.padEnd(16)}${RESET} ${value}`);
       } else if (line.type === "badge") {
-        const label = String(line.label);
-        const text = String(line.text ?? "");
-        console.log(`  ${DIM}${label.padEnd(16)}${RESET} ${YELLOW}${text}${RESET}`);
+        console.log(formatBadgeLine(line));
       }
     }
 
@@ -168,7 +190,11 @@ async function main() {
   storage.close();
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+// Only run when invoked directly (`bun cli-status.ts`), so tests can import the
+// pure helpers above without kicking off the whole status report.
+if (import.meta.main) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}
