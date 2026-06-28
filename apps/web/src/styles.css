@@ -575,13 +575,15 @@ textarea {
   display: grid;
   gap: 8px;
   width: min(420px, calc(100vw - 48px));
-  /* clicks fall through the empty gaps; each toast re-enables them on itself */
+  /* Informational, text-only toasts: keep the whole region click-through so a
+     floating toast can never cover and block a control beneath it. pointer-events
+     none cascades to the .alert children (no override), so nothing here steals
+     clicks from the page. */
   pointer-events: none;
 }
 
 .app-toasts .alert {
   margin: 0;
-  pointer-events: auto;
   /* a restrained lift so the toast separates from whatever it floats over — the
      one spot a shadow earns its place in this otherwise-flat design */
   box-shadow: 0 6px 20px rgba(17, 17, 17, 0.16);
