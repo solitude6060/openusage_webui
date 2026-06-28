@@ -8,7 +8,7 @@
 
   --ink: #111111;
   --ink-secondary: #555555;
-  --muted: #787774;
+  --muted: #6c6b68;
   --paper: #ffffff;
   --canvas: #f7f6f3;
   --surface-muted: #f0efec;
@@ -160,6 +160,13 @@ button:disabled {
   color: var(--sidebar-text);
   background: var(--sidebar-hover);
   border-color: var(--sidebar-border);
+}
+
+/* Mark the current page with an accent bar on the left edge (inset shadow, so it
+   adds no layout shift), on top of the existing background — a clearer "you are
+   here" signal than background alone. */
+.nav-item.active {
+  box-shadow: inset 3px 0 0 0 var(--accent);
 }
 
 .nav-item:active,
@@ -359,6 +366,13 @@ td {
 .provider-card:hover {
   border-color: var(--line-strong);
   transform: translateY(-1px);
+}
+
+/* Dashboard cards are keyboard-focusable (dnd-kit keyboard drag) — give them the
+   same visible focus ring as buttons/inputs so keyboard users can see focus. */
+.provider-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .provider-title-row {
@@ -835,6 +849,12 @@ textarea {
     text-align: center;
   }
 
+  /* Nav is horizontal here — move the active accent bar to the bottom edge so it
+     reads as an underline rather than a stray left bar. */
+  .nav-item.active {
+    box-shadow: inset 0 -3px 0 0 var(--accent);
+  }
+
   .provider-card {
     min-height: 200px;
   }
@@ -876,5 +896,19 @@ textarea {
   .detail-list.wide div {
     grid-template-columns: 1fr;
     gap: 4px;
+  }
+}
+
+/* Respect the OS "reduce motion" setting: near-instant transitions/animations for
+   users who get motion sickness or distraction from movement. Functionality is
+   unchanged — only the in-between motion is removed. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
