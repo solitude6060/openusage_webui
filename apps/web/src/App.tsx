@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   ProviderStatus,
   UsageRecord,
@@ -19,6 +19,8 @@ import { SettingsPage } from "./pages/settings-page";
 
 type Page = "dashboard" | "providers" | "sessions" | "settings";
 
+export const AUTO_REFRESH_INTERVAL_MS = 20 * 60_000;
+
 const pages: Array<{ id: Page; label: string; path: string }> = [
   { id: "dashboard", label: "Dashboard", path: "/dashboard" },
   { id: "providers", label: "Providers", path: "/providers" },
@@ -35,6 +37,7 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [, setNowTick] = useState(0);
+  const refreshInFlightRef = useRef(false);
 
   async function loadData() {
     setError(null);
@@ -87,22 +90,36 @@ export function App() {
     setPage(nextPage);
   }
 
-  async function refreshAll() {
+  async function refreshAll({ silent = false }: { silent?: boolean } = {}) {
+    if (refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
     setError(null);
-    setNotice(null);
+    if (!silent) setNotice(null);
     try {
       const result = await refreshAllProviders();
       const failed = result.results.filter((item) => !item.ok);
-      setNotice(
-        failed.length > 0
-          ? `Refresh Completed With ${failed.length} Provider Error`
-          : "Refresh Completed",
-      );
+      if (!silent) {
+        setNotice(
+          failed.length > 0
+            ? `Refresh Completed With ${failed.length} Provider Error`
+            : "Refresh Completed",
+        );
+      }
       await loadData();
     } catch (refreshError) {
+      console.error(silent ? "Auto refresh failed:" : "Refresh failed:", refreshError);
       setError(refreshError instanceof Error ? refreshError.message : "Refresh failed");
+    } finally {
+      refreshInFlightRef.current = false;
     }
   }
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      void refreshAll({ silent: true });
+    }, AUTO_REFRESH_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, []);
 
   const providerMap = useMemo(
     () => new Map(providers.map((provider) => [provider.providerId, provider])),
@@ -137,7 +154,7 @@ export function App() {
             <p className="eyebrow">Local Dashboard</p>
             <h2>{pages.find((item) => item.id === page)?.label}</h2>
           </div>
-          <button className="primary-button" onClick={refreshAll} type="button">
+          <button className="primary-button" onClick={() => void refreshAll()} type="button">
             Refresh All
           </button>
         </header>

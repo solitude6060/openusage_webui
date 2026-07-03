@@ -9,6 +9,8 @@
   const SCOPES =
     "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
+  const FIVE_HOUR_MS = 5 * 60 * 60 * 1000
+  const SEVEN_DAY_MS = 7 * 24 * 60 * 60 * 1000
 
   // Rate-limit state persisted across probe() calls (module scope survives re-invocations).
   const MIN_USAGE_FETCH_INTERVAL_MS = 5 * 60 * 1000  // never poll more than once per 5 min
@@ -749,6 +751,100 @@
     }))
   }
 
+  function normalizeUsageWindow(value) {
+    if (!value || typeof value !== "object") return null
+    const utilization = Number(value.utilization)
+    if (Number.isFinite(utilization)) {
+      return Object.assign({}, value, { utilization: utilization })
+    }
+
+    const percentKeys = [
+      "percent",
+      "percent_used",
+      "used_percent",
+      "usage_percent",
+      "usage_percentage",
+      "utilization_percent",
+      "utilization_percentage",
+    ]
+    for (let i = 0; i < percentKeys.length; i++) {
+      const percent = Number(value[percentKeys[i]])
+      if (Number.isFinite(percent)) {
+        return Object.assign({}, value, {
+          utilization: percent,
+          resets_at: value.resets_at || value.reset_at || value.resetsAt,
+        })
+      }
+    }
+
+    const used = Number(value.used)
+    const limit = Number(value.limit)
+    if (Number.isFinite(used) && Number.isFinite(limit) && limit > 0) {
+      return Object.assign({}, value, {
+        utilization: (used / limit) * 100,
+        resets_at: value.resets_at || value.reset_at || value.resetsAt,
+      })
+    }
+
+    return null
+  }
+
+  function findUsageWindow(data, pathMatches, path, depth) {
+    if (!data || typeof data !== "object" || depth > 6) return null
+    const normalized = normalizeUsageWindow(data)
+    if (normalized && pathMatches(path)) return normalized
+
+    const keys = Object.keys(data)
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i]
+      const value = data[key]
+      if (!value || typeof value !== "object") continue
+      const found = findUsageWindow(value, pathMatches, path.concat([key]), depth + 1)
+      if (found) return found
+    }
+    return null
+  }
+
+  function fableWeeklyPathMatches(path) {
+    if (!Array.isArray(path) || path.length === 0) return false
+    const text = path.join("_").toLowerCase()
+    const leaf = String(path[path.length - 1] || "").toLowerCase()
+    const hasFable = text.indexOf("fable") !== -1 || text.indexOf("falbe") !== -1
+    if (!hasFable) return false
+    return (
+      text.indexOf("seven") !== -1 ||
+      text.indexOf("week") !== -1 ||
+      text.indexOf("7d") !== -1 ||
+      leaf === "fable" ||
+      leaf === "falbe"
+    )
+  }
+
+  function pickUsageWindow(data, keys, pathMatches) {
+    if (!data || typeof data !== "object") return null
+    for (let i = 0; i < keys.length; i++) {
+      const value = normalizeUsageWindow(data[keys[i]])
+      if (value) return value
+    }
+    if (typeof pathMatches === "function") {
+      return findUsageWindow(data, pathMatches, [], 0)
+    }
+    return null
+  }
+
+  function pushPercentUsageLine(lines, ctx, label, windowData, periodDurationMs) {
+    if (!windowData || typeof windowData.utilization !== "number") return false
+    lines.push(ctx.line.progress({
+      label: label,
+      used: windowData.utilization,
+      limit: 100,
+      format: { kind: "percent" },
+      resetsAt: ctx.util.toIso(windowData.resets_at),
+      periodDurationMs: periodDurationMs
+    }))
+    return true
+  }
+
   function probe(ctx) {
     const creds = loadCredentials(ctx)
     if (!creds || !creds.oauth || !creds.oauth.accessToken || !creds.oauth.accessToken.trim()) {
@@ -878,46 +974,21 @@
     }
 
     if (data) {
-      if (data.five_hour && typeof data.five_hour.utilization === "number") {
-        lines.push(ctx.line.progress({
-          label: "Session",
-          used: data.five_hour.utilization,
-          limit: 100,
-          format: { kind: "percent" },
-          resetsAt: ctx.util.toIso(data.five_hour.resets_at),
-          periodDurationMs: 5 * 60 * 60 * 1000 // 5 hours
-        }))
-      }
-      if (data.seven_day && typeof data.seven_day.utilization === "number") {
-        lines.push(ctx.line.progress({
-          label: "Weekly",
-          used: data.seven_day.utilization,
-          limit: 100,
-          format: { kind: "percent" },
-          resetsAt: ctx.util.toIso(data.seven_day.resets_at),
-          periodDurationMs: 7 * 24 * 60 * 60 * 1000 // 7 days
-        }))
-      }
-      if (data.seven_day_sonnet && typeof data.seven_day_sonnet.utilization === "number") {
-        lines.push(ctx.line.progress({
-          label: "Sonnet",
-          used: data.seven_day_sonnet.utilization,
-          limit: 100,
-          format: { kind: "percent" },
-          resetsAt: ctx.util.toIso(data.seven_day_sonnet.resets_at),
-          periodDurationMs: 7 * 24 * 60 * 60 * 1000 // 7 days
-        }))
-      }
-      if (data.seven_day_omelette && typeof data.seven_day_omelette.utilization === "number") {
-        lines.push(ctx.line.progress({
-          label: "Claude Design",
-          used: data.seven_day_omelette.utilization,
-          limit: 100,
-          format: { kind: "percent" },
-          resetsAt: ctx.util.toIso(data.seven_day_omelette.resets_at),
-          periodDurationMs: 7 * 24 * 60 * 60 * 1000 // 7 days
-        }))
-      }
+      pushPercentUsageLine(lines, ctx, "Session", data.five_hour, FIVE_HOUR_MS)
+      pushPercentUsageLine(lines, ctx, "Weekly", data.seven_day, SEVEN_DAY_MS)
+      pushPercentUsageLine(lines, ctx, "Sonnet", data.seven_day_sonnet, SEVEN_DAY_MS)
+      pushPercentUsageLine(lines, ctx, "Claude Design", data.seven_day_omelette, SEVEN_DAY_MS)
+      pushPercentUsageLine(
+        lines,
+        ctx,
+        "Fable Weekly",
+        pickUsageWindow(
+          data,
+          ["seven_day_fable", "seven_day_falbe", "weekly_fable", "weekly_falbe", "fable", "falbe"],
+          fableWeeklyPathMatches
+        ),
+        SEVEN_DAY_MS
+      )
 
       if (data.extra_usage && data.extra_usage.is_enabled) {
         const used = data.extra_usage.used_credits

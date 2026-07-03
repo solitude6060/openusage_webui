@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import {
+  AUTO_UPDATE_OPTIONS,
   DEFAULT_AUTO_UPDATE_INTERVAL,
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
@@ -174,13 +175,17 @@ describe("settings", () => {
   })
 
   it("loads stored auto-update interval", async () => {
-    storeState.set("autoUpdateInterval", 30)
-    await expect(loadAutoUpdateInterval()).resolves.toBe(30)
+    storeState.set("autoUpdateInterval", 20)
+    await expect(loadAutoUpdateInterval()).resolves.toBe(20)
   })
 
   it("saves auto-update interval", async () => {
-    await saveAutoUpdateInterval(5)
-    await expect(loadAutoUpdateInterval()).resolves.toBe(5)
+    await saveAutoUpdateInterval(20)
+    await expect(loadAutoUpdateInterval()).resolves.toBe(20)
+  })
+
+  it("offers a 20 minute auto-update interval", () => {
+    expect(AUTO_UPDATE_OPTIONS).toContainEqual({ value: 20, label: "20 min" })
   })
 
   it("loads default theme mode when missing", async () => {

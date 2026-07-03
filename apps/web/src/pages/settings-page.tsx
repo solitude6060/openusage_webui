@@ -4,6 +4,8 @@ import { createManualUsage, type HealthResponse } from "../lib/api";
 import { toDatetimeLocal, optionalNumber } from "../lib/format";
 import { StatusPill } from "../components/status-pill";
 
+export const WEB_AUTO_REFRESH_LABEL = "Every 20 Minutes";
+
 export function SettingsPage({
   health,
   onCreated,
@@ -71,7 +73,7 @@ export function SettingsPage({
           </div>
           <div>
             <dt>Refresh Interval</dt>
-            <dd>Manual</dd>
+            <dd>{WEB_AUTO_REFRESH_LABEL}</dd>
           </div>
           <div>
             <dt>Currency Display</dt>

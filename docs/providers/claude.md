@@ -48,6 +48,10 @@ Returns rate limit windows and optional extra credits.
     "utilization": 0,
     "resets_at": "2026-02-01T00:00:00Z"
   },
+  "seven_day_fable": {              // separate weekly Fable limit (optional, plan-dependent)
+    "utilization": 0,
+    "resets_at": "2026-02-01T00:00:00Z"
+  },
   "extra_usage": {                  // on-demand overage credits (optional)
     "is_enabled": true,
     "used_credits": 500,            // cents spent
@@ -58,6 +62,10 @@ Returns rate limit windows and optional extra credits.
 ```
 
 All windows are enforced simultaneously — hitting any limit throttles the user.
+
+OpenUsage also accepts `seven_day_falbe`, `weekly_fable`, `weekly_falbe`, `fable`, and `falbe` as aliases for the Fable weekly window because the API is undocumented and field names can vary. If Claude returns the Fable weekly window nested under another object, OpenUsage looks for Fable/Falbe usage windows recursively.
+
+Local `ccusage` data can also include Fable model rows such as `claude-fable-5`, but OpenUsage does not infer remaining Fable weekly quota from local logs. If the live usage API does not return a separate Fable weekly quota window, the dashboard does not show a Fable weekly line.
 
 ## Authentication
 

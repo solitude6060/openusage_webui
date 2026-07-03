@@ -131,8 +131,8 @@ describe("SettingsPage", () => {
         onAutoUpdateIntervalChange={onAutoUpdateIntervalChange}
       />
     )
-    await userEvent.click(screen.getByText("30 min"))
-    expect(onAutoUpdateIntervalChange).toHaveBeenCalledWith(30)
+    await userEvent.click(screen.getByText("20 min"))
+    expect(onAutoUpdateIntervalChange).toHaveBeenCalledWith(20)
   })
 
   it("shows auto-update helper text", () => {

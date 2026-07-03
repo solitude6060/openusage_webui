@@ -604,6 +604,86 @@ describe("claude plugin", () => {
     expect(line.resetsAt).toBe("2099-01-01T00:00:00.000Z")
   })
 
+  it("renders Fable Weekly line from seven_day_fable with normalized resetsAt", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        seven_day_fable: { utilization: 11, resets_at: "2099-01-01 00:00:00 UTC" },
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines.find((l) => l.label === "Fable Weekly")
+    expect(line).toBeTruthy()
+    expect(line.used).toBe(11)
+    expect(line.limit).toBe(100)
+    expect(line.format).toEqual({ kind: "percent" })
+    expect(line.resetsAt).toBe("2099-01-01T00:00:00.000Z")
+  })
+
+  it("accepts the misspelled falbe usage window from the Claude API", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        seven_day_falbe: { utilization: 12, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines.find((l) => l.label === "Fable Weekly")
+    expect(line).toBeTruthy()
+    expect(line.used).toBe(12)
+  })
+
+  it("finds nested Fable weekly quota windows from the Claude API", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        quotas: {
+          models: {
+            fable: { used: 22, limit: 100, reset_at: "2099-01-01T00:00:00.000Z" },
+          },
+        },
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines.find((l) => l.label === "Fable Weekly")
+    expect(line).toBeTruthy()
+    expect(line.used).toBe(22)
+    expect(line.resetsAt).toBe("2099-01-01T00:00:00.000Z")
+  })
+
+  it("normalizes string utilization values from the Claude API", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        seven_day_fable: { utilization: "13", resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines.find((l) => l.label === "Fable Weekly")
+    expect(line).toBeTruthy()
+    expect(line.used).toBe(13)
+  })
+
   it("omits Claude Design line when seven_day_omelette has no utilization", async () => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () =>

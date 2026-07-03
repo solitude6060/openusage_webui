@@ -2,7 +2,15 @@ import type { CSSProperties, ReactNode } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
-export function SortableCard({ id, children }: { id: string; children: ReactNode }) {
+export function SortableCard({
+  id,
+  className = "",
+  children,
+}: {
+  id: string;
+  className?: string;
+  children: ReactNode;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -11,7 +19,13 @@ export function SortableCard({ id, children }: { id: string; children: ReactNode
     cursor: "grab",
   };
   return (
-    <article ref={setNodeRef} style={style} className="provider-card usage-card" {...attributes} {...listeners}>
+    <article
+      ref={setNodeRef}
+      style={style}
+      className={`provider-card usage-card${className ? ` ${className}` : ""}`}
+      {...attributes}
+      {...listeners}
+    >
       {children}
     </article>
   );

@@ -1,0 +1,85 @@
+import { describe, expect, test } from "bun:test";
+import { splitDashboardLines } from "./pages/dashboard-page";
+
+describe("Dashboard line grouping", () => {
+  test("keeps Fable weekly usage in the card summary", () => {
+    const result = splitDashboardLines([
+      { type: "progress", label: "Session", used: 3, limit: 100, format: { kind: "percent" } },
+      { type: "progress", label: "Weekly", used: 38, limit: 100, format: { kind: "percent" } },
+      { type: "progress", label: "Fable Weekly", used: 11, limit: 100, format: { kind: "percent" } },
+      { type: "text", label: "Today", value: "$255.45 · 111M tokens" },
+      { type: "barChart", label: "Usage Trend", points: [] },
+      { type: "text", label: "claude-fable-5", value: "8.1%" },
+      { type: "text", label: "Last 30 Days", value: "$3330.76 · 3.1B tokens" },
+    ]);
+
+    expect(result.summaryLines.map((line) => line.label)).toEqual([
+      "Session",
+      "Weekly",
+      "Fable Weekly",
+      "Today",
+    ]);
+    expect(result.detailLines.map((line) => line.label)).toEqual([
+      "Usage Trend",
+      "claude-fable-5",
+      "Last 30 Days",
+    ]);
+  });
+
+  test("hides Codex reset credits and model details", () => {
+    const result = splitDashboardLines([
+      { type: "progress", label: "Session", used: 32, limit: 100, format: { kind: "percent" } },
+      { type: "progress", label: "Weekly", used: 69, limit: 100, format: { kind: "percent" } },
+      { type: "progress", label: "Spark", used: 3, limit: 100, format: { kind: "percent" } },
+      { type: "progress", label: "Spark Weekly", used: 1, limit: 100, format: { kind: "percent" } },
+      { type: "text", label: "Rate Limit Resets", value: "4 available" },
+      { type: "text", label: "Credits", value: "$0.00 · 0 credits" },
+      { type: "badge", label: "Reset Credit", tone: "normal" },
+      { type: "text", label: "Today", value: "$10.45 · 14M tokens" },
+      { type: "text", label: "gpt-5.5", value: "93%" },
+    ]);
+
+    expect(result.summaryLines.map((line) => line.label)).toEqual([
+      "Session",
+      "Weekly",
+      "Today",
+    ]);
+    expect(result.detailLines.map((line) => line.label)).toEqual([
+      "Spark",
+      "Spark Weekly",
+      "Rate Limit Resets",
+      "Credits",
+      "Reset Credit",
+      "gpt-5.5",
+    ]);
+  });
+
+  test("does not promote low-priority details when no summary label matches", () => {
+    const result = splitDashboardLines([
+      { type: "text", label: "Credits", value: "$0.00 · 0 credits" },
+      { type: "text", label: "Rate Limit Resets", value: "4 available" },
+      { type: "text", label: "Last 30 Days", value: "$10.00 · 1M tokens" },
+      { type: "barChart", label: "Usage Trend", points: [] },
+    ]);
+
+    expect(result.summaryLines).toEqual([]);
+    expect(result.detailLines.map((line) => line.label)).toEqual([
+      "Credits",
+      "Rate Limit Resets",
+      "Last 30 Days",
+      "Usage Trend",
+    ]);
+  });
+
+  test("leaves sparse providers uncollapsed", () => {
+    const lines = [
+      { type: "text", label: "Status", value: "No Usage Data" },
+      { type: "badge", label: "Detected", text: "Yes" },
+    ];
+
+    expect(splitDashboardLines(lines)).toEqual({
+      summaryLines: lines,
+      detailLines: [],
+    });
+  });
+});

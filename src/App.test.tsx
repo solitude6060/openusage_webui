@@ -893,8 +893,8 @@ describe("App", () => {
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
-    await userEvent.click(await screen.findByRole("radio", { name: "30 min" }))
-    expect(state.saveAutoUpdateIntervalMock).toHaveBeenCalledWith(30)
+    await userEvent.click(await screen.findByRole("radio", { name: "20 min" }))
+    expect(state.saveAutoUpdateIntervalMock).toHaveBeenCalledWith(20)
   })
 
   it("logs when saving auto-update interval fails", async () => {
@@ -903,7 +903,7 @@ describe("App", () => {
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
-    await userEvent.click(await screen.findByRole("radio", { name: "30 min" }))
+    await userEvent.click(await screen.findByRole("radio", { name: "20 min" }))
     await waitFor(() => expect(errorSpy).toHaveBeenCalled())
     errorSpy.mockRestore()
   })

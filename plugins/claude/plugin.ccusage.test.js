@@ -88,4 +88,30 @@ describe("claude plugin ccusage usage trend", () => {
       value: "50%",
     })
   })
+
+  it("does not infer Fable weekly quota from claude ccusage model share", async () => {
+    const todayKey = localDayKey(new Date())
+    const ctx = makeProbeCtx({
+      ccusageResult: okUsage([
+        {
+          date: todayKey,
+          totalTokens: 1000,
+          totalCost: 1,
+          modelBreakdowns: [
+            { modelName: "claude-fable-5", totalTokens: 250 },
+            { modelName: "claude-opus-4-8", totalTokens: 750 },
+          ],
+        },
+      ]),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Fable Weekly")).toBeUndefined()
+    expect(result.lines.find((line) => line.label === "Fable Model")).toBeUndefined()
+    expect(result.lines.find((line) => line.label === "claude-fable-5")).toMatchObject({
+      type: "text",
+      value: "25%",
+    })
+  })
 })

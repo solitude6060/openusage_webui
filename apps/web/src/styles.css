@@ -361,6 +361,17 @@ td {
   gap: 12px;
 }
 
+.dashboard-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  align-items: start;
+  gap: 12px;
+}
+
+.dashboard-provider-grid > .provider-card {
+  min-width: 0;
+}
+
 .provider-card {
   display: flex;
   flex-direction: column;
@@ -704,14 +715,67 @@ textarea {
 }
 
 .usage-card {
-  min-height: auto;
+  min-height: 160px;
   gap: 0;
+}
+
+.usage-card.compact {
+  min-height: auto;
+  padding: 14px;
+}
+
+.usage-card.compact .usage-lines {
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.usage-card-body {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.usage-summary-column {
+  min-width: 0;
 }
 
 .usage-lines {
   display: grid;
   gap: 14px;
   margin-top: 14px;
+}
+
+.usage-detail-lines {
+  display: grid;
+  gap: 12px;
+  margin-top: 0;
+  padding: 12px;
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.usage-detail-lines[hidden] {
+  display: none;
+}
+
+.details-toggle {
+  justify-self: start;
+  margin-top: 12px;
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 8px;
+  color: var(--ink-secondary);
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.details-toggle:hover {
+  color: var(--ink);
+  border-color: var(--line-strong);
 }
 
 .usage-progress {

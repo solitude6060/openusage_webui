@@ -45,9 +45,10 @@ export function UsageLine({ line }: { line: Record<string, unknown> }) {
   }
 
   if (line.type === "text") {
+    const label = String(line.label);
     return (
       <div className="usage-text-line">
-        <span>{String(line.label)}</span>
+        <span>{label}</span>
         <span style={typeof line.color === "string" ? { color: line.color } : undefined}>
           {String(line.value ?? "")}
         </span>

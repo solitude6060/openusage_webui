@@ -77,7 +77,7 @@ describe("useProbeAutoUpdate", () => {
     renderHook(() =>
       useProbeAutoUpdate({
         pluginSettings: { order: ["slow", "idle"], disabled: [] },
-        autoUpdateInterval: 15,
+        autoUpdateInterval: 20,
         setLoadingForPlugins,
         setErrorForPlugins,
         isPluginLoading,
@@ -86,7 +86,7 @@ describe("useProbeAutoUpdate", () => {
     )
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(15 * 60_000)
+      await vi.advanceTimersByTimeAsync(20 * 60_000)
     })
 
     expect(isPluginLoading).toHaveBeenCalledWith("slow")

@@ -23,6 +23,17 @@ import { UsageLine } from "../components/usage-line";
 import { SortableCard } from "../components/sortable-card";
 
 const CARD_ORDER_KEY = "openusage-dashboard-card-order";
+const SUMMARY_PROGRESS_LABELS = new Set(["Session", "Weekly", "Usage", "Fable", "Fable Weekly"]);
+const SUMMARY_TEXT_LABELS = new Set(["Today"]);
+const SUMMARY_BADGE_LABELS = new Set(["Status"]);
+
+type DashboardLine = Record<string, unknown>;
+type ProviderData = {
+  providerId: ProviderId;
+  plan?: string;
+  lines: DashboardLine[];
+  status?: ProviderStatus;
+};
 
 function loadCardOrder(): ProviderId[] {
   try {
@@ -39,6 +50,100 @@ function saveCardOrder(order: ProviderId[]): void {
   try {
     localStorage.setItem(CARD_ORDER_KEY, JSON.stringify(order));
   } catch { /* quota exceeded — ignore */ }
+}
+
+function lineLabel(line: DashboardLine): string {
+  return typeof line.label === "string" ? line.label : String(line.label ?? "");
+}
+
+function isSummaryLine(line: DashboardLine): boolean {
+  const label = lineLabel(line);
+  if (line.type === "progress") return SUMMARY_PROGRESS_LABELS.has(label);
+  if (line.type === "badge") return SUMMARY_BADGE_LABELS.has(label);
+  if (line.type !== "text") return false;
+  return SUMMARY_TEXT_LABELS.has(label);
+}
+
+export function splitDashboardLines(lines: DashboardLine[]): {
+  summaryLines: DashboardLine[];
+  detailLines: DashboardLine[];
+} {
+  if (lines.length <= 3) {
+    return { summaryLines: lines, detailLines: [] };
+  }
+
+  const summaryLines: DashboardLine[] = [];
+  const detailLines: DashboardLine[] = [];
+
+  for (const line of lines) {
+    if (isSummaryLine(line)) {
+      summaryLines.push(line);
+    } else {
+      detailLines.push(line);
+    }
+  }
+
+  if (summaryLines.length === 0) {
+    const firstUsefulIndex = detailLines.findIndex((line) => line.type === "progress");
+    if (firstUsefulIndex >= 0) {
+      summaryLines.push(detailLines[firstUsefulIndex]);
+      detailLines.splice(firstUsefulIndex, 1);
+    }
+  }
+
+  return { summaryLines, detailLines };
+}
+
+function ProviderUsageCard({ providerId, plan, lines, status }: ProviderData) {
+  const [expanded, setExpanded] = useState(false);
+  const { summaryLines, detailLines } = useMemo(() => splitDashboardLines(lines), [lines]);
+  const detailId = `${providerId}-details`;
+  const isCompact = detailLines.length === 0 && summaryLines.length <= 2;
+
+  return (
+    <SortableCard key={providerId} id={providerId} className={isCompact ? "compact" : ""}>
+      <div className="provider-title-row">
+        <h3>{providerLabel(providerId)}</h3>
+        {plan ? <span className="value-chip">{plan}</span> : null}
+      </div>
+      <div className="usage-card-body">
+        <div className="usage-summary-column">
+          <div className="usage-lines">
+            {summaryLines.map((line, i) => (
+              <UsageLine key={`${String(line.label)}-${i}`} line={line} />
+            ))}
+          </div>
+          {detailLines.length > 0 ? (
+            <button
+              type="button"
+              className="details-toggle"
+              aria-expanded={expanded}
+              aria-controls={detailId}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                setExpanded((value) => !value);
+              }}
+            >
+              {expanded ? "Hide Details" : `Show Details (${detailLines.length})`}
+            </button>
+          ) : null}
+        </div>
+        {detailLines.length > 0 ? (
+          <div id={detailId} className="usage-detail-lines" hidden={!expanded}>
+            {detailLines.map((line, i) => (
+              <UsageLine key={`${String(line.label)}-${i}`} line={line} />
+            ))}
+          </div>
+        ) : null}
+      </div>
+      {status?.lastRefreshAt ? (
+        <div className="usage-card-footer">
+          Updated {formatDate(status.lastRefreshAt)}
+        </div>
+      ) : null}
+    </SortableCard>
+  );
 }
 
 export function DashboardPage({
@@ -64,7 +169,7 @@ export function DashboardPage({
   }, [records]);
 
   const providerDataMap = useMemo(() => {
-    const map = new Map<ProviderId, { providerId: ProviderId; plan?: string; lines: Array<Record<string, unknown>>; status?: ProviderStatus }>();
+    const map = new Map<ProviderId, ProviderData>();
     for (const [providerId, record] of latestByProvider.entries()) {
       const raw = record.raw as Record<string, unknown>;
       const lines = linesFromRaw(raw);
@@ -117,7 +222,7 @@ export function DashboardPage({
   const sortedProviders = useMemo(() => {
     return cardOrder
       .map((id) => providerDataMap.get(id))
-      .filter(Boolean) as Array<{ providerId: ProviderId; plan?: string; lines: Array<Record<string, unknown>>; status?: ProviderStatus }>;
+      .filter(Boolean) as ProviderData[];
   }, [cardOrder, providerDataMap]);
 
   return (
@@ -125,24 +230,9 @@ export function DashboardPage({
       {sortedProviders.length > 0 ? (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={cardOrder} strategy={rectSortingStrategy}>
-            <div className="provider-grid">
-              {sortedProviders.map(({ providerId, plan, lines, status }) => (
-                <SortableCard key={providerId} id={providerId}>
-                  <div className="provider-title-row">
-                    <h3>{providerLabel(providerId)}</h3>
-                    {plan ? <span className="value-chip">{plan}</span> : null}
-                  </div>
-                  <div className="usage-lines">
-                    {lines.map((line, i) => (
-                      <UsageLine key={`${String(line.label)}-${i}`} line={line} />
-                    ))}
-                  </div>
-                  {status?.lastRefreshAt ? (
-                    <div className="usage-card-footer">
-                      Updated {formatDate(status.lastRefreshAt)}
-                    </div>
-                  ) : null}
-                </SortableCard>
+            <div className="provider-grid dashboard-provider-grid">
+              {sortedProviders.map((provider) => (
+                <ProviderUsageCard key={provider.providerId} {...provider} />
               ))}
             </div>
           </SortableContext>
