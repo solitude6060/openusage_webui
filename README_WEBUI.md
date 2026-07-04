@@ -74,6 +74,19 @@ bun run start:webui
 ## Security
 
 The server binds to 127.0.0.1 by default.
+To expose it to selected Tailscale addresses, set both the bind host and an
+explicit Host header allowlist before starting the server:
+
+```bash
+OPENUSAGE_WEBUI_HOST=0.0.0.0 \
+OPENUSAGE_WEBUI_ALLOWED_HOSTS=<tailscale-ip>,<magic-dns-name> \
+bun run start:webui
+```
+
+`OPENUSAGE_WEBUI_ALLOWED_HOSTS` accepts comma-separated hostnames or IP
+addresses. Localhost stays allowed automatically. Do not bind to `0.0.0.0`
+without a narrow allowlist and host firewall rules if the local network is not
+trusted.
 No telemetry.
 No cloud upload.
 Original OpenUsage plugins that write keychain items use a local WebUI shim at `~/.openusage-webui/plugins/<provider>/keychain.json` with owner-only file permissions. This is not the macOS Keychain or a Linux secret-service integration.

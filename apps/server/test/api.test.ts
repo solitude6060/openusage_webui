@@ -8,13 +8,16 @@ import { MiniMaxProvider, type UsageProvider } from "../../../packages/providers
 
 let dataDir: string;
 let previousDataDir: string | undefined;
+let previousAllowedHosts: string | undefined;
 let storage: SqliteStorage;
 let handleRequest: (request: Request) => Promise<Response>;
 
 beforeEach(async () => {
   previousDataDir = process.env.OPENUSAGE_WEBUI_DIR;
+  previousAllowedHosts = process.env.OPENUSAGE_WEBUI_ALLOWED_HOSTS;
   dataDir = mkdtempSync(join(tmpdir(), "openusage-webui-api-test-"));
   process.env.OPENUSAGE_WEBUI_DIR = dataDir;
+  delete process.env.OPENUSAGE_WEBUI_ALLOWED_HOSTS;
   storage = new SqliteStorage();
   await storage.init();
   const providers: UsageProvider[] = [
@@ -49,6 +52,11 @@ afterEach(() => {
     delete process.env.OPENUSAGE_WEBUI_DIR;
   } else {
     process.env.OPENUSAGE_WEBUI_DIR = previousDataDir;
+  }
+  if (previousAllowedHosts === undefined) {
+    delete process.env.OPENUSAGE_WEBUI_ALLOWED_HOSTS;
+  } else {
+    process.env.OPENUSAGE_WEBUI_ALLOWED_HOSTS = previousAllowedHosts;
   }
   rmSync(dataDir, { recursive: true, force: true });
 });
@@ -101,6 +109,24 @@ describe("WebUI API", () => {
 
     expect(response.status).toBe(403);
     expect(body.error.code).toBe("FORBIDDEN_HOST");
+  });
+
+  test("allows configured Tailscale Host headers without disabling localhost", async () => {
+    process.env.OPENUSAGE_WEBUI_ALLOWED_HOSTS = "100.96.97.122,ma.tailnet.example";
+
+    const tailscaleResponse = await handleRequest(new Request("http://100.96.97.122:6736/api/health", {
+      headers: {
+        host: "100.96.97.122:6736",
+      },
+    }));
+    const localhostResponse = await handleRequest(new Request("http://127.0.0.1:6736/api/health", {
+      headers: {
+        host: "localhost:6736",
+      },
+    }));
+
+    expect(tailscaleResponse.status).toBe(200);
+    expect(localhostResponse.status).toBe(200);
   });
 
   test("returns bad request for unknown provider ids", async () => {

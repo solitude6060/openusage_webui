@@ -83,6 +83,18 @@ bun run start:webui
 
 `start:webui` 會用同一個本機 server 服務已 build 的 frontend 和 API。如果 frontend build 產物不存在，server 會回傳明確錯誤，而不是空白頁。
 
+## Tailscale 連線
+
+預設只開本機。若要讓 Tailscale 裝置連進來，需要同時設定綁定位址與 `Host` header 允許清單：
+
+```bash
+OPENUSAGE_WEBUI_HOST=0.0.0.0 \
+OPENUSAGE_WEBUI_ALLOWED_HOSTS=<tailscale-ip>,<magic-dns-name> \
+bun run start:webui
+```
+
+`OPENUSAGE_WEBUI_ALLOWED_HOSTS` 可填逗號分隔的主機名稱或 IP 位址；`127.0.0.1`、`localhost`、`[::1]` 會自動允許。若所在區域網路不可信，綁定 `0.0.0.0` 時仍應搭配主機防火牆，只允許 Tailscale 介面連入 `6736`。
+
 ## MiniMax 設定
 
 MiniMax refresh 沿用原本 OpenUsage 的 Token Plan remains API 方法。啟動 server 前設定其中一個環境變數：
@@ -179,7 +191,7 @@ Copilot quota 會以原本 plugin 的 progress/text lines 存成 snapshot record
 ## 安全性
 
 - Server 預設只綁定 `127.0.0.1`
-- 不綁定 `0.0.0.0`
+- 只有明確設定 `OPENUSAGE_WEBUI_HOST` 和 `OPENUSAGE_WEBUI_ALLOWED_HOSTS` 時，才開放指定的 Tailscale 主機名稱或 IP 位址
 - 沒有 telemetry
 - 不會上傳資料到 cloud
 - 不讀 browser cookies

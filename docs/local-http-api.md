@@ -1,8 +1,12 @@
 # Local HTTP API
 
-OpenUsage exposes a read-only HTTP API on the loopback interface so other local apps can consume the same usage data shown in the menu bar.
+OpenUsage exposes a read-only HTTP API on the loopback interface by default so other local apps can consume the same usage data shown in the menu bar.
 
 **Base URL:** `http://127.0.0.1:6736`
+
+For selected Tailscale access, start the server with
+`OPENUSAGE_WEBUI_HOST=0.0.0.0` and set `OPENUSAGE_WEBUI_ALLOWED_HOSTS` to the
+Tailscale IP or MagicDNS name that clients will use.
 
 The server starts automatically with the app. If the port is already in use, the feature is silently disabled for that session.
 

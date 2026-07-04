@@ -31,7 +31,8 @@
 OpenUsage WebUI 採 local-first 設計：
 
 - 使用瀏覽器開本機 dashboard
-- API server 只綁定 `127.0.0.1`
+- API server 預設只綁定 `127.0.0.1`
+- 需要 Tailscale 裝置連線時，必須明確設定綁定位址和 `Host` header 允許清單
 - 使用 SQLite 存本機 usage records
 - 不上傳資料到 cloud
 - 不讀 browser cookies
@@ -85,6 +86,24 @@ bun run start:webui
 ```
 
 這個模式只需要 `6736`，frontend build 和 API 會由同一個 server 提供。
+
+### 3.4 Tailscale 裝置連線
+
+預設模式只允許本機瀏覽器。若要讓同一個 Tailscale 網路內的其他裝置連到 WebUI，啟動前設定：
+
+```bash
+OPENUSAGE_WEBUI_HOST=0.0.0.0 \
+OPENUSAGE_WEBUI_ALLOWED_HOSTS=<tailscale-ip>,<magic-dns-name> \
+bun run start:webui
+```
+
+之後可從其他 Tailscale 裝置開：
+
+```text
+http://<tailscale-ip>:6736
+```
+
+`OPENUSAGE_WEBUI_ALLOWED_HOSTS` 可填逗號分隔的主機名稱或 IP 位址；本機的 `127.0.0.1`、`localhost`、`[::1]` 會自動允許。這個設定限制的是 HTTP `Host` header，不等同於防火牆；若區域網路不可信，請另外用主機防火牆只允許 Tailscale 介面連入 `6736`。
 
 ## 4. 第一次打開後要做什麼
 
@@ -151,7 +170,7 @@ Settings 頁面包含：
 - Server bind host
 - Port
 - Database path
-- Refresh interval
+- Refresh interval（WebUI 每 20 分鐘自動 refresh 一次）
 - Currency display
 - MiniMax tracking method
 - Manual entry form
@@ -470,7 +489,7 @@ bun run start:webui
 
 ## 17. 不要做的事
 
-- 不要把 WebUI 綁到 `0.0.0.0`
+- 不要在未設定 `OPENUSAGE_WEBUI_ALLOWED_HOSTS` 與主機防火牆的情況下，把 WebUI 綁到 `0.0.0.0`
 - 不要把 MiniMax API key 填進 provider settings API
 - 不要把 `~/.openusage-webui` 公開上傳
 - 不要期待 MiniMax quota 等於 token usage

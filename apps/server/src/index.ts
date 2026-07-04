@@ -11,6 +11,7 @@ import type { UsageProvider } from "../../../packages/providers/src/index";
 const VERSION = "0.1.0";
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 6736;
+const ALLOWED_HOSTS_ENV = "OPENUSAGE_WEBUI_ALLOWED_HOSTS";
 const PROVIDER_ID_SET = new Set<ProviderId>(PROVIDER_IDS);
 
 type RefreshResult =
@@ -64,7 +65,7 @@ export function createRequestHandler(
   frontendDistPath?: string,
 ): (request: Request) => Promise<Response> {
   return async (request) => {
-    if (!isAllowedHost(request.headers.get("host"), serverInfo.port, request.url)) {
+    if (!isAllowedHost(request.headers.get("host"), serverInfo, request.url)) {
       return jsonError("FORBIDDEN_HOST", "Host header is not allowed", 403);
     }
 
@@ -392,12 +393,50 @@ async function readJsonObject(request: Request): Promise<Record<string, unknown>
   }
 }
 
-function isAllowedHost(hostHeader: string | null, port: number, requestUrl?: string): boolean {
-  const host = hostHeader ?? deriveHostFromUrl(requestUrl);
+function isAllowedHost(
+  hostHeader: string | null,
+  serverInfo: { host: string; port: number },
+  requestUrl?: string,
+): boolean {
+  const host = normalizeAllowedHost(hostHeader ?? deriveHostFromUrl(requestUrl), serverInfo.port);
   if (!host) {
     return false;
   }
-  return host === `127.0.0.1:${port}` || host === `localhost:${port}`;
+  const allowed = new Set([
+    `127.0.0.1:${serverInfo.port}`,
+    `localhost:${serverInfo.port}`,
+    `[::1]:${serverInfo.port}`,
+  ]);
+  if (!isWildcardHost(serverInfo.host)) {
+    const bindHost = normalizeAllowedHost(serverInfo.host, serverInfo.port);
+    if (bindHost) allowed.add(bindHost);
+  }
+  for (const value of (process.env[ALLOWED_HOSTS_ENV] ?? "").split(/[,\s]+/)) {
+    const allowedHost = normalizeAllowedHost(value, serverInfo.port);
+    if (allowedHost) allowed.add(allowedHost);
+  }
+  return allowed.has(host);
+}
+
+function normalizeAllowedHost(value: string | null | undefined, port: number): string | null {
+  const host = value?.trim().toLowerCase();
+  if (!host) return null;
+  if (host.includes("://")) {
+    try {
+      return new URL(host).host.toLowerCase();
+    } catch {
+      return null;
+    }
+  }
+  if (host.startsWith("[")) return host.includes("]:") ? host : `${host}:${port}`;
+  const colonCount = (host.match(/:/g) ?? []).length;
+  if (colonCount === 0) return `${host}:${port}`;
+  if (colonCount === 1) return host;
+  return `[${host}]:${port}`;
+}
+
+function isWildcardHost(host: string): boolean {
+  return host === "0.0.0.0" || host === "::" || host === "[::]";
 }
 
 function deriveHostFromUrl(url?: string): string | null {
