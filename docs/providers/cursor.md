@@ -162,9 +162,9 @@ Unofficial Cursor dashboard endpoint. Returns paginated usage events with per-re
 }
 ```
 
-OpenUsage fetches up to 8 pages (800 events), aggregates locally into **Last 7 Days** and **Billing Cycle** windows, emits daily cost/token bar charts, and lists the top models by cost. Failures are nonfatal: the main Credits / Total usage card still renders.
+OpenUsage fetches up to 10 pages of 200 events (2,000 events), aggregates locally into **Last 7 Days** and **Billing Cycle** windows, emits daily cost/token bar charts, and lists the top models by cost. Failures are nonfatal: the main Credits / Total usage card still renders.
 
-Cost uses `chargedCents` / `tokenUsage.totalCents` (API price; numeric or numeric strings). Tokens use `tokenUsage.totalTokens` when present. If pagination stops early or hits the page cap, an **Events Note** marks the sample as partial.
+Cost prefers positive `chargedCents`, then positive `tokenUsage.totalCents` (API price; numeric or numeric strings). Tokens use `tokenUsage.totalTokens` when present. If pagination stops early or hits the page cap, window totals append `· partial` and an **Events Note** marks the sample as partial.
 
 ## Authentication
 

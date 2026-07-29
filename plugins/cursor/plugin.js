@@ -16,8 +16,8 @@
   const CLIENT_ID = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
   const LOGIN_HINT = "Sign in via Cursor app or run `agent login`."
-  const EVENTS_PAGE_SIZE = 100
-  const EVENTS_MAX_PAGES = 8
+  const EVENTS_PAGE_SIZE = 200
+  const EVENTS_MAX_PAGES = 10
   const MODEL_BREAKDOWN_LIMIT = 5
   const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -350,11 +350,16 @@
   function eventCostCents(event) {
     if (!event || typeof event !== "object") return 0
     var charged = finiteNumber(event.chargedCents)
-    if (charged != null) return charged
+    var totalCents = null
     if (event.tokenUsage && typeof event.tokenUsage === "object") {
-      var totalCents = finiteNumber(event.tokenUsage.totalCents)
-      if (totalCents != null) return totalCents
+      totalCents = finiteNumber(event.tokenUsage.totalCents)
     }
+    // Prefer a positive charged amount; if charged is missing/zero but totalCents
+    // is positive, use totalCents (Cursor sometimes reports free chargedCents).
+    if (charged != null && charged > 0) return charged
+    if (totalCents != null && totalCents > 0) return totalCents
+    if (charged != null) return charged
+    if (totalCents != null) return totalCents
     if (typeof event.usageBasedCosts === "string") {
       var parsed = Number(String(event.usageBasedCosts).replace(/[^0-9.-]/g, ""))
       if (Number.isFinite(parsed)) return parsed * 100
@@ -520,13 +525,14 @@
     }))
   }
 
-  function pushWindowModelLines(ctx, lines, windowLabel, events, modelLimit) {
+  function pushWindowModelLines(ctx, lines, windowLabel, events, modelLimit, partial) {
     if (!events.length) return
     var summary = aggregateEventsByModel(events)
     var summaryValue = formatUsdFromCents(summary.totalCents) + " · " + events.length + " calls"
     if (summary.totalTokens > 0) {
       summaryValue += " · " + formatTokenCount(summary.totalTokens) + " tokens"
     }
+    if (partial) summaryValue += " · partial"
     lines.push(ctx.line.text({
       label: windowLabel,
       value: summaryValue,
@@ -584,7 +590,10 @@
           data && typeof data.totalUsageEventsCount === "number"
             ? data.totalUsageEventsCount
             : null
-        if (batch.length < EVENTS_PAGE_SIZE) break
+        if (batch.length < EVENTS_PAGE_SIZE) {
+          if (total != null && all.length < total) truncated = true
+          break
+        }
         if (total != null && all.length >= total) break
         if (page === EVENTS_MAX_PAGES && (total == null || all.length < total)) {
           truncated = true
@@ -620,7 +629,8 @@
         if (ts >= cycleStart) cycle.push(event)
       }
 
-      pushWindowModelLines(ctx, lines, "Last 7 Days", last7, MODEL_BREAKDOWN_LIMIT)
+      var partialSample = !!(fetched.truncated || fetched.incomplete)
+      pushWindowModelLines(ctx, lines, "Last 7 Days", last7, MODEL_BREAKDOWN_LIMIT, partialSample)
       pushDailyCharts(
         ctx,
         lines,
@@ -632,7 +642,7 @@
       )
       // Only add a second window when the billing cycle reaches earlier than 7 days.
       if (cycleStart < sevenStart - 60 * 1000) {
-        pushWindowModelLines(ctx, lines, "Billing Cycle", cycle, MODEL_BREAKDOWN_LIMIT)
+        pushWindowModelLines(ctx, lines, "Billing Cycle", cycle, MODEL_BREAKDOWN_LIMIT, partialSample)
         pushDailyCharts(
           ctx,
           lines,

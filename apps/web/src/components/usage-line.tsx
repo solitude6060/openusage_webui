@@ -49,7 +49,7 @@ function UsageBarChart({
         <span className="usage-barchart-label">{label}</span>
         <span className="usage-barchart-readout">{readout}</span>
       </div>
-      <div className="usage-barchart-bars" role="img" aria-label={label}>
+      <div className="usage-barchart-bars" aria-label={label}>
         {points.map((point, index) => {
           const ratio = point.value / maxValue;
           const height =
