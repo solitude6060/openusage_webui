@@ -22,6 +22,13 @@
 | API usage | `planUsage.apiPercentUsed` | detail | percent | Omitted when field is missing or non-finite |
 | Requests | `/api/usage` (enterprise) | overview | count | Enterprise accounts only; unchanged from previous behavior |
 | On-demand | `spendLimitUsage` | detail | dollars | Only when individual or pooled limit > 0 |
+| Last 7 Days | `get-filtered-usage-events` | detail | text | Soft-fail. Sum of event API price + call count + tokens for the last 7 days, followed by top models. Kept in detail with model rows (not promoted to the card summary). |
+| Last 7 Days Cost | `get-filtered-usage-events` | detail | barChart | Soft-fail. Daily API price (USD) bars for the last 7 days. Uses theme ink color (no hardcoded black). |
+| Last 7 Days Tokens | `get-filtered-usage-events` | detail | barChart | Soft-fail. Daily token bars when events include `tokenUsage`. |
+| Billing Cycle | `get-filtered-usage-events` | detail | text | Soft-fail. Same aggregation for the current billing cycle when the cycle starts earlier than 7 days. |
+| Billing Cycle Cost / Tokens | `get-filtered-usage-events` | detail | barChart | Soft-fail. Daily cost and token charts for the billing cycle window when shown. |
+| Per-model rows | `usageEventsDisplay[].model` | detail | text | Top models by cost within each window (`$X.XX · N calls · tokens`). |
+| Events Note | `get-filtered-usage-events` | detail | text | Soft-fail. Shown when the sample is truncated by the page cap or stopped mid-fetch. |
 
 **Enterprise flow** remains request-based via the REST `/api/usage` endpoint -- unchanged.
 
@@ -140,6 +147,25 @@ Returns subscription and Stripe customer balance metadata from `cursor.com`.
 
 `customerBalance` is in cents. Negative means customer credit/prepaid balance.
 
+### POST /api/dashboard/get-filtered-usage-events
+
+Unofficial Cursor dashboard endpoint. Returns paginated usage events with per-request model, token, and cost fields. OpenUsage uses cookie auth (`WorkosCursorSessionToken`) plus `Origin: https://cursor.com`.
+
+#### Request body (partial)
+
+```jsonc
+{
+  "startDate": "1774846800000", // unix ms string
+  "endDate": "1775451599999",
+  "page": 1,
+  "pageSize": 100
+}
+```
+
+OpenUsage fetches up to 8 pages (800 events), aggregates locally into **Last 7 Days** and **Billing Cycle** windows, emits daily cost/token bar charts, and lists the top models by cost. Failures are nonfatal: the main Credits / Total usage card still renders.
+
+Cost uses `chargedCents` / `tokenUsage.totalCents` (API price; numeric or numeric strings). Tokens use `tokenUsage.totalTokens` when present. If pagination stops early or hits the page cap, an **Events Note** marks the sample as partial.
+
 ## Authentication
 
 ### Token Sources
@@ -151,10 +177,20 @@ OpenUsage reads Cursor auth in this order:
 
 #### 1) Cursor Desktop SQLite (preferred)
 
-Path: `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb`
+Tried in order; first database that has an access or refresh token wins. Refreshed tokens are written back to that same database.
+
+| Platform | Path |
+|---|---|
+| macOS | `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` |
+| Linux | `~/.config/Cursor/User/globalStorage/state.vscdb` |
 
 ```bash
+# macOS
 sqlite3 ~/Library/Application\ Support/Cursor/User/globalStorage/state.vscdb \
+  "SELECT value FROM ItemTable WHERE key = 'cursorAuth/accessToken'"
+
+# Linux
+sqlite3 ~/.config/Cursor/User/globalStorage/state.vscdb \
   "SELECT value FROM ItemTable WHERE key = 'cursorAuth/accessToken'"
 ```
 

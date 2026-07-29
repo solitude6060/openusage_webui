@@ -336,8 +336,15 @@ label {
   font-size: 0.78rem;
 }
 
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 table {
   width: 100%;
+  min-width: 860px;
   border-collapse: collapse;
   font-size: 0.85rem;
 }
@@ -355,15 +362,21 @@ td {
   font-variant-numeric: tabular-nums;
 }
 
+td:nth-child(4) {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .provider-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
   gap: 12px;
 }
 
 .dashboard-provider-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
   align-items: start;
   gap: 12px;
 }
@@ -596,6 +609,77 @@ textarea {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.settings-help {
+  margin: 0 0 14px;
+  color: var(--ink-secondary);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.settings-help.muted {
+  color: var(--muted);
+}
+
+.settings-list {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-list li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.settings-list li:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-list li > :first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.settings-list .mono-value {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.settings-list .button-row {
+  flex: 0 0 auto;
+}
+
+.settings-subsection {
+  margin-top: 8px;
+}
+
+.settings-subsection h4,
+.nested-form h4 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+}
+
+.nested-form {
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 /* Fixed region for global alerts: floats them over the page so showing/hiding an
@@ -860,7 +944,7 @@ textarea {
 .usage-text-line {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   min-height: 22px;
 }
@@ -879,11 +963,94 @@ textarea {
   font-variant-numeric: tabular-nums;
   color: var(--ink-secondary);
   text-align: right;
-  flex-shrink: 0;
-  max-width: 55%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 62%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.usage-progress-header {
+  min-width: 0;
+}
+
+.usage-progress-value {
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.usage-barchart {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.usage-barchart-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.usage-barchart-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 0;
+}
+
+.usage-barchart-readout {
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.usage-barchart-bars {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(4px, 1fr);
+  align-items: end;
+  gap: 3px;
+  height: 88px;
+  min-width: 0;
+  padding: 4px 2px 0;
+}
+
+.usage-barchart-bar {
+  width: 100%;
+  min-height: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px 3px 1px 1px;
+  background: var(--ink);
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+
+.usage-barchart-bar.dimmed {
+  opacity: 0.28;
+}
+
+.usage-barchart-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-barchart-note {
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--muted);
 }
 
 .usage-card-footer {
@@ -892,6 +1059,17 @@ textarea {
   border-top: 1px solid var(--line);
   font-size: 0.72rem;
   color: var(--muted);
+}
+
+@media (max-width: 1100px) {
+  .filter-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .filter-bar > button {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
 }
 
 @media (max-width: 980px) {
@@ -947,8 +1125,31 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .filter-bar > button {
+    grid-column: auto;
+    width: 100%;
+  }
+
+  .settings-list li {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .settings-list .button-row {
+    justify-content: flex-start;
+  }
+
+  .panel-header {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
   .content {
     max-width: none;
+  }
+
+  .usage-barchart-bars {
+    height: 72px;
   }
 }
 
@@ -960,6 +1161,18 @@ textarea {
   .topbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .topbar .button-row,
+  .panel-header .button-row {
+    width: 100%;
+  }
+
+  .topbar .primary-button,
+  .topbar .secondary-button,
+  .panel-header .primary-button,
+  .panel-header .secondary-button {
+    flex: 1 1 auto;
   }
 
   .nav-list {
@@ -974,6 +1187,33 @@ textarea {
   .detail-list.wide div {
     grid-template-columns: 1fr;
     gap: 4px;
+  }
+
+  .usage-text-line {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+  }
+
+  .usage-text-line > span:last-child {
+    max-width: none;
+    text-align: left;
+  }
+
+  .usage-progress-header,
+  .usage-barchart-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+  }
+
+  .usage-progress-value,
+  .usage-barchart-readout {
+    text-align: left;
+  }
+
+  table {
+    min-width: 720px;
   }
 }
 
