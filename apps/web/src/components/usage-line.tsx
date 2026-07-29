@@ -1,7 +1,90 @@
+import { useMemo, useState } from "react";
 import { resetCreditExpiryView, plainBadgeText } from "../provider-ui";
 import { formatDate, formatNumber, formatRelativeTime, isPlainObject } from "../lib/format";
 
+type ChartPoint = {
+  label: string;
+  value: number;
+  valueLabel?: string;
+};
+
+function normalizeChartPoints(raw: unknown): ChartPoint[] {
+  if (!Array.isArray(raw)) return [];
+  const points: ChartPoint[] = [];
+  for (const point of raw) {
+    if (!isPlainObject(point)) continue;
+    const value = Number(point.value);
+    if (!Number.isFinite(value) || value < 0) continue;
+    points.push({
+      label: typeof point.label === "string" ? point.label : "",
+      value,
+      valueLabel: typeof point.valueLabel === "string" ? point.valueLabel : undefined,
+    });
+  }
+  return points;
+}
+
+function UsageBarChart({
+  label,
+  points,
+  note,
+  color,
+}: {
+  label: string;
+  points: ChartPoint[];
+  note?: string;
+  color?: string;
+}) {
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const maxValue = Math.max(1, ...points.map((point) => point.value));
+  const active = activeIndex != null ? points[activeIndex] : null;
+  const peak = points.reduce((best, point) => (point.value > best.value ? point : best), points[0]);
+  const readout = active
+    ? `${active.label} · ${active.valueLabel ?? formatNumber(active.value)}`
+    : `peak ${peak.label} · ${peak.valueLabel ?? formatNumber(peak.value)}`;
+
+  return (
+    <div className="usage-barchart">
+      <div className="usage-barchart-header">
+        <span className="usage-barchart-label">{label}</span>
+        <span className="usage-barchart-readout">{readout}</span>
+      </div>
+      <div className="usage-barchart-bars" aria-label={label}>
+        {points.map((point, index) => {
+          const ratio = point.value / maxValue;
+          const height =
+            point.value > 0 ? Math.max(8, Math.round(ratio * 100)) : 4;
+          return (
+            <button
+              key={`${point.label}-${index}`}
+              type="button"
+              className={`usage-barchart-bar${activeIndex != null && activeIndex !== index ? " dimmed" : ""}`}
+              style={{ height: `${height}%`, backgroundColor: color || undefined }}
+              title={`${point.label}: ${point.valueLabel ?? formatNumber(point.value)}`}
+              aria-label={`${point.label}: ${point.valueLabel ?? formatNumber(point.value)}`}
+              onMouseEnter={() => setActiveIndex(index)}
+              onFocus={() => setActiveIndex(index)}
+              onMouseLeave={() => setActiveIndex(null)}
+              onBlur={() => setActiveIndex(null)}
+            />
+          );
+        })}
+      </div>
+      <div className="usage-barchart-axis">
+        <span>{points[0]?.label}</span>
+        <span>{points[points.length - 1]?.label}</span>
+      </div>
+      {note ? <div className="usage-barchart-note">{note}</div> : null}
+    </div>
+  );
+}
+
 export function UsageLine({ line }: { line: Record<string, unknown> }) {
+  const chartPoints = useMemo(
+    () => (line.type === "barChart" ? normalizeChartPoints(line.points) : []),
+    [line],
+  );
+
   if (line.type === "progress") {
     const used = Number(line.used) || 0;
     const limit = Number(line.limit) || 100;
@@ -84,6 +167,18 @@ export function UsageLine({ line }: { line: Record<string, unknown> }) {
         <span>{String(line.label)}</span>
         {badgeText !== null ? <span className="value-chip">{badgeText}</span> : null}
       </div>
+    );
+  }
+
+  if (line.type === "barChart") {
+    if (chartPoints.length === 0) return null;
+    return (
+      <UsageBarChart
+        label={String(line.label ?? "Usage Trend")}
+        points={chartPoints}
+        note={typeof line.note === "string" ? line.note : undefined}
+        color={typeof line.color === "string" ? line.color : undefined}
+      />
     );
   }
 

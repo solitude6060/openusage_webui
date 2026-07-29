@@ -23,7 +23,16 @@ import { UsageLine } from "../components/usage-line";
 import { SortableCard } from "../components/sortable-card";
 
 const CARD_ORDER_KEY = "openusage-dashboard-card-order";
-const SUMMARY_PROGRESS_LABELS = new Set(["Session", "Weekly", "Usage", "Fable", "Fable Weekly"]);
+const SUMMARY_PROGRESS_LABELS = new Set([
+  "Session",
+  "Weekly",
+  "Usage",
+  "Fable",
+  "Fable Weekly",
+  "Credits",
+  "Total usage",
+  "Requests",
+]);
 const SUMMARY_TEXT_LABELS = new Set(["Today"]);
 const SUMMARY_BADGE_LABELS = new Set(["Status"]);
 
@@ -171,6 +180,8 @@ export function DashboardPage({
   const providerDataMap = useMemo(() => {
     const map = new Map<ProviderId, ProviderData>();
     for (const [providerId, record] of latestByProvider.entries()) {
+      // Skip orphan snapshots (e.g. bare `codex` after switching to instance mode).
+      if (!providerMap.has(providerId)) continue;
       const raw = record.raw as Record<string, unknown>;
       const lines = linesFromRaw(raw);
       const plan = typeof raw.plan === "string" ? raw.plan : typeof raw.planName === "string" ? raw.planName : undefined;

@@ -82,4 +82,28 @@ describe("Dashboard line grouping", () => {
       detailLines: [],
     });
   });
+
+  test("keeps Cursor overview metrics in the card summary", () => {
+    const result = splitDashboardLines([
+      { type: "progress", label: "Credits", used: 10, limit: 100, format: { kind: "dollars" } },
+      { type: "progress", label: "Total usage", used: 42, limit: 100, format: { kind: "percent" } },
+      { type: "progress", label: "Auto usage", used: 5, limit: 100, format: { kind: "percent" } },
+      { type: "progress", label: "API usage", used: 20, limit: 100, format: { kind: "percent" } },
+      { type: "text", label: "Last 7 Days", value: "$3.50 · 2 calls" },
+      { type: "text", label: "claude-4.6-opus-high-thinking", value: "$2.50 · 1 calls" },
+      { type: "barChart", label: "Last 7 Days Cost", points: [{ label: "7/1", value: 1 }] },
+    ]);
+
+    expect(result.summaryLines.map((line) => line.label)).toEqual([
+      "Credits",
+      "Total usage",
+    ]);
+    expect(result.detailLines.map((line) => line.label)).toEqual([
+      "Auto usage",
+      "API usage",
+      "Last 7 Days",
+      "claude-4.6-opus-high-thinking",
+      "Last 7 Days Cost",
+    ]);
+  });
 });

@@ -16,6 +16,14 @@
     { "type": "progress", "label": "Requests", "scope": "overview", "primaryOrder": 3 },
     { "type": "progress", "label": "Auto usage", "scope": "detail" },
     { "type": "progress", "label": "API usage", "scope": "detail" },
-    { "type": "progress", "label": "On-demand", "scope": "detail" }
+    { "type": "progress", "label": "On-demand", "scope": "detail" },
+    { "type": "text", "label": "Last 7 Days", "scope": "detail" },
+    { "type": "barChart", "label": "Last 7 Days Cost", "scope": "detail" },
+    { "type": "barChart", "label": "Last 7 Days Tokens", "scope": "detail" },
+    { "type": "text", "label": "Billing Cycle", "scope": "detail" },
+    { "type": "barChart", "label": "Billing Cycle Cost", "scope": "detail" },
+    { "type": "barChart", "label": "Billing Cycle Tokens", "scope": "detail" },
+    { "type": "text", "label": "Bonus spend", "scope": "detail" },
+    { "type": "text", "label": "Events Note", "scope": "detail" }
   ]
 }

@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { makeCtx } from "../test-helpers.js"
 
+const STATE_DB_MAC =
+  "~/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
+const STATE_DB_LINUX = "~/.config/Cursor/User/globalStorage/state.vscdb"
+
 const loadPlugin = async () => {
   await import("./plugin.js")
   return globalThis.__openusage_plugin
@@ -24,6 +28,82 @@ describe("cursor plugin", () => {
     ctx.host.sqlite.query.mockReturnValue(JSON.stringify([]))
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+  })
+
+  it("loads tokens from Linux Cursor state.vscdb when macOS path is empty", async () => {
+    const ctx = makeCtx()
+    const linuxToken = makeJwt({ exp: 9999999999, sub: "auth0|linux-user" })
+
+    ctx.host.sqlite.query.mockImplementation((db, sql) => {
+      if (db === STATE_DB_MAC) return JSON.stringify([])
+      if (db === STATE_DB_LINUX && String(sql).includes("cursorAuth/accessToken")) {
+        return JSON.stringify([{ value: linuxToken }])
+      }
+      if (db === STATE_DB_LINUX && String(sql).includes("cursorAuth/refreshToken")) {
+        return JSON.stringify([{ value: "linux-refresh-token" }])
+      }
+      return JSON.stringify([])
+    })
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        expect(opts.headers.Authorization).toBe("Bearer " + linuxToken)
+      }
+      return {
+        status: 200,
+        bodyText: JSON.stringify({
+          enabled: true,
+          planUsage: { totalSpend: 1200, limit: 2400 },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Total usage")).toBeTruthy()
+    const queriedDbs = [...new Set(ctx.host.sqlite.query.mock.calls.map((call) => call[0]))]
+    expect(queriedDbs).toContain(STATE_DB_MAC)
+    expect(queriedDbs).toContain(STATE_DB_LINUX)
+  })
+
+  it("persists refreshed token to the Linux sqlite path it was loaded from", async () => {
+    const ctx = makeCtx()
+    const expiredAccessToken = makeJwt({ exp: 1 })
+    const refreshedAccessToken = makeJwt({ exp: 9999999999 })
+
+    ctx.host.sqlite.query.mockImplementation((db, sql) => {
+      if (db === STATE_DB_MAC) return JSON.stringify([])
+      if (db === STATE_DB_LINUX && String(sql).includes("cursorAuth/accessToken")) {
+        return JSON.stringify([{ value: expiredAccessToken }])
+      }
+      if (db === STATE_DB_LINUX && String(sql).includes("cursorAuth/refreshToken")) {
+        return JSON.stringify([{ value: "linux-refresh-token" }])
+      }
+      return JSON.stringify([])
+    })
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("/oauth/token")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({ access_token: refreshedAccessToken }),
+        }
+      }
+      return {
+        status: 200,
+        bodyText: JSON.stringify({
+          enabled: true,
+          planUsage: { totalSpend: 1200, limit: 2400 },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Total usage")).toBeTruthy()
+    expect(ctx.host.sqlite.exec).toHaveBeenCalled()
+    const execDb = ctx.host.sqlite.exec.mock.calls[0][0]
+    expect(execDb).toBe(STATE_DB_LINUX)
   })
 
   it("loads tokens from keychain when sqlite has none", async () => {
@@ -259,7 +339,7 @@ describe("cursor plugin", () => {
     expect(totalLine.format).toEqual({ kind: "dollars" })
     expect(totalLine.used).toBe(84.74)
     expect(totalLine.limit).toBe(20)
-    expect(result.lines.find((line) => line.label === "Bonus spend")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Bonus spend")?.value).toBe("$64.74")
   })
 
   it("throws on missing total usage limit", async () => {
@@ -1812,5 +1892,305 @@ describe("cursor plugin", () => {
 
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Usage request failed. Check your connection.")
+  })
+
+  it("adds Last 7 Days, charts, and per-model lines from filtered usage events", async () => {
+    const ctx = makeCtx()
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+    const now = Date.now()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            billingCycleStart: String(now - 20 * 24 * 60 * 60 * 1000),
+            billingCycleEnd: String(now + 10 * 24 * 60 * 60 * 1000),
+            planUsage: {
+              totalSpend: 1200,
+              limit: 2400,
+              totalPercentUsed: 50,
+              autoPercentUsed: 10,
+              apiPercentUsed: 40,
+            },
+          }),
+        }
+      }
+      if (url.includes("get-filtered-usage-events")) {
+        expect(opts.method).toBe("POST")
+        expect(opts.headers.Origin).toBe("https://cursor.com")
+        expect(opts.headers.Cookie).toContain("WorkosCursorSessionToken=user_abc123%3A%3A")
+        const body = JSON.parse(opts.bodyText)
+        expect(body.page).toBe(1)
+        expect(body.pageSize).toBe(200)
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            totalUsageEventsCount: 3,
+            usageEventsDisplay: [
+              {
+                timestamp: String(now - 2 * 24 * 60 * 60 * 1000),
+                model: "claude-4.6-opus-high-thinking",
+                chargedCents: 250,
+                tokenUsage: { totalTokens: 12000, totalCents: 250 },
+              },
+              {
+                timestamp: String(now - 3 * 24 * 60 * 60 * 1000),
+                model: "composer-2",
+                chargedCents: 100,
+                tokenUsage: { totalTokens: 4000, totalCents: 100 },
+              },
+              {
+                timestamp: String(now - 15 * 24 * 60 * 60 * 1000),
+                model: "claude-4.6-sonnet-medium-thinking",
+                chargedCents: 400,
+                tokenUsage: { totalTokens: 20000, totalCents: 400 },
+              },
+            ],
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const last7 = result.lines.find((line) => line.label === "Last 7 Days")
+    const cycle = result.lines.find((line) => line.label === "Billing Cycle")
+    const costChart = result.lines.find((line) => line.label === "Last 7 Days Cost")
+    const tokenChart = result.lines.find((line) => line.label === "Last 7 Days Tokens")
+    const opus = result.lines.find((line) => String(line.label).includes("opus"))
+    const sonnet = result.lines.find((line) => String(line.label).includes("sonnet"))
+
+    expect(last7?.value).toBe("$3.50 · 2 calls · 16K tokens")
+    expect(cycle?.value).toBe("$7.50 · 3 calls · 36K tokens")
+    expect(opus?.value).toBe("$2.50 · 1 calls · 12K tokens")
+    expect(sonnet?.value).toBe("$4.00 · 1 calls · 20K tokens")
+    expect(costChart?.type).toBe("barChart")
+    expect(Array.isArray(costChart?.points)).toBe(true)
+    expect(costChart.points.length).toBeGreaterThanOrEqual(7)
+    expect(costChart.color).toBeUndefined()
+    expect(tokenChart?.type).toBe("barChart")
+    expect(tokenChart.color).toBeUndefined()
+    expect(tokenChart.points.some((point) => point.value > 0)).toBe(true)
+  })
+
+  it("parses string cost fields from usage events", async () => {
+    const ctx = makeCtx()
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+    const now = Date.now()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            billingCycleStart: String(now - 2 * 24 * 60 * 60 * 1000),
+            billingCycleEnd: String(now + 10 * 24 * 60 * 60 * 1000),
+            planUsage: { totalSpend: 1200, limit: 2400, totalPercentUsed: 50 },
+          }),
+        }
+      }
+      if (url.includes("get-filtered-usage-events")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            totalUsageEventsCount: 1,
+            usageEventsDisplay: [
+              {
+                timestamp: String(now - 60 * 60 * 1000),
+                model: "composer-2",
+                chargedCents: "175",
+                tokenUsage: { totalTokens: "2500", totalCents: "175" },
+              },
+            ],
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Last 7 Days")?.value).toBe(
+      "$1.75 · 1 calls · 2.5K tokens",
+    )
+  })
+
+  it("marks event sample incomplete when pagination stops mid-fetch", async () => {
+    const ctx = makeCtx()
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+    const now = Date.now()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            billingCycleStart: String(now - 2 * 24 * 60 * 60 * 1000),
+            billingCycleEnd: String(now + 10 * 24 * 60 * 60 * 1000),
+            planUsage: { totalSpend: 1200, limit: 2400, totalPercentUsed: 50 },
+          }),
+        }
+      }
+      if (url.includes("get-filtered-usage-events")) {
+        const body = JSON.parse(opts.bodyText)
+        if (body.page === 1) {
+          const events = []
+          for (let i = 0; i < 200; i++) {
+            events.push({
+              timestamp: String(now - 60 * 60 * 1000),
+              model: "composer-2",
+              chargedCents: 1,
+              tokenUsage: { totalTokens: 10 },
+            })
+          }
+          return {
+            status: 200,
+            bodyText: JSON.stringify({
+              totalUsageEventsCount: 450,
+              usageEventsDisplay: events,
+            }),
+          }
+        }
+        return { status: 500, bodyText: JSON.stringify({ error: "boom" }) }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Last 7 Days")?.value).toBe(
+      "$2.00 · 200 calls · 2K tokens · partial",
+    )
+    expect(result.lines.find((line) => line.label === "Events Note")?.value).toBe(
+      "Partial sample (incomplete fetch)",
+    )
+  })
+
+  it("marks event sample incomplete when pagination hits the page cap", async () => {
+    const ctx = makeCtx()
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+    const now = Date.now()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            billingCycleStart: String(now - 2 * 24 * 60 * 60 * 1000),
+            billingCycleEnd: String(now + 10 * 24 * 60 * 60 * 1000),
+            planUsage: { totalSpend: 1200, limit: 2400, totalPercentUsed: 50 },
+          }),
+        }
+      }
+      if (url.includes("get-filtered-usage-events")) {
+        const body = JSON.parse(opts.bodyText)
+        const events = []
+        for (let i = 0; i < 200; i++) {
+          events.push({
+            timestamp: String(now - 60 * 60 * 1000),
+            model: "composer-2",
+            chargedCents: 1,
+            tokenUsage: { totalTokens: 10 },
+          })
+        }
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            totalUsageEventsCount: 5000,
+            usageEventsDisplay: events,
+            page: body.page,
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Last 7 Days")?.value).toContain("· partial")
+    expect(result.lines.find((line) => line.label === "Events Note")?.value).toBe(
+      "Partial sample (page cap)",
+    )
+  })
+
+  it("uses tokenUsage.totalCents when chargedCents is zero", async () => {
+    const ctx = makeCtx()
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+    const now = Date.now()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            billingCycleStart: String(now - 2 * 24 * 60 * 60 * 1000),
+            billingCycleEnd: String(now + 10 * 24 * 60 * 60 * 1000),
+            planUsage: { totalSpend: 1200, limit: 2400, totalPercentUsed: 50 },
+          }),
+        }
+      }
+      if (url.includes("get-filtered-usage-events")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            totalUsageEventsCount: 1,
+            usageEventsDisplay: [
+              {
+                timestamp: String(now - 60 * 60 * 1000),
+                model: "composer-2",
+                chargedCents: 0,
+                tokenUsage: { totalTokens: 1000, totalCents: 250 },
+              },
+            ],
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Last 7 Days")?.value).toBe(
+      "$2.50 · 1 calls · 1K tokens",
+    )
+  })
+
+  it("keeps the main Cursor card when usage events are unavailable", async () => {
+    const ctx = makeCtx()
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            planUsage: { totalSpend: 1200, limit: 2400, totalPercentUsed: 50 },
+          }),
+        }
+      }
+      if (url.includes("get-filtered-usage-events")) {
+        return { status: 401, bodyText: JSON.stringify({ error: "not_authenticated" }) }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Total usage")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Last 7 Days")).toBeUndefined()
   })
 })
