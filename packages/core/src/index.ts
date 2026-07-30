@@ -1,7 +1,28 @@
 export type {
+  BaseProviderId,
+  CodexInstance,
+  MultiAccountProviderCapability,
+  MultiAccountProviderId,
+  ProviderAccount,
   ProviderId,
   ProviderStatus,
   UsageRecord,
   UsageSource,
   UsageSummary,
+} from "./types";
+export {
+  PROVIDER_IDS,
+  buildCodexInstanceId,
+  buildProviderAccountId,
+  CODEX_INSTANCE_ID_PATTERN,
+  isBaseProviderId,
+  isCodexInstanceId,
+  isMultiAccountProviderId,
+  isProviderAccountId,
+  isValidProviderId,
+  MULTI_ACCOUNT_PROVIDER_CAPABILITIES,
+  MULTI_ACCOUNT_PROVIDER_IDS,
+  providerIdFromAccountId,
+  slugifyAccountLabel,
+  slugifyCodexLabel,
 } from "./types";

@@ -4,11 +4,14 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type {
+  MultiAccountProviderId,
+  ProviderAccount,
   ProviderId,
   ProviderStatus,
   UsageRecord,
   UsageSummary,
 } from "../../core/src/types";
+import { isMultiAccountProviderId } from "../../core/src/types";
 import type { Storage } from "./storage";
 
 type UsageRecordRow = {
@@ -41,6 +44,15 @@ type ProviderStatusRow = {
 type SettingsRow = {
   key: string;
   value: string | null;
+};
+
+type ProviderAccountRow = {
+  id: string;
+  provider_id: string;
+  label: string;
+  home_path: string;
+  enabled: number;
+  sort_order: number;
 };
 
 export function getOpenUsageDir(): string {
@@ -114,7 +126,47 @@ export class SqliteStorage implements Storage {
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (provider_id, key)
       );
+
+      CREATE TABLE IF NOT EXISTS provider_accounts (
+        id TEXT PRIMARY KEY,
+        provider_id TEXT NOT NULL,
+        label TEXT NOT NULL,
+        home_path TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        sort_order INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_provider_accounts_provider_id
+      ON provider_accounts(provider_id);
     `);
+    this.migrateCodexInstancesToProviderAccounts();
+  }
+
+  private migrateCodexInstancesToProviderAccounts(): void {
+    const db = this.requireDb();
+    const legacy = db
+      .query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'codex_instances'")
+      .get() as { name: string } | null;
+    if (!legacy) return;
+
+    const rows = db
+      .query("SELECT id, label, home_path, enabled, sort_order FROM codex_instances")
+      .all() as Array<{
+      id: string;
+      label: string;
+      home_path: string;
+      enabled: number;
+      sort_order: number;
+    }>;
+
+    const insert = db.prepare(`
+      INSERT OR IGNORE INTO provider_accounts (id, provider_id, label, home_path, enabled, sort_order)
+      VALUES (?, 'codex', ?, ?, ?, ?)
+    `);
+    for (const row of rows) {
+      insert.run(row.id, row.label, row.home_path, row.enabled, row.sort_order);
+    }
+    db.exec("DROP TABLE IF EXISTS codex_instances");
   }
 
   async upsertUsageRecords(records: UsageRecord[]): Promise<void> {
@@ -319,6 +371,63 @@ export class SqliteStorage implements Storage {
     }));
   }
 
+  async deleteProviderStatus(providerId: ProviderId): Promise<void> {
+    this.requireDb().query("DELETE FROM provider_status WHERE provider_id = ?").run(providerId);
+  }
+
+  async deleteUsageRecordsForProvider(providerId: ProviderId): Promise<void> {
+    this.requireDb().query("DELETE FROM usage_records WHERE provider_id = ?").run(providerId);
+  }
+
+  async listProviderAccounts(providerId?: string): Promise<ProviderAccount[]> {
+    const db = this.requireDb();
+    const rows = (
+      providerId
+        ? db
+            .query(
+              "SELECT * FROM provider_accounts WHERE provider_id = ? ORDER BY sort_order ASC, id ASC",
+            )
+            .all(providerId)
+        : db
+            .query("SELECT * FROM provider_accounts ORDER BY provider_id ASC, sort_order ASC, id ASC")
+            .all()
+    ) as ProviderAccountRow[];
+    return rows.map(rowToProviderAccount).filter((account): account is ProviderAccount => account !== null);
+  }
+
+  async getProviderAccount(id: string): Promise<ProviderAccount | null> {
+    const row = this.requireDb()
+      .query("SELECT * FROM provider_accounts WHERE id = ?")
+      .get(id) as ProviderAccountRow | null;
+    return row ? rowToProviderAccount(row) : null;
+  }
+
+  async upsertProviderAccount(account: ProviderAccount): Promise<void> {
+    this.requireDb()
+      .query(`
+        INSERT INTO provider_accounts (id, provider_id, label, home_path, enabled, sort_order)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          provider_id = excluded.provider_id,
+          label = excluded.label,
+          home_path = excluded.home_path,
+          enabled = excluded.enabled,
+          sort_order = excluded.sort_order
+      `)
+      .run(
+        account.id,
+        account.providerId,
+        account.label,
+        account.homePath,
+        account.enabled ? 1 : 0,
+        account.sortOrder,
+      );
+  }
+
+  async deleteProviderAccount(id: string): Promise<void> {
+    this.requireDb().query("DELETE FROM provider_accounts WHERE id = ?").run(id);
+  }
+
   async getProviderSettings(providerId: ProviderId): Promise<Record<string, string>> {
     const rows = this.requireDb()
       .query("SELECT key, value FROM provider_settings WHERE provider_id = ? ORDER BY key")
@@ -376,6 +485,18 @@ function rowToUsageRecord(row: UsageRecordRow): UsageRecord {
     source: row.source,
     raw: row.raw_json ? JSON.parse(row.raw_json) : undefined,
     createdAt: row.created_at ?? undefined,
+  };
+}
+
+function rowToProviderAccount(row: ProviderAccountRow): ProviderAccount | null {
+  if (!isMultiAccountProviderId(row.provider_id)) return null;
+  return {
+    id: row.id,
+    providerId: row.provider_id as MultiAccountProviderId,
+    label: row.label,
+    homePath: row.home_path,
+    enabled: row.enabled === 1,
+    sortOrder: row.sort_order,
   };
 }
 

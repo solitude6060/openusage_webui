@@ -1,4 +1,5 @@
 import type {
+  ProviderAccount,
   ProviderId,
   ProviderStatus,
   UsageRecord,
@@ -17,9 +18,15 @@ export interface Storage {
   getUsageSummary(): Promise<UsageSummary>;
   upsertProviderStatus(status: ProviderStatus): Promise<void>;
   listProviderStatus(): Promise<ProviderStatus[]>;
+  deleteProviderStatus(providerId: ProviderId): Promise<void>;
+  deleteUsageRecordsForProvider(providerId: ProviderId): Promise<void>;
   getProviderSettings(providerId: ProviderId): Promise<Record<string, string>>;
   updateProviderSettings(
     providerId: ProviderId,
     settings: Record<string, string>,
   ): Promise<void>;
+  listProviderAccounts(providerId?: string): Promise<ProviderAccount[]>;
+  getProviderAccount(id: string): Promise<ProviderAccount | null>;
+  upsertProviderAccount(account: ProviderAccount): Promise<void>;
+  deleteProviderAccount(id: string): Promise<void>;
 }

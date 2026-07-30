@@ -136,6 +136,14 @@ Because Linux WebUI does not use the macOS keychain, the adapter relies on file 
 2. `~/.config/codex/auth.json`
 3. `~/.codex/auth.json`
 
+### Multiple Codex Homes (WebUI)
+
+WebUI tracks multiple homes through the shared Provider Accounts feature (Settings → Provider Accounts; API `/api/provider-accounts`). Pick **Codex**, then detect or add homes.
+
+- With **no** configured accounts for Codex, behavior stays a single provider id `codex`.
+- With one or more accounts, each is registered as `codex:<slug>` and probed with that home injected as `CODEX_HOME`. Local ccusage logs follow the same home via `homePath`.
+- Detect scans `~/.codex`, `~/.config/codex`, and the process `CODEX_HOME` when those paths contain `auth.json`.
+
 The original plugin may refresh OAuth tokens and write the updated credential JSON back to the same file source. Browser cookies are not used.
 
 Expected auth payload shape (file or keychain JSON value):

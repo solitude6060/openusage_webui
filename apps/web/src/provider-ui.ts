@@ -1,4 +1,10 @@
-import type { ProviderId } from "../../../packages/core/src/types";
+import {
+  isMultiAccountProviderId,
+  isProviderAccountId,
+  MULTI_ACCOUNT_PROVIDER_IDS,
+  type ProviderId,
+  type ProviderStatus,
+} from "../../../packages/core/src/types";
 
 export const CCUSAGE_NOTE = "via ccusage" as const;
 
@@ -48,7 +54,7 @@ const refreshableProviders = new Set<ProviderId>([
 ]);
 
 export function isProviderRefreshable(providerId: ProviderId): boolean {
-  return refreshableProviders.has(providerId);
+  return refreshableProviders.has(providerId) || isProviderAccountId(providerId);
 }
 
 export function getProviderStatusLabel(provider: { note?: string }): string {
@@ -58,8 +64,36 @@ export function getProviderStatusLabel(provider: { note?: string }): string {
 
 const providerLabelMap = new Map(providerCards.map((card) => [card.providerId, card.name]));
 
-export function providerLabel(providerId: ProviderId): string {
+export function providerLabel(
+  providerId: ProviderId,
+  statusName?: string | null,
+): string {
+  if (statusName && statusName.trim()) return statusName;
   return providerLabelMap.get(providerId) ?? providerId;
+}
+
+/** Build Providers page cards, swapping bare multi-account providers for configured accounts. */
+export function listProviderCards(statuses: ProviderStatus[]): Array<{
+  providerId: ProviderId;
+  name: string;
+  note?: string;
+}> {
+  const accountStatuses = statuses.filter((status) => isProviderAccountId(status.providerId));
+  const replacedBases = new Set(
+    MULTI_ACCOUNT_PROVIDER_IDS.filter((providerId) =>
+      accountStatuses.some((status) => status.providerId.startsWith(`${providerId}:`)),
+    ),
+  );
+  const base = providerCards.filter((card) => {
+    if (!isMultiAccountProviderId(card.providerId)) return true;
+    return !replacedBases.has(card.providerId);
+  });
+  const extras = accountStatuses.map((status) => ({
+    providerId: status.providerId,
+    name: status.name,
+    note: "OpenUsage Plugin",
+  }));
+  return [...base, ...extras];
 }
 
 // Urgency tones emitted by plugins on a `badge` line (e.g. codex reset-credit

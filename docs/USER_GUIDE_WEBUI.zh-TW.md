@@ -172,8 +172,11 @@ Settings 頁面包含：
 - Database path
 - Refresh interval（WebUI 每 20 分鐘自動 refresh 一次）
 - Currency display
+- Provider Accounts（選 Provider → 偵測／新增多個家目錄帳號）
 - MiniMax tracking method
 - Manual entry form
+
+**Provider Accounts**：先選 Provider（目前支援 Codex、Claude Code），再按「Detect Homes」找出已登入的家目錄，或手動填標籤與路徑。每個啟用中的帳號會變成儀表板上的獨立卡片。Codex 使用 `CODEX_HOME`；Claude Code 使用 `CLAUDE_CONFIG_DIR`。尚未新增任何帳號時，行為與原本單一 Provider 卡片相同。
 
 Manual entry form 可以手動新增 usage record，適合目前沒有自動 provider 的服務。
 
@@ -274,6 +277,8 @@ CODEX_HOME/auth.json
 ~/.config/codex/auth.json
 ~/.codex/auth.json
 ```
+
+若要在 WebUI 同時追蹤多個 Codex／Claude 家目錄，到 Settings → Provider Accounts：選 Provider → Detect Homes 或手動新增。每個帳號會以對應環境變數獨立 probe（識別碼形如 `codex:local`、`claude-code:work`）。
 
 原本 plugin 可能會 refresh OAuth token，並把更新後的 credential 寫回同一個檔案來源。WebUI 不使用 browser cookies。
 

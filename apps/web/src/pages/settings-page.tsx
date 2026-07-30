@@ -1,6 +1,21 @@
-import { FormEvent, useState } from "react";
-import type { ProviderId } from "../../../../packages/core/src/types";
-import { createManualUsage, type HealthResponse } from "../lib/api";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import type {
+  MultiAccountProviderCapability,
+  MultiAccountProviderId,
+  ProviderAccount,
+  ProviderId,
+} from "../../../../packages/core/src/types";
+import {
+  createManualUsage,
+  createProviderAccount,
+  deleteProviderAccount,
+  detectProviderAccounts,
+  listProviderAccountCapabilities,
+  listProviderAccounts,
+  updateProviderAccount,
+  type AccountHomeCandidate,
+  type HealthResponse,
+} from "../lib/api";
 import { toDatetimeLocal, optionalNumber } from "../lib/format";
 import { StatusPill } from "../components/status-pill";
 
@@ -23,8 +38,53 @@ export function SettingsPage({
     startedAt: toDatetimeLocal(new Date()),
     notes: "",
   });
+  const [capabilities, setCapabilities] = useState<MultiAccountProviderCapability[]>([]);
+  const [selectedProviderId, setSelectedProviderId] = useState<MultiAccountProviderId>("codex");
+  const [accounts, setAccounts] = useState<ProviderAccount[]>([]);
+  const [candidates, setCandidates] = useState<AccountHomeCandidate[]>([]);
+  const [draft, setDraft] = useState({ label: "", homePath: "" });
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const selectedCapability = useMemo(
+    () => capabilities.find((item) => item.providerId === selectedProviderId) ?? null,
+    [capabilities, selectedProviderId],
+  );
+
+  const visibleAccounts = useMemo(
+    () => accounts.filter((account) => account.providerId === selectedProviderId),
+    [accounts, selectedProviderId],
+  );
+
+  async function reloadAccounts(providerId = selectedProviderId) {
+    setAccounts(await listProviderAccounts(providerId));
+  }
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const caps = await listProviderAccountCapabilities();
+        setCapabilities(caps);
+        if (caps.length > 0 && !caps.some((item) => item.providerId === selectedProviderId)) {
+          setSelectedProviderId(caps[0].providerId);
+        }
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Failed to load provider account capabilities",
+        );
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    setCandidates([]);
+    void reloadAccounts(selectedProviderId).catch((loadError) => {
+      setError(loadError instanceof Error ? loadError.message : "Failed to load provider accounts");
+    });
+  }, [selectedProviderId]);
 
   async function saveManual(event: FormEvent) {
     event.preventDefault();
@@ -45,6 +105,81 @@ export function SettingsPage({
       await onCreated();
     } catch (manualError) {
       setError(manualError instanceof Error ? manualError.message : "Manual usage failed");
+    }
+  }
+
+  async function runDetect() {
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await detectProviderAccounts(selectedProviderId);
+      setCandidates(result.candidates);
+      setMessage(
+        result.candidates.length > 0
+          ? `Found ${result.candidates.length} Account Home${result.candidates.length === 1 ? "" : "s"}`
+          : "No Account Homes With Auth Found",
+      );
+    } catch (detectError) {
+      setError(detectError instanceof Error ? detectError.message : "Detect failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addAccount(label: string, homePath: string) {
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await createProviderAccount({
+        providerId: selectedProviderId,
+        label,
+        homePath,
+      });
+      setDraft({ label: "", homePath: "" });
+      setCandidates((prev) => prev.filter((candidate) => candidate.homePath !== homePath));
+      await reloadAccounts();
+      await onCreated();
+      setMessage("Provider Account Added");
+    } catch (addError) {
+      setError(addError instanceof Error ? addError.message : "Failed to add provider account");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveDraft(event: FormEvent) {
+    event.preventDefault();
+    await addAccount(draft.label, draft.homePath);
+  }
+
+  async function toggleAccount(account: ProviderAccount) {
+    setBusy(true);
+    setError(null);
+    try {
+      await updateProviderAccount(account.id, { enabled: !account.enabled });
+      await reloadAccounts();
+      await onCreated();
+    } catch (toggleError) {
+      setError(toggleError instanceof Error ? toggleError.message : "Failed to update account");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeAccount(id: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteProviderAccount(id);
+      await reloadAccounts();
+      await onCreated();
+      setMessage("Provider Account Removed");
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Failed to remove account");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -80,6 +215,145 @@ export function SettingsPage({
             <dd>USD</dd>
           </div>
         </dl>
+      </section>
+
+      <section className="panel">
+        <div className="panel-header">
+          <h3>Provider Accounts</h3>
+          <button className="secondary-button" disabled={busy} onClick={() => void runDetect()} type="button">
+            Detect Homes
+          </button>
+        </div>
+        <p className="settings-help">
+          Choose a provider, detect signed-in homes, and track more than one account at once. Each
+          enabled account becomes its own dashboard card.
+        </p>
+        <label>
+          Provider
+          <select
+            value={selectedProviderId}
+            onChange={(event) =>
+              setSelectedProviderId(event.target.value as MultiAccountProviderId)
+            }
+          >
+            {(capabilities.length > 0
+              ? capabilities
+              : [
+                  { providerId: "codex" as const, name: "Codex" },
+                  { providerId: "claude-code" as const, name: "Claude Code" },
+                ]
+            ).map((capability) => (
+              <option key={capability.providerId} value={capability.providerId}>
+                {capability.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {selectedCapability ? (
+          <p className="settings-help muted">
+            Homes use {selectedCapability.homeEnvVar} ({selectedCapability.homeLabel}).
+          </p>
+        ) : null}
+
+        {visibleAccounts.length === 0 ? (
+          <p className="settings-help muted">
+            No custom accounts yet for this provider. OpenUsage keeps the single default card until
+            you add one.
+          </p>
+        ) : (
+          <ul className="settings-list">
+            {visibleAccounts.map((account) => (
+              <li key={account.id}>
+                <div>
+                  <strong>{account.label}</strong>
+                  <div className="mono-value">{account.homePath}</div>
+                  <div className="chip-list">
+                    <span className="value-chip">{account.id}</span>
+                    <StatusPill tone={account.enabled ? "success" : "muted"}>
+                      {account.enabled ? "Enabled" : "Disabled"}
+                    </StatusPill>
+                  </div>
+                </div>
+                <div className="button-row">
+                  <button
+                    className="secondary-button"
+                    disabled={busy}
+                    onClick={() => void toggleAccount(account)}
+                    type="button"
+                  >
+                    {account.enabled ? "Disable" : "Enable"}
+                  </button>
+                  <button
+                    className="secondary-button"
+                    disabled={busy}
+                    onClick={() => void removeAccount(account.id)}
+                    type="button"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {candidates.length > 0 ? (
+          <div className="settings-subsection">
+            <h4>Detected Homes</h4>
+            <ul className="settings-list">
+              {candidates.map((candidate) => {
+                const alreadyAdded = visibleAccounts.some(
+                  (account) => account.homePath === candidate.homePath,
+                );
+                return (
+                  <li key={candidate.homePath}>
+                    <div>
+                      <strong>{candidate.label}</strong>
+                      <div className="mono-value">{candidate.homePath}</div>
+                    </div>
+                    <button
+                      className="primary-button"
+                      disabled={busy || alreadyAdded}
+                      onClick={() => void addAccount(candidate.label, candidate.homePath)}
+                      type="button"
+                    >
+                      {alreadyAdded ? "Added" : "Add"}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
+
+        <form className="form-panel nested-form" onSubmit={(event) => void saveDraft(event)}>
+          <h4>Add Manually</h4>
+          <label>
+            Label
+            <input
+              placeholder={
+                selectedProviderId === "claude-code" ? "Claude · Work" : "Codex · Family"
+              }
+              value={draft.label}
+              onChange={(event) => setDraft({ ...draft, label: event.target.value })}
+              required
+            />
+          </label>
+          <label>
+            Home Path
+            <input
+              placeholder={
+                selectedProviderId === "claude-code" ? "~/.claude-work" : "~/.codex-family"
+              }
+              value={draft.homePath}
+              onChange={(event) => setDraft({ ...draft, homePath: event.target.value })}
+              required
+            />
+          </label>
+          <button className="primary-button" disabled={busy} type="submit">
+            Add Provider Account
+          </button>
+        </form>
       </section>
 
       <section className="panel">

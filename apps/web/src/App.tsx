@@ -181,7 +181,9 @@ export function App() {
         ) : null}
         {!loading && page === "providers" ? (
           <ProvidersPage
+            providers={providers}
             providerMap={providerMap}
+            onOpenSettings={() => navigate("settings")}
             onRefresh={async (providerId) => {
               setError(null);
               setNotice(null);
@@ -205,7 +207,9 @@ export function App() {
             }}
           />
         ) : null}
-        {!loading && page === "sessions" ? <SessionsPage records={records} onRecords={setRecords} /> : null}
+        {!loading && page === "sessions" ? (
+          <SessionsPage records={records} providers={providers} onRecords={setRecords} />
+        ) : null}
         {!loading && page === "settings" ? (
           <SettingsPage health={health} onCreated={loadData} />
         ) : null}

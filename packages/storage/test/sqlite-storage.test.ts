@@ -137,4 +137,91 @@ describe("SqliteStorage", () => {
 
     storage.close();
   });
+
+  test("stores and deletes provider accounts", async () => {
+    const storage = new SqliteStorage();
+    await storage.init();
+
+    await storage.upsertProviderAccount({
+      id: "codex:local",
+      providerId: "codex",
+      label: "Codex · Local",
+      homePath: "~/.codex",
+      enabled: true,
+      sortOrder: 0,
+    });
+    await storage.upsertProviderAccount({
+      id: "claude-code:work",
+      providerId: "claude-code",
+      label: "Claude · Work",
+      homePath: "~/.claude-work",
+      enabled: true,
+      sortOrder: 0,
+    });
+    await storage.upsertProviderStatus({
+      providerId: "claude-code:work",
+      name: "Claude · Work",
+      enabled: true,
+      detected: false,
+    });
+
+    expect(await storage.listProviderAccounts("codex")).toEqual([
+      {
+        id: "codex:local",
+        providerId: "codex",
+        label: "Codex · Local",
+        homePath: "~/.codex",
+        enabled: true,
+        sortOrder: 0,
+      },
+    ]);
+    expect(await storage.listProviderAccounts()).toHaveLength(2);
+
+    await storage.deleteProviderAccount("claude-code:work");
+    await storage.deleteProviderStatus("claude-code:work");
+
+    expect(await storage.listProviderAccounts()).toEqual([
+      {
+        id: "codex:local",
+        providerId: "codex",
+        label: "Codex · Local",
+        homePath: "~/.codex",
+        enabled: true,
+        sortOrder: 0,
+      },
+    ]);
+    expect(await storage.listProviderStatus()).toEqual([]);
+
+    storage.close();
+  });
+
+  test("deletes usage records for a provider account id", async () => {
+    const storage = new SqliteStorage();
+    await storage.init();
+
+    await storage.upsertUsageRecords([
+      {
+        id: "usage-1",
+        providerId: "codex:local",
+        startedAt: new Date().toISOString(),
+        source: "test",
+        totalTokens: 10,
+        costUsd: 0.01,
+      },
+      {
+        id: "usage-2",
+        providerId: "codex",
+        startedAt: new Date().toISOString(),
+        source: "test",
+        totalTokens: 5,
+        costUsd: 0,
+      },
+    ]);
+
+    await storage.deleteUsageRecordsForProvider("codex:local");
+    const remaining = await storage.listUsageRecords({ limit: 100 });
+    expect(remaining.map((row) => row.id)).toEqual(["usage-2"]);
+
+    storage.close();
+  });
 });

@@ -1,4 +1,6 @@
 import { isAbsolute, relative, resolve } from "node:path";
+import type { MultiAccountProviderId, ProviderAccount } from "../../core/src/types";
+import { homeEnvForProvider } from "./account-detect";
 import { CcusageProvider } from "./providers/ccusage";
 import { ManualProvider } from "./providers/manual";
 import { MiniMaxProvider } from "./providers/minimax";
@@ -39,15 +41,92 @@ export function resolveBundledPluginScriptPath(pluginId: string): string {
   return scriptPath;
 }
 
-export function getProviders(): UsageProvider[] {
+export interface GetProvidersOptions {
+  /** Preferred: all configured provider accounts across multi-account providers. */
+  providerAccounts?: ProviderAccount[];
+  /** @deprecated Prefer providerAccounts */
+  codexInstances?: ProviderAccount[];
+  env?: NodeJS.ProcessEnv;
+}
+
+function createHomedPluginProvider(options: {
+  providerId: string;
+  name: string;
+  pluginId: string;
+  baseProviderId: MultiAccountProviderId;
+  homePath: string | undefined;
+  env: NodeJS.ProcessEnv;
+}): UsageProvider {
+  const providerEnv = { ...options.env };
+  if (options.homePath) {
+    providerEnv[homeEnvForProvider(options.baseProviderId)] = options.homePath;
+  }
+  return new OpenUsagePluginProvider({
+    providerId: options.providerId,
+    name: options.name,
+    pluginId: options.pluginId,
+    scriptPath: resolveBundledPluginScriptPath(options.pluginId),
+    env: providerEnv,
+  });
+}
+
+function accountsForProvider(
+  providerId: string,
+  accounts: ProviderAccount[],
+): ProviderAccount[] {
+  return accounts.filter((account) => account.providerId === providerId);
+}
+
+export function getProviders(options: GetProvidersOptions = {}): UsageProvider[] {
+  const env = options.env ?? process.env;
+  const accounts = options.providerAccounts ?? options.codexInstances ?? [];
+
+  const plugins = pluginProviders.flatMap((provider) => {
+    const providerAccounts = accountsForProvider(provider.providerId, accounts);
+    const enabledAccounts = providerAccounts.filter((account) => account.enabled);
+    if (
+      (provider.providerId === "codex" || provider.providerId === "claude-code") &&
+      enabledAccounts.length > 0
+    ) {
+      return enabledAccounts.map((account) =>
+        createHomedPluginProvider({
+          providerId: account.id,
+          name: account.label,
+          pluginId: provider.pluginId,
+          baseProviderId: account.providerId,
+          homePath: account.homePath,
+          env,
+        }),
+      );
+    }
+
+    if (provider.providerId === "codex" || provider.providerId === "claude-code") {
+      return [
+        createHomedPluginProvider({
+          providerId: provider.providerId,
+          name: provider.name,
+          pluginId: provider.pluginId,
+          baseProviderId: provider.providerId,
+          homePath: undefined,
+          env,
+        }),
+      ];
+    }
+
+    return [
+      new OpenUsagePluginProvider({
+        providerId: provider.providerId,
+        name: provider.name,
+        pluginId: provider.pluginId,
+        scriptPath: resolveBundledPluginScriptPath(provider.pluginId),
+        env,
+      }),
+    ];
+  });
+
   return [
     new CcusageProvider(),
-    ...pluginProviders.map((provider) => new OpenUsagePluginProvider({
-      providerId: provider.providerId,
-      name: provider.name,
-      pluginId: provider.pluginId,
-      scriptPath: resolveBundledPluginScriptPath(provider.pluginId),
-    })),
+    ...plugins,
     new ManualProvider(),
     new MiniMaxProvider(),
   ];

@@ -109,6 +109,10 @@ Because Linux WebUI does not use the macOS keychain, the adapter relies on the f
 1. `CLAUDE_CONFIG_DIR/.credentials.json` when `CLAUDE_CONFIG_DIR` is set
 2. `~/.claude/.credentials.json`
 
+### Multiple Claude Homes (WebUI)
+
+Use Settings → Provider Accounts, choose **Claude Code**, then detect or add homes. Configured accounts become `claude-code:<slug>` providers with `CLAUDE_CONFIG_DIR` set to that home. Detect looks for `~/.claude` and process `CLAUDE_CONFIG_DIR` when `.credentials.json` is present.
+
 The original plugin may refresh OAuth tokens and write the updated credential JSON back to the same file source. Browser cookies are not used.
 
 ### Token Refresh
