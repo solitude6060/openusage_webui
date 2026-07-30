@@ -44,3 +44,6 @@ src-tauri/resources/bundled_plugins/*
 
 # OMC (oh-my-claudecode) tooling session state — not project content
 .omc/
+
+# Agent review/fix-log scratch (do not commit)
+docs/GROK_*
