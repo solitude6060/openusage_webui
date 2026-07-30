@@ -112,7 +112,7 @@ function ProviderUsageCard({ providerId, plan, lines, status }: ProviderData) {
   return (
     <SortableCard key={providerId} id={providerId} className={isCompact ? "compact" : ""}>
       <div className="provider-title-row">
-        <h3>{providerLabel(providerId)}</h3>
+        <h3>{providerLabel(providerId, status?.name)}</h3>
         {plan ? <span className="value-chip">{plan}</span> : null}
       </div>
       <div className="usage-card-body">

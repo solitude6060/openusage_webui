@@ -207,7 +207,9 @@ export function App() {
             }}
           />
         ) : null}
-        {!loading && page === "sessions" ? <SessionsPage records={records} onRecords={setRecords} /> : null}
+        {!loading && page === "sessions" ? (
+          <SessionsPage records={records} providers={providers} onRecords={setRecords} />
+        ) : null}
         {!loading && page === "settings" ? (
           <SettingsPage health={health} onCreated={loadData} />
         ) : null}

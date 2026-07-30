@@ -194,4 +194,34 @@ describe("SqliteStorage", () => {
 
     storage.close();
   });
+
+  test("deletes usage records for a provider account id", async () => {
+    const storage = new SqliteStorage();
+    await storage.init();
+
+    await storage.upsertUsageRecords([
+      {
+        id: "usage-1",
+        providerId: "codex:local",
+        startedAt: new Date().toISOString(),
+        source: "test",
+        totalTokens: 10,
+        costUsd: 0.01,
+      },
+      {
+        id: "usage-2",
+        providerId: "codex",
+        startedAt: new Date().toISOString(),
+        source: "test",
+        totalTokens: 5,
+        costUsd: 0,
+      },
+    ]);
+
+    await storage.deleteUsageRecordsForProvider("codex:local");
+    const remaining = await storage.listUsageRecords({ limit: 100 });
+    expect(remaining.map((row) => row.id)).toEqual(["usage-2"]);
+
+    storage.close();
+  });
 });

@@ -510,4 +510,39 @@ describe("WebUI API", () => {
       { providerId: "codex:local", ok: false, error: "Provider is not refreshable yet" },
     ]);
   });
+
+  test("rejects non-Codex ids on compat Codex instance routes", async () => {
+    const response = await handleRequest(
+      new Request("http://127.0.0.1:6736/api/codex/instances/claude-code%3Awork", {
+        method: "DELETE",
+      }),
+    );
+    const body = await response.json();
+    expect(response.status).toBe(404);
+    expect(body.error.message).toContain("Unknown Codex instance");
+  });
+
+  test("rejects duplicate homes even when one path uses a tilde form", async () => {
+    await storage.upsertProviderAccount({
+      id: "codex:legacy",
+      providerId: "codex",
+      label: "Codex · Legacy",
+      homePath: "~/.codex",
+      enabled: true,
+      sortOrder: 0,
+    });
+
+    const response = await handleRequest(new Request("http://127.0.0.1:6736/api/provider-accounts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providerId: "codex",
+        label: "Codex · Dup",
+        homePath: "~/.codex",
+      }),
+    }));
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error.message).toContain("home path already exists");
+  });
 });

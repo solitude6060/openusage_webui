@@ -43,4 +43,22 @@ describe("getProviders provider accounts", () => {
         .map((provider) => ({ id: provider.id, name: provider.name })),
     ).toEqual([{ id: "claude-code:work", name: "Claude · Work" }]);
   });
+
+  test("falls back to bare providers when all accounts are disabled", () => {
+    const providers = getProviders({
+      providerAccounts: [
+        {
+          id: "codex:local",
+          providerId: "codex",
+          label: "Codex · Local",
+          homePath: "/tmp/codex-local",
+          enabled: false,
+          sortOrder: 0,
+        },
+      ],
+    });
+    expect(
+      providers.map((provider) => provider.id).filter((id) => id === "codex" || id.startsWith("codex:")),
+    ).toEqual(["codex"]);
+  });
 });

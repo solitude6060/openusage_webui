@@ -375,6 +375,10 @@ export class SqliteStorage implements Storage {
     this.requireDb().query("DELETE FROM provider_status WHERE provider_id = ?").run(providerId);
   }
 
+  async deleteUsageRecordsForProvider(providerId: ProviderId): Promise<void> {
+    this.requireDb().query("DELETE FROM usage_records WHERE provider_id = ?").run(providerId);
+  }
+
   async listProviderAccounts(providerId?: string): Promise<ProviderAccount[]> {
     const db = this.requireDb();
     const rows = (

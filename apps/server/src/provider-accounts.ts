@@ -104,7 +104,9 @@ export async function createProviderAccount(
 
   const homePath = normalizeHomePath(homePathRaw);
   const existing = await storage.listProviderAccounts(providerId);
-  if (existing.some((account) => account.homePath === homePath)) {
+  if (
+    existing.some((account) => normalizeHomePath(account.homePath) === homePath)
+  ) {
     throw new Error("An account with this home path already exists for this provider");
   }
 
@@ -158,7 +160,7 @@ export async function updateProviderAccount(
   const others = (await storage.listProviderAccounts(existing.providerId)).filter(
     (account) => account.id !== id,
   );
-  if (others.some((account) => account.homePath === next.homePath)) {
+  if (others.some((account) => normalizeHomePath(account.homePath) === next.homePath)) {
     throw new Error("An account with this home path already exists for this provider");
   }
 
@@ -184,6 +186,13 @@ export async function deleteProviderAccount(storage: SqliteStorage, id: string):
   }
   await storage.deleteProviderAccount(id);
   await storage.deleteProviderStatus(id);
+  await storage.deleteUsageRecordsForProvider(id);
+}
+
+export function assertCodexCompatAccountId(id: string): void {
+  if (!isProviderAccountId(id) || !id.startsWith("codex:")) {
+    throw new Error("Unknown Codex instance");
+  }
 }
 
 export function listAccountCapabilities() {

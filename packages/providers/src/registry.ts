@@ -83,11 +83,12 @@ export function getProviders(options: GetProvidersOptions = {}): UsageProvider[]
 
   const plugins = pluginProviders.flatMap((provider) => {
     const providerAccounts = accountsForProvider(provider.providerId, accounts);
+    const enabledAccounts = providerAccounts.filter((account) => account.enabled);
     if (
       (provider.providerId === "codex" || provider.providerId === "claude-code") &&
-      providerAccounts.length > 0
+      enabledAccounts.length > 0
     ) {
-      return providerAccounts.map((account) =>
+      return enabledAccounts.map((account) =>
         createHomedPluginProvider({
           providerId: account.id,
           name: account.label,

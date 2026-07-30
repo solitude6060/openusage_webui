@@ -12,6 +12,7 @@ import { createManualUsageRecord, getProviders } from "../../../packages/provide
 import type { UsageProvider } from "../../../packages/providers/src/index";
 import {
   asProvidersRef,
+  assertCodexCompatAccountId,
   createProviderAccount,
   deleteProviderAccount,
   detectAccountsForProvider,
@@ -258,11 +259,9 @@ async function handleApi(
   if (codexInstanceMatch && request.method === "PATCH") {
     try {
       const body = await readJsonObject(request);
-      const account = await updateProviderAccount(
-        storage,
-        decodeURIComponent(codexInstanceMatch[1]),
-        body,
-      );
+      const id = decodeURIComponent(codexInstanceMatch[1]);
+      assertCodexCompatAccountId(id);
+      const account = await updateProviderAccount(storage, id, body);
       if (rebuildProviders) await rebuildProviders();
       return json({ ok: true, instance: account, account });
     } catch (error) {
@@ -276,7 +275,9 @@ async function handleApi(
   }
   if (codexInstanceMatch && request.method === "DELETE") {
     try {
-      await deleteProviderAccount(storage, decodeURIComponent(codexInstanceMatch[1]));
+      const id = decodeURIComponent(codexInstanceMatch[1]);
+      assertCodexCompatAccountId(id);
+      await deleteProviderAccount(storage, id);
       if (rebuildProviders) await rebuildProviders();
       return json({ ok: true });
     } catch (error) {

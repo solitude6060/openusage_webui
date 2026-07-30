@@ -1,14 +1,16 @@
-import { FormEvent, useState } from "react";
-import type { UsageRecord } from "../../../../packages/core/src/types";
+import { FormEvent, useMemo, useState } from "react";
+import type { ProviderStatus, UsageRecord } from "../../../../packages/core/src/types";
 import { getUsageRecords } from "../lib/api";
-import { providerCards, providerLabel } from "../provider-ui";
+import { listProviderCards, providerLabel } from "../provider-ui";
 import { formatDate, formatMoney, formatNumber, formatQuota } from "../lib/format";
 
 export function SessionsPage({
   records,
+  providers,
   onRecords,
 }: {
   records: UsageRecord[];
+  providers: ProviderStatus[];
   onRecords: (records: UsageRecord[]) => void;
 }) {
   const [filters, setFilters] = useState({
@@ -18,6 +20,14 @@ export function SessionsPage({
     limit: "100",
   });
   const [error, setError] = useState<string | null>(null);
+  const providerOptions = useMemo(() => listProviderCards(providers), [providers]);
+  const providerNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const status of providers) {
+      map.set(status.providerId, status.name);
+    }
+    return map;
+  }, [providers]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -46,7 +56,7 @@ export function SessionsPage({
             onChange={(event) => setFilters({ ...filters, providerId: event.target.value })}
           >
             <option value="">All</option>
-            {providerCards.map((card) => (
+            {providerOptions.map((card) => (
               <option key={card.providerId} value={card.providerId}>
                 {card.name}
               </option>
@@ -114,7 +124,7 @@ export function SessionsPage({
                 records.map((record) => (
                   <tr key={record.id}>
                     <td>{formatDate(record.startedAt)}</td>
-                    <td>{providerLabel(record.providerId)}</td>
+                    <td>{providerLabel(record.providerId, providerNames.get(record.providerId))}</td>
                     <td>{record.tool ?? "-"}</td>
                     <td>{record.model ?? "-"}</td>
                     <td>{formatNumber(record.inputTokens ?? 0)}</td>

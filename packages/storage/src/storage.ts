@@ -19,6 +19,7 @@ export interface Storage {
   upsertProviderStatus(status: ProviderStatus): Promise<void>;
   listProviderStatus(): Promise<ProviderStatus[]>;
   deleteProviderStatus(providerId: ProviderId): Promise<void>;
+  deleteUsageRecordsForProvider(providerId: ProviderId): Promise<void>;
   getProviderSettings(providerId: ProviderId): Promise<Record<string, string>>;
   updateProviderSettings(
     providerId: ProviderId,
