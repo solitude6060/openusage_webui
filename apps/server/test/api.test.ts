@@ -440,4 +440,74 @@ describe("WebUI API", () => {
       rmSync(distDir, { recursive: true, force: true });
     }
   });
+
+  test("creates and lists provider accounts for selected providers", async () => {
+    const homeA = mkdtempSync(join(tmpdir(), "openusage-codex-a-"));
+    const homeB = mkdtempSync(join(tmpdir(), "openusage-claude-b-"));
+    try {
+      const createA = await handleRequest(new Request("http://127.0.0.1:6736/api/provider-accounts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          providerId: "codex",
+          label: "Codex · Local",
+          homePath: homeA,
+        }),
+      }));
+      const bodyA = await createA.json();
+      expect(createA.status).toBe(201);
+      expect(bodyA.account).toMatchObject({
+        id: "codex:local",
+        providerId: "codex",
+        label: "Codex · Local",
+        homePath: homeA,
+        enabled: true,
+      });
+
+      const createB = await handleRequest(new Request("http://127.0.0.1:6736/api/provider-accounts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          providerId: "claude-code",
+          label: "Claude · Work",
+          homePath: homeB,
+        }),
+      }));
+      expect(createB.status).toBe(201);
+
+      const caps = await handleRequest(
+        new Request("http://127.0.0.1:6736/api/provider-accounts/capabilities"),
+      );
+      expect(caps.status).toBe(200);
+      expect(await caps.json()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ providerId: "codex" }),
+          expect.objectContaining({ providerId: "claude-code" }),
+        ]),
+      );
+
+      const list = await handleRequest(
+        new Request("http://127.0.0.1:6736/api/provider-accounts?providerId=codex"),
+      );
+      const listed = await list.json();
+      expect(list.status).toBe(200);
+      expect(listed).toHaveLength(1);
+      expect(listed[0].id).toBe("codex:local");
+    } finally {
+      rmSync(homeA, { recursive: true, force: true });
+      rmSync(homeB, { recursive: true, force: true });
+    }
+  });
+
+  test("accepts provider account ids for refresh routing", async () => {
+    const response = await handleRequest(new Request("http://127.0.0.1:6736/api/providers/codex%3Alocal/refresh", {
+      method: "POST",
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.results).toEqual([
+      { providerId: "codex:local", ok: false, error: "Provider is not refreshable yet" },
+    ]);
+  });
 });

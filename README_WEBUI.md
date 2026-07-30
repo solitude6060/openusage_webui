@@ -8,8 +8,8 @@ A local-first WebUI dashboard for AI coding usage on Ubuntu/Linux.
 
 - Amp via the original OpenUsage plugin adapter
 - Antigravity via the original OpenUsage plugin adapter
-- Claude Code via the original OpenUsage plugin adapter
-- Codex CLI via the original OpenUsage plugin adapter — session/weekly/review usage, plus **reset-credit expiry**: each banked reset credit's exact expiry date and a live countdown, color-coded by urgency (red = expires today, amber = within 3 days, grey = plenty of time)
+- Claude Code via the original OpenUsage plugin adapter — optional **Provider Accounts** for multiple `CLAUDE_CONFIG_DIR` homes
+- Codex CLI via the original OpenUsage plugin adapter — session/weekly/review usage, plus **reset-credit expiry**: each banked reset credit's exact expiry date and a live countdown, color-coded by urgency (red = expires today, amber = within 3 days, grey = plenty of time); optional **Provider Accounts** for multiple `CODEX_HOME` homes
 - Cursor via the original OpenUsage plugin adapter
 - Devin via the original OpenUsage plugin adapter
 - Factory / Droid via the original OpenUsage plugin adapter

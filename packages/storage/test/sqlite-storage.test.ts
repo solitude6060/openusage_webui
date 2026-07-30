@@ -137,4 +137,61 @@ describe("SqliteStorage", () => {
 
     storage.close();
   });
+
+  test("stores and deletes provider accounts", async () => {
+    const storage = new SqliteStorage();
+    await storage.init();
+
+    await storage.upsertProviderAccount({
+      id: "codex:local",
+      providerId: "codex",
+      label: "Codex · Local",
+      homePath: "~/.codex",
+      enabled: true,
+      sortOrder: 0,
+    });
+    await storage.upsertProviderAccount({
+      id: "claude-code:work",
+      providerId: "claude-code",
+      label: "Claude · Work",
+      homePath: "~/.claude-work",
+      enabled: true,
+      sortOrder: 0,
+    });
+    await storage.upsertProviderStatus({
+      providerId: "claude-code:work",
+      name: "Claude · Work",
+      enabled: true,
+      detected: false,
+    });
+
+    expect(await storage.listProviderAccounts("codex")).toEqual([
+      {
+        id: "codex:local",
+        providerId: "codex",
+        label: "Codex · Local",
+        homePath: "~/.codex",
+        enabled: true,
+        sortOrder: 0,
+      },
+    ]);
+    expect(await storage.listProviderAccounts()).toHaveLength(2);
+
+    await storage.deleteProviderAccount("claude-code:work");
+    await storage.deleteProviderStatus("claude-code:work");
+
+    expect(await storage.listProviderAccounts()).toEqual([
+      {
+        id: "codex:local",
+        providerId: "codex",
+        label: "Codex · Local",
+        homePath: "~/.codex",
+        enabled: true,
+        sortOrder: 0,
+      },
+    ]);
+    expect(await storage.listProviderStatus()).toEqual([]);
+
+    storage.close();
+  });
 });

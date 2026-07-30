@@ -1,9 +1,21 @@
 import type {
+  MultiAccountProviderCapability,
+  MultiAccountProviderId,
+  ProviderAccount,
   ProviderId,
   ProviderStatus,
   UsageRecord,
   UsageSummary,
 } from "../../../../packages/core/src/types";
+
+export type { ProviderAccount, MultiAccountProviderCapability, MultiAccountProviderId };
+
+export interface AccountHomeCandidate {
+  providerId: MultiAccountProviderId;
+  homePath: string;
+  label: string;
+  hasAuth: boolean;
+}
 
 export interface ManualUsageInput {
   providerId: ProviderId;
@@ -93,6 +105,57 @@ export async function setProviderEnabled(providerId: string, enabled: boolean): 
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function listProviderAccountCapabilities(): Promise<MultiAccountProviderCapability[]> {
+  return request("/api/provider-accounts/capabilities");
+}
+
+export async function listProviderAccounts(providerId?: string): Promise<ProviderAccount[]> {
+  const search = providerId ? `?providerId=${encodeURIComponent(providerId)}` : "";
+  return request(`/api/provider-accounts${search}`);
+}
+
+export async function detectProviderAccounts(providerId: string): Promise<{
+  ok: true;
+  providerId: string;
+  candidates: AccountHomeCandidate[];
+}> {
+  return request("/api/provider-accounts/detect", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ providerId }),
+  });
+}
+
+export async function createProviderAccount(input: {
+  providerId: string;
+  label: string;
+  homePath: string;
+  enabled?: boolean;
+}): Promise<{ ok: true; account: ProviderAccount }> {
+  return request("/api/provider-accounts", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateProviderAccount(
+  id: string,
+  input: Partial<{ label: string; homePath: string; enabled: boolean; sortOrder: number }>,
+): Promise<{ ok: true; account: ProviderAccount }> {
+  return request(`/api/provider-accounts/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteProviderAccount(id: string): Promise<{ ok: true }> {
+  return request(`/api/provider-accounts/${encodeURIComponent(id)}`, {
+    method: "DELETE",
   });
 }
 

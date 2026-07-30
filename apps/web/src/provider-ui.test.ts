@@ -4,8 +4,10 @@ import {
   CCUSAGE_NOTE,
   getProviderStatusLabel,
   isProviderRefreshable,
+  listProviderCards,
   plainBadgeText,
   providerCards,
+  providerLabel,
   resetCreditExpiryView,
 } from "./provider-ui";
 
@@ -112,5 +114,39 @@ describe("provider UI metadata", () => {
     });
     expect(isProviderRefreshable("gemini-cli")).toBe(false);
     expect(getProviderStatusLabel(provider!)).toBe("Via ccusage");
+  });
+
+  test("swaps bare multi-account providers for configured account cards", () => {
+    const cards = listProviderCards([
+      {
+        providerId: "codex:local",
+        name: "Codex · Local",
+        enabled: true,
+        detected: true,
+      },
+      {
+        providerId: "claude-code:work",
+        name: "Claude · Work",
+        enabled: true,
+        detected: false,
+      },
+    ]);
+
+    expect(cards.some((card) => card.providerId === "codex")).toBe(false);
+    expect(cards.some((card) => card.providerId === "claude-code")).toBe(false);
+    expect(cards.filter((card) => isProviderRefreshable(card.providerId) && String(card.providerId).includes(":"))).toEqual([
+      {
+        providerId: "codex:local",
+        name: "Codex · Local",
+        note: "OpenUsage Plugin",
+      },
+      {
+        providerId: "claude-code:work",
+        name: "Claude · Work",
+        note: "OpenUsage Plugin",
+      },
+    ]);
+    expect(isProviderRefreshable("claude-code:work")).toBe(true);
+    expect(providerLabel("claude-code:work", "Claude · Work")).toBe("Claude · Work");
   });
 });

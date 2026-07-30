@@ -1,18 +1,30 @@
 import { existsSync, statSync } from "node:fs";
 import { join, normalize } from "node:path";
-import { PROVIDER_IDS, type ProviderId, type ProviderStatus } from "../../../packages/core/src/types";
+import {
+  isValidProviderId,
+  type ProviderId,
+} from "../../../packages/core/src/types";
 import {
   getDatabasePath,
   SqliteStorage,
 } from "../../../packages/storage/src/index";
 import { createManualUsageRecord, getProviders } from "../../../packages/providers/src/index";
 import type { UsageProvider } from "../../../packages/providers/src/index";
+import {
+  asProvidersRef,
+  createProviderAccount,
+  deleteProviderAccount,
+  detectAccountsForProvider,
+  listAccountCapabilities,
+  rebuildProvidersFromStorage,
+  updateProviderAccount,
+  type ProvidersRef,
+} from "./provider-accounts";
 
 const VERSION = "0.1.0";
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 6736;
 const ALLOWED_HOSTS_ENV = "OPENUSAGE_WEBUI_ALLOWED_HOSTS";
-const PROVIDER_ID_SET = new Set<ProviderId>(PROVIDER_IDS);
 
 type RefreshResult =
   | { providerId: ProviderId; ok: true; records: number }
@@ -27,16 +39,29 @@ export async function startServer(options: {
 } = {}) {
   const host = options.host ?? process.env.OPENUSAGE_WEBUI_HOST ?? DEFAULT_HOST;
   const port = options.port ?? Number(process.env.OPENUSAGE_WEBUI_PORT ?? DEFAULT_PORT);
-  const providers = options.providers ?? getProviders();
   const storage = new SqliteStorage();
   await storage.init();
-  await seedProviderStatus(storage, providers);
+  const providersRef: ProvidersRef = {
+    current: options.providers ?? getProviders({
+      providerAccounts: await storage.listProviderAccounts(),
+    }),
+  };
+  if (!options.providers) {
+    await rebuildProvidersFromStorage(storage, providersRef);
+  } else {
+    await seedProviderStatus(storage, providersRef.current);
+  }
   const handleRequest = createRequestHandler(
     storage,
     { host, port },
     options.devFrontendUrl,
-    providers,
+    providersRef,
     options.frontendDistPath,
+    options.providers
+      ? undefined
+      : async () => {
+          await rebuildProvidersFromStorage(storage, providersRef);
+        },
   );
 
   const server = Bun.serve({
@@ -61,9 +86,11 @@ export function createRequestHandler(
   storage: SqliteStorage,
   serverInfo: { host: string; port: number },
   devFrontendUrl?: string,
-  providers: UsageProvider[] = getProviders(),
+  providers: UsageProvider[] | ProvidersRef = getProviders(),
   frontendDistPath?: string,
+  rebuildProviders?: () => Promise<void>,
 ): (request: Request) => Promise<Response> {
+  const providersRef = asProvidersRef(providers);
   return async (request) => {
     if (!isAllowedHost(request.headers.get("host"), serverInfo, request.url)) {
       return jsonError("FORBIDDEN_HOST", "Host header is not allowed", 403);
@@ -72,7 +99,14 @@ export function createRequestHandler(
     const url = new URL(request.url);
     try {
       if (url.pathname.startsWith("/api/")) {
-        return await handleApi(request, url, storage, serverInfo, providers);
+        return await handleApi(
+          request,
+          url,
+          storage,
+          serverInfo,
+          providersRef,
+          rebuildProviders,
+        );
       }
       return await serveFrontend(request, url, devFrontendUrl, frontendDistPath);
     } catch (error) {
@@ -90,8 +124,10 @@ async function handleApi(
   url: URL,
   storage: SqliteStorage,
   serverInfo: { host: string; port: number },
-  providers: UsageProvider[],
+  providersRef: ProvidersRef,
+  rebuildProviders?: () => Promise<void>,
 ): Promise<Response> {
+  const providers = () => providersRef.current;
   if (request.method === "GET" && url.pathname === "/api/health") {
     return json({
       ok: true,
@@ -108,15 +144,149 @@ async function handleApi(
   }
 
   if (request.method === "POST" && url.pathname === "/api/providers/refresh") {
-    const results = await refreshProviders(storage, providers);
+    const results = await refreshProviders(storage, providers());
     return json({ ok: true, results });
   }
 
   const providerRefreshMatch = url.pathname.match(/^\/api\/providers\/([^/]+)\/refresh$/);
   if (request.method === "POST" && providerRefreshMatch) {
     const providerId = parseProviderId(providerRefreshMatch[1]);
-    const results = await refreshProviders(storage, providers, providerId);
+    const results = await refreshProviders(storage, providers(), providerId);
     return json({ ok: true, results });
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/provider-accounts/capabilities") {
+    return json(listAccountCapabilities());
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/provider-accounts") {
+    const providerId = url.searchParams.get("providerId") || undefined;
+    return json(await storage.listProviderAccounts(providerId));
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/provider-accounts/detect") {
+    try {
+      const body = await readJsonObject(request);
+      const providerId = typeof body.providerId === "string" ? body.providerId : "";
+      return json({
+        ok: true,
+        providerId,
+        candidates: detectAccountsForProvider(providerId),
+      });
+    } catch (error) {
+      throw new HttpError(
+        "BAD_REQUEST",
+        error instanceof Error ? error.message : "Failed to detect accounts",
+        400,
+      );
+    }
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/provider-accounts") {
+    try {
+      const body = await readJsonObject(request);
+      const account = await createProviderAccount(storage, body);
+      if (rebuildProviders) await rebuildProviders();
+      return json({ ok: true, account }, { status: 201 });
+    } catch (error) {
+      throw new HttpError(
+        "BAD_REQUEST",
+        error instanceof Error ? error.message : "Failed to create provider account",
+        400,
+      );
+    }
+  }
+
+  const providerAccountMatch = url.pathname.match(/^\/api\/provider-accounts\/([^/]+)$/);
+  if (providerAccountMatch && request.method === "PATCH") {
+    try {
+      const body = await readJsonObject(request);
+      const account = await updateProviderAccount(
+        storage,
+        decodeURIComponent(providerAccountMatch[1]),
+        body,
+      );
+      if (rebuildProviders) await rebuildProviders();
+      return json({ ok: true, account });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to update provider account";
+      throw new HttpError(
+        message.includes("Unknown") ? "NOT_FOUND" : "BAD_REQUEST",
+        message,
+        message.includes("Unknown") ? 404 : 400,
+      );
+    }
+  }
+
+  if (providerAccountMatch && request.method === "DELETE") {
+    try {
+      await deleteProviderAccount(storage, decodeURIComponent(providerAccountMatch[1]));
+      if (rebuildProviders) await rebuildProviders();
+      return json({ ok: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to delete provider account";
+      throw new HttpError(
+        message.includes("Unknown") ? "NOT_FOUND" : "BAD_REQUEST",
+        message,
+        message.includes("Unknown") ? 404 : 400,
+      );
+    }
+  }
+
+  // Compat aliases for the first Codex-only trial API.
+  if (request.method === "GET" && url.pathname === "/api/codex/instances") {
+    return json(await storage.listProviderAccounts("codex"));
+  }
+  if (request.method === "POST" && url.pathname === "/api/codex/instances/detect") {
+    return json({ ok: true, candidates: detectAccountsForProvider("codex") });
+  }
+  if (request.method === "POST" && url.pathname === "/api/codex/instances") {
+    try {
+      const body = await readJsonObject(request);
+      const account = await createProviderAccount(storage, { ...body, providerId: "codex" });
+      if (rebuildProviders) await rebuildProviders();
+      return json({ ok: true, instance: account, account }, { status: 201 });
+    } catch (error) {
+      throw new HttpError(
+        "BAD_REQUEST",
+        error instanceof Error ? error.message : "Failed to create Codex instance",
+        400,
+      );
+    }
+  }
+  const codexInstanceMatch = url.pathname.match(/^\/api\/codex\/instances\/([^/]+)$/);
+  if (codexInstanceMatch && request.method === "PATCH") {
+    try {
+      const body = await readJsonObject(request);
+      const account = await updateProviderAccount(
+        storage,
+        decodeURIComponent(codexInstanceMatch[1]),
+        body,
+      );
+      if (rebuildProviders) await rebuildProviders();
+      return json({ ok: true, instance: account, account });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to update Codex instance";
+      throw new HttpError(
+        message.includes("Unknown") ? "NOT_FOUND" : "BAD_REQUEST",
+        message,
+        message.includes("Unknown") ? 404 : 400,
+      );
+    }
+  }
+  if (codexInstanceMatch && request.method === "DELETE") {
+    try {
+      await deleteProviderAccount(storage, decodeURIComponent(codexInstanceMatch[1]));
+      if (rebuildProviders) await rebuildProviders();
+      return json({ ok: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to delete Codex instance";
+      throw new HttpError(
+        message.includes("Unknown") ? "NOT_FOUND" : "BAD_REQUEST",
+        message,
+        message.includes("Unknown") ? 404 : 400,
+      );
+    }
   }
 
   const providerEnabledMatch = url.pathname.match(/^\/api\/providers\/([^/]+)\/enabled$/);
@@ -135,6 +305,10 @@ async function handleApi(
       lastRefreshAt: existing?.lastRefreshAt,
       lastError: existing?.lastError,
     });
+    const providerAccount = await storage.getProviderAccount(providerId);
+    if (providerAccount) {
+      await storage.upsertProviderAccount({ ...providerAccount, enabled: body.enabled });
+    }
     return json({ ok: true, providerId, enabled: body.enabled });
   }
 
@@ -331,10 +505,11 @@ async function serveFrontend(
 }
 
 function parseProviderId(value: string): ProviderId {
-  if (!PROVIDER_ID_SET.has(value as ProviderId)) {
-    throw new HttpError("BAD_REQUEST", `Unknown provider: ${value}`, 400);
+  const decoded = decodeURIComponent(value);
+  if (!isValidProviderId(decoded)) {
+    throw new HttpError("BAD_REQUEST", `Unknown provider: ${decoded}`, 400);
   }
-  return value as ProviderId;
+  return decoded;
 }
 
 function sanitizeSettings(body: unknown): Record<string, string> {

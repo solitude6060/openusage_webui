@@ -1,3 +1,5 @@
+import { isProviderAccountId } from "./provider-accounts";
+
 export const PROVIDER_IDS = [
   "ccusage",
   "amp",
@@ -22,7 +24,40 @@ export const PROVIDER_IDS = [
   "manual",
 ] as const;
 
-export type ProviderId = (typeof PROVIDER_IDS)[number];
+export type BaseProviderId = (typeof PROVIDER_IDS)[number];
+
+/** Base provider ids, plus WebUI account instance ids like `codex:family`. */
+export type ProviderId = BaseProviderId | (string & {});
+
+const BASE_PROVIDER_ID_SET = new Set<string>(PROVIDER_IDS);
+
+export function isBaseProviderId(value: string): value is BaseProviderId {
+  return BASE_PROVIDER_ID_SET.has(value);
+}
+
+export function isValidProviderId(value: string): value is ProviderId {
+  return isBaseProviderId(value) || isProviderAccountId(value);
+}
+
+export type {
+  CodexInstance,
+  MultiAccountProviderCapability,
+  MultiAccountProviderId,
+  ProviderAccount,
+} from "./provider-accounts";
+export {
+  buildCodexInstanceId,
+  buildProviderAccountId,
+  CODEX_INSTANCE_ID_PATTERN,
+  isCodexInstanceId,
+  isMultiAccountProviderId,
+  isProviderAccountId,
+  MULTI_ACCOUNT_PROVIDER_CAPABILITIES,
+  MULTI_ACCOUNT_PROVIDER_IDS,
+  providerIdFromAccountId,
+  slugifyAccountLabel,
+  slugifyCodexLabel,
+} from "./provider-accounts";
 
 export type UsageSource =
   | "local-log"

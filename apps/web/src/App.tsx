@@ -181,7 +181,9 @@ export function App() {
         ) : null}
         {!loading && page === "providers" ? (
           <ProvidersPage
+            providers={providers}
             providerMap={providerMap}
+            onOpenSettings={() => navigate("settings")}
             onRefresh={async (providerId) => {
               setError(null);
               setNotice(null);
