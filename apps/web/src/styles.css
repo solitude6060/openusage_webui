@@ -324,6 +324,10 @@ label {
   border-bottom: 1px solid var(--line);
 }
 
+.panel-body {
+  padding: 16px 18px;
+}
+
 .panel-header h3,
 .provider-card h3 {
   font-size: 0.95rem;
@@ -355,6 +359,23 @@ td {
   text-align: left;
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
+}
+
+th:first-child,
+td:first-child {
+  padding-left: 18px;
+}
+
+th:last-child,
+td:last-child {
+  padding-right: 18px;
+}
+
+.table-empty-cell {
+  padding: 24px 18px;
+  color: var(--muted);
+  font-size: 0.875rem;
+  white-space: normal;
 }
 
 td {
@@ -454,7 +475,7 @@ dd {
 .chip-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 
 .value-chip,
@@ -847,8 +868,8 @@ textarea {
   justify-self: start;
   margin-top: 12px;
   width: 100%;
-  min-height: 28px;
-  padding: 4px 8px;
+  min-height: 32px;
+  padding: 6px 10px;
   color: var(--ink-secondary);
   background: var(--surface-muted);
   border: 1px solid var(--line);
@@ -1060,6 +1081,8 @@ textarea {
 }
 
 .token-range-bar .value-chip {
+  min-height: 32px;
+  padding: 5px 12px;
   cursor: pointer;
   border: 1px solid transparent;
 }
@@ -1095,7 +1118,7 @@ textarea {
 }
 
 .token-model-row td:first-child {
-  padding-left: 36px;
+  padding-left: 28px;
   color: var(--ink-secondary);
   font-weight: 500;
 }
@@ -1144,10 +1167,16 @@ textarea {
   }
 
   .nav-list {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 4px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .nav-item {
+    flex: 0 0 auto;
+    width: auto;
     text-align: center;
   }
 
@@ -1227,7 +1256,14 @@ textarea {
   }
 
   .nav-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    overflow-x: visible;
+  }
+
+  .nav-item {
+    flex: initial;
+    width: 100%;
   }
 
   .form-row {

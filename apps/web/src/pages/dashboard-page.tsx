@@ -254,8 +254,10 @@ export function DashboardPage({
             <h3>Provider Breakdown</h3>
             <span>{providers.length} Providers</span>
           </div>
-          <div style={{ padding: "24px 18px", color: "var(--muted)", fontSize: "0.875rem" }}>
-            No usage data yet. Click Refresh All to fetch provider data.
+          <div className="panel-body">
+            <p className="settings-help muted">
+              No usage data yet. Click Refresh All to fetch provider data.
+            </p>
           </div>
         </section>
       )}

@@ -145,15 +145,17 @@ export function TokensPage({ providers }: { providers: ProviderStatus[] }) {
             </div>
           ) : null}
         </div>
-        <p className="settings-help muted">
-          Totals come from local usage records that already store token counts. Provider cards that
-          only show live quotas are not included unless refresh wrote records.
-        </p>
-        {error ? <div className="alert error">{error}</div> : null}
-        {loading ? <div className="loading-indicator">Loading...</div> : null}
-        {!loading && data && data.providers.length === 0 ? (
-          <p className="settings-help muted">No Token Records In This Range</p>
-        ) : null}
+        <div className="panel-body">
+          <p className="settings-help muted">
+            Totals come from local usage records that already store token counts. Provider cards that
+            only show live quotas are not included unless refresh wrote records.
+          </p>
+          {error ? <div className="alert error">{error}</div> : null}
+          {loading ? <div className="loading-indicator">Loading...</div> : null}
+          {!loading && data && data.providers.length === 0 ? (
+            <p className="settings-help muted">No Token Records In This Range</p>
+          ) : null}
+        </div>
         {!loading && data && data.providers.length > 0 ? (
           <div className="table-scroll">
             <table className="token-table">
