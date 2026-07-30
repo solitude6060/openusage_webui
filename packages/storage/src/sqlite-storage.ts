@@ -8,6 +8,7 @@ import type {
   ProviderAccount,
   ProviderId,
   ProviderStatus,
+  TokenUsageBreakdown,
   UsageRecord,
   UsageSummary,
 } from "../../core/src/types";
@@ -326,6 +327,101 @@ export class SqliteStorage implements Storage {
       .map((provider) => ({ ...provider, costUsd: roundCurrency(provider.costUsd) }))
       .sort((a, b) => b.totalTokens - a.totalTokens);
     return summary;
+  }
+
+  async getTokenUsageBreakdown(params: {
+    from?: string;
+    to?: string;
+  } = {}): Promise<TokenUsageBreakdown> {
+    const clauses: string[] = ["COALESCE(total_tokens, 0) > 0"];
+    const values: string[] = [];
+    if (params.from) {
+      clauses.push("started_at >= ?");
+      values.push(params.from);
+    }
+    if (params.to) {
+      clauses.push("started_at <= ?");
+      values.push(params.to);
+    }
+    const where = `WHERE ${clauses.join(" AND ")}`;
+    const rows = this.requireDb()
+      .query(
+        `
+        SELECT
+          provider_id,
+          CASE
+            WHEN model IS NULL OR TRIM(model) = '' THEN 'Unknown'
+            ELSE model
+          END AS model,
+          SUM(COALESCE(total_tokens, 0)) AS total_tokens,
+          COUNT(*) AS records
+        FROM usage_records
+        ${where}
+        GROUP BY
+          provider_id,
+          CASE
+            WHEN model IS NULL OR TRIM(model) = '' THEN 'Unknown'
+            ELSE model
+          END
+        ORDER BY total_tokens DESC, provider_id ASC, model ASC
+        `,
+      )
+      .all(...values) as Array<{
+      provider_id: ProviderId;
+      model: string;
+      total_tokens: number | null;
+      records: number | null;
+    }>;
+
+    const providersMap = new Map<
+      ProviderId,
+      {
+        providerId: ProviderId;
+        totalTokens: number;
+        records: number;
+        models: Array<{ model: string; totalTokens: number; records: number }>;
+      }
+    >();
+    let totalTokens = 0;
+    let records = 0;
+
+    for (const row of rows) {
+      const tokens = Number(row.total_tokens) || 0;
+      const count = Number(row.records) || 0;
+      totalTokens += tokens;
+      records += count;
+      const provider =
+        providersMap.get(row.provider_id) ??
+        {
+          providerId: row.provider_id,
+          totalTokens: 0,
+          records: 0,
+          models: [],
+        };
+      provider.totalTokens += tokens;
+      provider.records += count;
+      provider.models.push({
+        model: row.model || "Unknown",
+        totalTokens: tokens,
+        records: count,
+      });
+      providersMap.set(row.provider_id, provider);
+    }
+
+    const providers = [...providersMap.values()]
+      .map((provider) => ({
+        ...provider,
+        models: [...provider.models].sort((a, b) => b.totalTokens - a.totalTokens),
+      }))
+      .sort((a, b) => b.totalTokens - a.totalTokens);
+
+    return {
+      from: params.from ?? null,
+      to: params.to ?? null,
+      totalTokens,
+      records,
+      providers,
+    };
   }
 
   async upsertProviderStatus(status: ProviderStatus): Promise<void> {

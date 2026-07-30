@@ -111,7 +111,8 @@ http://<tailscale-ip>:6736
 2. 到 `Providers` 看 provider 狀態
 3. 按 `Refresh All`
 4. 到 `Sessions` 看 usage records
-5. 如果需要手動補資料，到 `Settings` 新增 manual entry
+5. 到 `Tokens` 依時間區間比較各 provider／model 的 token 量
+6. 如果需要手動補資料，到 `Settings` 新增 manual entry
 
 如果沒有設定 MiniMax key、沒有登入對應 coding agent，或沒有安裝可執行的 `ccusage`，dashboard 仍可開啟，只是對應 provider 會顯示錯誤或沒有資料。
 多數原本 OpenUsage provider 目前透過 plugin adapter refresh，不依賴 `ccusage` 才能查 quota。
@@ -163,7 +164,17 @@ Sessions 頁面顯示 usage records 表格。
 
 `Quota` 欄位主要用於 MiniMax 這類回傳剩餘額度而不是 token/cost 的 provider。
 
-### 5.4 Settings
+### 5.4 Tokens
+
+Tokens 頁面依時間區間加總本機 `usage_records` 的 token：
+
+- 時間：Today／Last 7 Days／Last 30 Days／This Month／All／Custom
+- 外層依 Provider 顯示總 token
+- 展開後看各 Model（沒有 model 的列顯示為 Unknown）
+
+這頁只統計已經寫進 usage records 且有 `total_tokens` 的資料；儀表板卡片上的即時配額／事件圖表若沒寫入 records，不會出現在這裡。
+
+### 5.5 Settings
 
 Settings 頁面包含：
 

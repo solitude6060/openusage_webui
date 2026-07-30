@@ -1053,6 +1053,57 @@ textarea {
   color: var(--muted);
 }
 
+.token-range-bar {
+  display: grid;
+  gap: 12px;
+  padding: 14px 18px 0;
+}
+
+.token-range-bar .value-chip {
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.token-range-bar .token-range-active {
+  color: var(--ink);
+  background: var(--paper);
+  border-color: var(--line-strong);
+}
+
+.token-custom-range {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.token-table {
+  min-width: 520px;
+}
+
+.token-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.token-model-row td:first-child {
+  padding-left: 36px;
+  color: var(--ink-secondary);
+  font-weight: 500;
+}
+
+.token-provider-row td {
+  font-weight: 600;
+}
+
 .usage-card-footer {
   margin-top: 14px;
   padding-top: 10px;
@@ -1093,7 +1144,7 @@ textarea {
   }
 
   .nav-list {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .nav-item {
@@ -1212,8 +1263,8 @@ textarea {
     text-align: left;
   }
 
-  table {
-    min-width: 720px;
+  .token-custom-range {
+    grid-template-columns: 1fr;
   }
 }
 

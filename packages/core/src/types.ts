@@ -112,3 +112,24 @@ export interface UsageSummary {
     records: number;
   }>;
 }
+
+export interface TokenUsageModelRow {
+  model: string;
+  totalTokens: number;
+  records: number;
+}
+
+export interface TokenUsageProviderRow {
+  providerId: ProviderId;
+  totalTokens: number;
+  records: number;
+  models: TokenUsageModelRow[];
+}
+
+export interface TokenUsageBreakdown {
+  from: string | null;
+  to: string | null;
+  totalTokens: number;
+  records: number;
+  providers: TokenUsageProviderRow[];
+}

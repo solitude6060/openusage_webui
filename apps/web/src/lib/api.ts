@@ -4,11 +4,12 @@ import type {
   ProviderAccount,
   ProviderId,
   ProviderStatus,
+  TokenUsageBreakdown,
   UsageRecord,
   UsageSummary,
 } from "../../../../packages/core/src/types";
 
-export type { ProviderAccount, MultiAccountProviderCapability, MultiAccountProviderId };
+export type { ProviderAccount, MultiAccountProviderCapability, MultiAccountProviderId, TokenUsageBreakdown };
 
 export interface AccountHomeCandidate {
   providerId: MultiAccountProviderId;
@@ -68,6 +69,19 @@ export async function refreshProvider(providerId: string): Promise<{
 
 export async function getUsageSummary(): Promise<UsageSummary> {
   return request("/api/usage/summary");
+}
+
+export async function getTokenUsage(params: {
+  from?: string;
+  to?: string;
+} = {}): Promise<TokenUsageBreakdown> {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== "") {
+      search.set(key, String(value));
+    }
+  }
+  return request(`/api/usage/tokens${search.size ? `?${search}` : ""}`);
 }
 
 export async function getUsageRecords(params: {

@@ -317,6 +317,15 @@ async function handleApi(
     return json(await storage.getUsageSummary());
   }
 
+  if (request.method === "GET" && url.pathname === "/api/usage/tokens") {
+    return json(
+      await storage.getTokenUsageBreakdown({
+        from: url.searchParams.get("from") || undefined,
+        to: url.searchParams.get("to") || undefined,
+      }),
+    );
+  }
+
   if (request.method === "GET" && url.pathname === "/api/usage/records") {
     const providerId = url.searchParams.get("providerId") || undefined;
     return json(

@@ -16,8 +16,9 @@ import { DashboardPage } from "./pages/dashboard-page";
 import { ProvidersPage } from "./pages/providers-page";
 import { SessionsPage } from "./pages/sessions-page";
 import { SettingsPage } from "./pages/settings-page";
+import { TokensPage } from "./pages/tokens-page";
 
-type Page = "dashboard" | "providers" | "sessions" | "settings";
+type Page = "dashboard" | "providers" | "sessions" | "tokens" | "settings";
 
 export const AUTO_REFRESH_INTERVAL_MS = 20 * 60_000;
 
@@ -25,6 +26,7 @@ const pages: Array<{ id: Page; label: string; path: string }> = [
   { id: "dashboard", label: "Dashboard", path: "/dashboard" },
   { id: "providers", label: "Providers", path: "/providers" },
   { id: "sessions", label: "Sessions", path: "/sessions" },
+  { id: "tokens", label: "Tokens", path: "/tokens" },
   { id: "settings", label: "Settings", path: "/settings" },
 ];
 
@@ -210,6 +212,7 @@ export function App() {
         {!loading && page === "sessions" ? (
           <SessionsPage records={records} providers={providers} onRecords={setRecords} />
         ) : null}
+        {!loading && page === "tokens" ? <TokensPage providers={providers} /> : null}
         {!loading && page === "settings" ? (
           <SettingsPage health={health} onCreated={loadData} />
         ) : null}

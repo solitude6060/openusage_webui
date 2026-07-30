@@ -33,6 +33,7 @@ http://127.0.0.1:6736
 - Gemini CLI / Google AI Pro coding usage via `ccusage`
 - MiniMax Token Plan remains API key 查詢
 - 手動 usage entries
+- Tokens 頁可依時間區間看各 provider／model 的 token 總量
 
 ## 目前不做
 

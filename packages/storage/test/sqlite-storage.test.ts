@@ -224,4 +224,63 @@ describe("SqliteStorage", () => {
 
     storage.close();
   });
+
+  test("aggregates token usage by provider and model with time filters", async () => {
+    const storage = new SqliteStorage();
+    await storage.init();
+    const now = Date.now();
+    await storage.upsertUsageRecords([
+      {
+        id: "t1",
+        providerId: "codex",
+        model: "gpt-5.5",
+        totalTokens: 1000,
+        startedAt: new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        source: "plugin",
+      },
+      {
+        id: "t2",
+        providerId: "codex",
+        model: "gpt-5.5",
+        totalTokens: 500,
+        startedAt: new Date(now - 1 * 60 * 60 * 1000).toISOString(),
+        source: "plugin",
+      },
+      {
+        id: "t3",
+        providerId: "cursor",
+        totalTokens: 200,
+        startedAt: new Date(now - 1 * 60 * 60 * 1000).toISOString(),
+        source: "plugin",
+      },
+      {
+        id: "t4",
+        providerId: "codex",
+        model: "old-model",
+        totalTokens: 9999,
+        startedAt: new Date(now - 40 * 24 * 60 * 60 * 1000).toISOString(),
+        source: "plugin",
+      },
+    ]);
+
+    const all = await storage.getTokenUsageBreakdown();
+    expect(all.totalTokens).toBe(1000 + 500 + 200 + 9999);
+    expect(all.providers.find((row) => row.providerId === "codex")?.models).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ model: "old-model", totalTokens: 9999 }),
+        expect.objectContaining({ model: "gpt-5.5", totalTokens: 1500 }),
+      ]),
+    );
+    expect(all.providers.find((row) => row.providerId === "cursor")?.models).toEqual([
+      { model: "Unknown", totalTokens: 200, records: 1 },
+    ]);
+
+    const recent = await storage.getTokenUsageBreakdown({
+      from: new Date(now - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    });
+    expect(recent.totalTokens).toBe(1700);
+    expect(recent.providers.map((row) => row.providerId)).toEqual(["codex", "cursor"]);
+
+    storage.close();
+  });
 });
