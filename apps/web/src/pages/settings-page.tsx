@@ -241,6 +241,8 @@ export function SettingsPage({
               : [
                   { providerId: "codex" as const, name: "Codex" },
                   { providerId: "claude-code" as const, name: "Claude Code" },
+                  { providerId: "cursor" as const, name: "Cursor" },
+                  { providerId: "antigravity" as const, name: "Antigravity" },
                 ]
             ).map((capability) => (
               <option key={capability.providerId} value={capability.providerId}>

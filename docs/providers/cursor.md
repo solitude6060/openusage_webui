@@ -215,6 +215,10 @@ To initialize CLI auth:
 agent login
 ```
 
+### Multi-account homes (WebUI)
+
+Settings → Provider Accounts can track more than one Cursor config. Detect looks for signed-in `state.vscdb` under `~/.config/Cursor` and macOS Application Support. Each enabled account is probed with `OPENUSAGE_CURSOR_CONFIG_DIR` set to that config root (optional power-user override: `OPENUSAGE_CURSOR_STATE_DB` for a full `state.vscdb` path). When either env is set, the plugin uses that home only and skips the global keychain fallback so accounts do not bleed together.
+
 ### Token Refresh
 
 Access tokens are short-lived JWTs. The app refreshes before each request if expired, then persists the new access token back to the same source it was loaded from (SQLite or keychain).

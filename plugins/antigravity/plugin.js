@@ -128,10 +128,83 @@
     }
   }
 
+  function readEnvText(ctx, name) {
+    if (!ctx.host.env || typeof ctx.host.env.get !== "function") return null
+    try {
+      var value = ctx.host.env.get(name)
+      if (typeof value !== "string") return null
+      var trimmed = value.trim()
+      return trimmed || null
+    } catch (e) {
+      ctx.host.log.warn(name + " read failed: " + String(e))
+      return null
+    }
+  }
+
+  function joinPath(base, relativePath) {
+    var root = String(base || "").replace(/\/+$/, "")
+    var rel = String(relativePath || "").replace(/^\/+/, "")
+    if (!root) return rel
+    if (!rel) return root
+    return root + "/" + rel
+  }
+
+  function hasPinnedAntigravityHome(ctx) {
+    return !!(
+      readEnvText(ctx, "OPENUSAGE_ANTIGRAVITY_CLI_HOME") ||
+      readEnvText(ctx, "OPENUSAGE_ANTIGRAVITY_CONFIG_DIR")
+    )
+  }
+
+  function stateDbCandidates(ctx) {
+    var configDir = readEnvText(ctx, "OPENUSAGE_ANTIGRAVITY_CONFIG_DIR")
+    if (configDir) {
+      return [joinPath(configDir, "User/globalStorage/state.vscdb")]
+    }
+    if (readEnvText(ctx, "OPENUSAGE_ANTIGRAVITY_CLI_HOME")) {
+      return []
+    }
+    return STATE_DBS.slice()
+  }
+
+  function loadCliOAuthTokens(ctx) {
+    // IDE config pin is exclusive — do not also read an ambient CLI home.
+    if (readEnvText(ctx, "OPENUSAGE_ANTIGRAVITY_CONFIG_DIR")) return null
+    var cliHome = readEnvText(ctx, "OPENUSAGE_ANTIGRAVITY_CLI_HOME")
+    if (!cliHome) return null
+    var tokenPath = joinPath(cliHome, ".gemini/antigravity-cli/antigravity-oauth-token")
+    try {
+      if (!ctx.host.fs || typeof ctx.host.fs.exists !== "function" || !ctx.host.fs.exists(tokenPath)) {
+        return null
+      }
+      var raw = ctx.host.fs.readText(tokenPath)
+      var parsed = ctx.util.tryParseJson(raw)
+      if (!parsed) return null
+      var accessToken = extractTokenFromObject(parsed)
+      var refreshToken = null
+      if (parsed.token && typeof parsed.token === "object") {
+        if (typeof parsed.token.refresh_token === "string" && parsed.token.refresh_token.trim()) {
+          refreshToken = parsed.token.refresh_token.trim()
+        } else if (typeof parsed.token.refreshToken === "string" && parsed.token.refreshToken.trim()) {
+          refreshToken = parsed.token.refreshToken.trim()
+        }
+      }
+      if (!accessToken && !refreshToken) return null
+      return { accessToken: accessToken, refreshToken: refreshToken, expirySeconds: null }
+    } catch (e) {
+      ctx.host.log.warn("failed to read antigravity CLI oauth token: " + String(e))
+      return null
+    }
+  }
+
   function loadOAuthTokenCandidates(ctx) {
     var candidates = []
-    for (var i = 0; i < STATE_DBS.length; i++) {
-      var tokens = loadOAuthTokensFromDb(ctx, STATE_DBS[i])
+    var cliTokens = loadCliOAuthTokens(ctx)
+    if (cliTokens) candidates.push(cliTokens)
+
+    var dbs = stateDbCandidates(ctx)
+    for (var i = 0; i < dbs.length; i++) {
+      var tokens = loadOAuthTokensFromDb(ctx, dbs[i])
       if (tokens) candidates.push(tokens)
     }
     return candidates
@@ -646,11 +719,13 @@
   // --- Probe ---
 
   function probe(ctx) {
-    var lsResult = probeLs(ctx)
-    if (lsResult) return lsResult
+    if (!hasPinnedAntigravityHome(ctx)) {
+      var lsResult = probeLs(ctx)
+      if (lsResult) return lsResult
 
-    var agyLsResult = probeAgyLs(ctx)
-    if (agyLsResult) return agyLsResult
+      var agyLsResult = probeAgyLs(ctx)
+      if (agyLsResult) return agyLsResult
+    }
 
     var dbTokenCandidates = loadOAuthTokenCandidates(ctx)
 
@@ -700,7 +775,8 @@
     }
 
     if (!ccData || ccData._authFailed) {
-      var agyToken = loadAgyKeychainToken(ctx)
+      // Multi-account homes must not fall back to the global keychain (cross-account bleed).
+      var agyToken = hasPinnedAntigravityHome(ctx) ? null : loadAgyKeychainToken(ctx)
       if (agyToken) {
         var agyResult = probeAgyCloudCode(ctx, agyToken)
         if (agyResult && !agyResult._authFailed) return agyResult

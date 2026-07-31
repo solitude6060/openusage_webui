@@ -648,6 +648,120 @@ describe("antigravity plugin", () => {
     expect(capturedAuth).toBe("Bearer ya29.v1-token")
   })
 
+  it("reads OPENUSAGE_ANTIGRAVITY_CLI_HOME oauth file and skips keychain", async () => {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CLI_HOME") return "/tmp/agy-acct1"
+      return null
+    })
+    ctx.host.fs.writeText(
+      "/tmp/agy-acct1/.gemini/antigravity-cli/antigravity-oauth-token",
+      JSON.stringify({ token: { access_token: "ya29.cli-token", refresh_token: "1//cli" } }),
+    )
+    ctx.host.keychain.readGenericPassword.mockImplementation(() => {
+      throw new Error("keychain should not be read for pinned antigravity home")
+    })
+
+    const called = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      called.push(opts.headers.Authorization)
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.length).toBeGreaterThan(0)
+    expect(called[0]).toBe("Bearer ya29.cli-token")
+    expect(ctx.host.keychain.readGenericPassword).not.toHaveBeenCalled()
+    expect(ctx.host.sqlite.query).not.toHaveBeenCalled()
+  })
+
+  it("uses OPENUSAGE_ANTIGRAVITY_CONFIG_DIR sqlite only", async () => {
+    const ctx = makeCtx()
+    const pinnedDb = "/tmp/agy-ide/User/globalStorage/state.vscdb"
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CONFIG_DIR") return "/tmp/agy-ide"
+      return null
+    })
+    setupSqliteByPath(ctx, {
+      [pinnedDb]: makeOAuthSentinelB64(ctx, {
+        accessToken: "ya29.pinned-ide",
+        refreshToken: "1//pinned",
+        expirySeconds: futureExpiry,
+      }),
+      [STATE_DB_V2]: makeOAuthSentinelB64(ctx, {
+        accessToken: "ya29.default",
+        refreshToken: "1//default",
+        expirySeconds: futureExpiry,
+      }),
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.keychain.readGenericPassword.mockImplementation(() => {
+      throw new Error("keychain should not be read for pinned antigravity home")
+    })
+
+    let capturedAuth = null
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        capturedAuth = opts.headers.Authorization
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(capturedAuth).toBe("Bearer ya29.pinned-ide")
+    expect(ctx.host.sqlite.query.mock.calls.map((call) => call[0])).toEqual([pinnedDb])
+    expect(ctx.host.keychain.readGenericPassword).not.toHaveBeenCalled()
+  })
+
+  it("ignores ambient CLI oauth when OPENUSAGE_ANTIGRAVITY_CONFIG_DIR is set", async () => {
+    const ctx = makeCtx()
+    const pinnedDb = "/tmp/agy-ide/User/globalStorage/state.vscdb"
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CONFIG_DIR") return "/tmp/agy-ide"
+      if (name === "OPENUSAGE_ANTIGRAVITY_CLI_HOME") return "/tmp/.agy-homes/other"
+      return null
+    })
+    ctx.host.fs.writeText(
+      "/tmp/.agy-homes/other/.gemini/antigravity-cli/antigravity-oauth-token",
+      JSON.stringify({ token: { access_token: "ya29.ambient-cli", refresh_token: "1//cli" } }),
+    )
+    setupSqliteByPath(ctx, {
+      [pinnedDb]: makeOAuthSentinelB64(ctx, {
+        accessToken: "ya29.pinned-ide",
+        refreshToken: "1//pinned",
+        expirySeconds: futureExpiry,
+      }),
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    let capturedAuth = null
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        capturedAuth = opts.headers.Authorization
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(capturedAuth).toBe("Bearer ya29.pinned-ide")
+    expect(capturedAuth).not.toBe("Bearer ya29.ambient-cli")
+  })
+
   it("uses the agy keychain account when no local server or SQLite credentials work", async () => {
     const ctx = makeCtx()
     setupSqliteMock(ctx, null)

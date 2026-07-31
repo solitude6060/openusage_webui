@@ -57,9 +57,46 @@
     }
   }
 
+  function readEnvText(ctx, name) {
+    if (!ctx.host.env || typeof ctx.host.env.get !== "function") return null
+    try {
+      const value = ctx.host.env.get(name)
+      if (typeof value !== "string") return null
+      const trimmed = value.trim()
+      return trimmed || null
+    } catch (e) {
+      ctx.host.log.warn(name + " read failed: " + String(e))
+      return null
+    }
+  }
+
+  function joinPath(base, relativePath) {
+    const root = String(base || "").replace(/\/+$/, "")
+    const rel = String(relativePath || "").replace(/^\/+/, "")
+    if (!root) return rel
+    if (!rel) return root
+    return root + "/" + rel
+  }
+
+  function stateDbCandidates(ctx) {
+    const explicitDb = readEnvText(ctx, "OPENUSAGE_CURSOR_STATE_DB")
+    if (explicitDb) return [explicitDb]
+    const configDir = readEnvText(ctx, "OPENUSAGE_CURSOR_CONFIG_DIR")
+    if (configDir) return [joinPath(configDir, "User/globalStorage/state.vscdb")]
+    return STATE_DBS.slice()
+  }
+
+  function hasPinnedCursorHome(ctx) {
+    return !!(
+      readEnvText(ctx, "OPENUSAGE_CURSOR_CONFIG_DIR") ||
+      readEnvText(ctx, "OPENUSAGE_CURSOR_STATE_DB")
+    )
+  }
+
   function resolveSqliteDb(ctx) {
-    for (let i = 0; i < STATE_DBS.length; i++) {
-      const dbPath = STATE_DBS[i]
+    const candidates = stateDbCandidates(ctx)
+    for (let i = 0; i < candidates.length; i++) {
+      const dbPath = candidates[i]
       const accessToken = readStateValueFrom(ctx, dbPath, "cursorAuth/accessToken")
       const refreshToken = readStateValueFrom(ctx, dbPath, "cursorAuth/refreshToken")
       if (accessToken || refreshToken) {
@@ -103,6 +140,7 @@
   }
 
   function loadAuthState(ctx) {
+    const pinnedHome = hasPinnedCursorHome(ctx)
     const sqliteAuth = resolveSqliteDb(ctx)
     const sqliteAccessToken = sqliteAuth ? sqliteAuth.accessToken : null
     const sqliteRefreshToken = sqliteAuth ? sqliteAuth.refreshToken : null
@@ -114,8 +152,13 @@
       ? sqliteMembershipTypeRaw.trim().toLowerCase()
       : null
 
-    const keychainAccessToken = readKeychainValue(ctx, KEYCHAIN_ACCESS_TOKEN_SERVICE)
-    const keychainRefreshToken = readKeychainValue(ctx, KEYCHAIN_REFRESH_TOKEN_SERVICE)
+    // Multi-account homes must not fall back to the global keychain (cross-account bleed).
+    const keychainAccessToken = pinnedHome
+      ? null
+      : readKeychainValue(ctx, KEYCHAIN_ACCESS_TOKEN_SERVICE)
+    const keychainRefreshToken = pinnedHome
+      ? null
+      : readKeychainValue(ctx, KEYCHAIN_REFRESH_TOKEN_SERVICE)
 
     const sqliteSubject = getTokenSubject(ctx, sqliteAccessToken)
     const keychainSubject = getTokenSubject(ctx, keychainAccessToken)

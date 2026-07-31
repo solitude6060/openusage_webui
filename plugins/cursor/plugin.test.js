@@ -130,6 +130,48 @@ describe("cursor plugin", () => {
     expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith("cursor-refresh-token")
   })
 
+  it("uses OPENUSAGE_CURSOR_CONFIG_DIR sqlite and skips keychain", async () => {
+    const ctx = makeCtx()
+    const pinnedDb = "/tmp/cursor-work/User/globalStorage/state.vscdb"
+    const pinnedToken = makeJwt({ exp: 9999999999, sub: "auth0|pinned" })
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_CURSOR_CONFIG_DIR") return "/tmp/cursor-work"
+      return null
+    })
+    ctx.host.sqlite.query.mockImplementation((db, sql) => {
+      if (db === pinnedDb && String(sql).includes("cursorAuth/accessToken")) {
+        return JSON.stringify([{ value: pinnedToken }])
+      }
+      if (db === pinnedDb && String(sql).includes("cursorAuth/refreshToken")) {
+        return JSON.stringify([{ value: "pinned-refresh" }])
+      }
+      return JSON.stringify([])
+    })
+    ctx.host.keychain.readGenericPassword.mockImplementation(() => {
+      throw new Error("keychain should not be read for pinned cursor home")
+    })
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        expect(opts.headers.Authorization).toBe("Bearer " + pinnedToken)
+      }
+      return {
+        status: 200,
+        bodyText: JSON.stringify({
+          enabled: true,
+          planUsage: { totalSpend: 1200, limit: 2400 },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Total usage")).toBeTruthy()
+    expect(ctx.host.keychain.readGenericPassword).not.toHaveBeenCalled()
+    const queriedDbs = [...new Set(ctx.host.sqlite.query.mock.calls.map((call) => call[0]))]
+    expect(queriedDbs).toEqual([pinnedDb])
+  })
+
   it("refreshes keychain access token and persists to keychain source", async () => {
     const ctx = makeCtx()
     const expiredPayload = Buffer.from(JSON.stringify({ exp: 1 }), "utf8")

@@ -13,7 +13,7 @@ use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-const WHITELISTED_ENV_VARS: [&str; 16] = [
+const WHITELISTED_ENV_VARS: [&str; 20] = [
     "CODEX_HOME",
     "CLAUDE_CONFIG_DIR",
     "CLAUDE_CODE_OAUTH_TOKEN",
@@ -30,6 +30,10 @@ const WHITELISTED_ENV_VARS: [&str; 16] = [
     "MINIMAX_CN_API_KEY",
     "SYNTHETIC_API_KEY",
     "PI_CODING_AGENT_DIR",
+    "OPENUSAGE_CURSOR_CONFIG_DIR",
+    "OPENUSAGE_CURSOR_STATE_DB",
+    "OPENUSAGE_ANTIGRAVITY_CONFIG_DIR",
+    "OPENUSAGE_ANTIGRAVITY_CLI_HOME",
 ];
 const MIN_BLOCKING_TIMEOUT: Duration = Duration::from_millis(1);
 
@@ -3232,6 +3236,19 @@ mod tests {
             assert!(
                 WHITELISTED_ENV_VARS.contains(&name),
                 "{name} must be whitelisted for Claude auth compatibility"
+            );
+        }
+
+        for name in [
+            "CODEX_HOME",
+            "OPENUSAGE_CURSOR_CONFIG_DIR",
+            "OPENUSAGE_CURSOR_STATE_DB",
+            "OPENUSAGE_ANTIGRAVITY_CONFIG_DIR",
+            "OPENUSAGE_ANTIGRAVITY_CLI_HOME",
+        ] {
+            assert!(
+                WHITELISTED_ENV_VARS.contains(&name),
+                "{name} must be whitelisted for multi-account home injection"
             );
         }
 
