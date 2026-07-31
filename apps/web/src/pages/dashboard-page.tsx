@@ -34,7 +34,7 @@ const SUMMARY_PROGRESS_LABELS = new Set([
   "Requests",
 ]);
 const SUMMARY_TEXT_LABELS = new Set(["Today"]);
-const SUMMARY_BADGE_LABELS = new Set(["Status"]);
+const SUMMARY_BADGE_LABELS = new Set(["Status", "Account"]);
 
 type DashboardLine = Record<string, unknown>;
 type ProviderData = {
@@ -93,6 +93,13 @@ export function splitDashboardLines(lines: DashboardLine[]): {
   }
 
   if (summaryLines.length === 0) {
+    const firstUsefulIndex = detailLines.findIndex((line) => line.type === "progress");
+    if (firstUsefulIndex >= 0) {
+      summaryLines.push(detailLines[firstUsefulIndex]);
+      detailLines.splice(firstUsefulIndex, 1);
+    }
+  } else if (!summaryLines.some((line) => line.type === "progress")) {
+    // Keep identity badges (e.g. Account) visible without hiding the first quota bar.
     const firstUsefulIndex = detailLines.findIndex((line) => line.type === "progress");
     if (firstUsefulIndex >= 0) {
       summaryLines.push(detailLines[firstUsefulIndex]);

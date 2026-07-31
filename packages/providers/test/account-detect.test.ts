@@ -71,6 +71,43 @@ describe("detectProviderAccounts", () => {
         .sort(),
     ).toEqual([agyAcct, agyIde].sort());
   });
+
+  test("detects default HOME CLI oauth and labels homes with Google email", () => {
+    const home = mkdtempSync(join(tmpdir(), "openusage-account-detect-agy-email-"));
+    tempDirs.push(home);
+
+    const mkIdToken = (email: string) => {
+      const payload = Buffer.from(JSON.stringify({ email, email_verified: true })).toString(
+        "base64url",
+      );
+      return `hdr.${payload}.sig`;
+    };
+
+    mkdirSync(join(home, ".gemini", "antigravity-cli"), { recursive: true });
+    writeFileSync(
+      join(home, ".gemini", "antigravity-cli", "antigravity-oauth-token"),
+      JSON.stringify({
+        token: { access_token: "tok-default", refresh_token: "rt-default" },
+        id_token: mkIdToken("default@example.com"),
+      }),
+    );
+
+    const acct2 = join(home, ".agy-homes", "acct2");
+    mkdirSync(join(acct2, ".gemini", "antigravity-cli"), { recursive: true });
+    writeFileSync(
+      join(acct2, ".gemini", "antigravity-cli", "antigravity-oauth-token"),
+      JSON.stringify({
+        token: { access_token: "tok-acct2", refresh_token: "rt-acct2" },
+        id_token: mkIdToken("acct2@example.com"),
+      }),
+    );
+
+    const detected = detectProviderAccounts("antigravity", { homeDir: home, env: {} });
+    const byPath = Object.fromEntries(detected.map((item) => [item.homePath, item.label]));
+
+    expect(byPath[home]).toBe("Antigravity · Local CLI · default@example.com");
+    expect(byPath[acct2]).toBe("Antigravity · acct2 · acct2@example.com");
+  });
 });
 
 describe("applyProviderHomeEnv", () => {

@@ -233,6 +233,8 @@ Local multi-home wrappers (for example `agy` / `agy2` via `HOME=~/.agy-homes/<pr
 
 `~/.agy-homes/<profile>/.gemini/antigravity-cli/antigravity-oauth-token`
 
+Detect also includes the default CLI home (`$HOME` with `~/.gemini/antigravity-cli/antigravity-oauth-token`) so unwrapped `agy` shows up beside `agy1` / `agy2` overlays. When the oauth file has an OIDC `id_token`, Detect labels include the Google email, and probes emit an **Account** badge with that email on the dashboard card.
+
 When WebUI Provider Accounts pin a home, that path is injected as `OPENUSAGE_ANTIGRAVITY_CLI_HOME`. IDE config roots use `OPENUSAGE_ANTIGRAVITY_CONFIG_DIR` and only that root’s `state.vscdb`. Pinned homes skip local language-server discovery and the global keychain so accounts stay isolated.
 
 For `agy`, OpenUsage calls:

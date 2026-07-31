@@ -656,9 +656,15 @@ describe("antigravity plugin", () => {
       if (name === "OPENUSAGE_ANTIGRAVITY_CLI_HOME") return "/tmp/agy-acct1"
       return null
     })
+    const idPayload = Buffer.from(JSON.stringify({ email: "agy1@example.com" }), "utf8")
+      .toString("base64")
+      .replace(/=+$/g, "")
     ctx.host.fs.writeText(
       "/tmp/agy-acct1/.gemini/antigravity-cli/antigravity-oauth-token",
-      JSON.stringify({ token: { access_token: "ya29.cli-token", refresh_token: "1//cli" } }),
+      JSON.stringify({
+        token: { access_token: "ya29.cli-token", refresh_token: "1//cli" },
+        id_token: `a.${idPayload}.c`,
+      }),
     )
     ctx.host.keychain.readGenericPassword.mockImplementation(() => {
       throw new Error("keychain should not be read for pinned antigravity home")
@@ -677,6 +683,11 @@ describe("antigravity plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.lines.length).toBeGreaterThan(0)
+    expect(result.lines[0]).toMatchObject({
+      type: "badge",
+      label: "Account",
+      text: "agy1@example.com",
+    })
     expect(called[0]).toBe("Bearer ya29.cli-token")
     expect(ctx.host.keychain.readGenericPassword).not.toHaveBeenCalled()
     expect(ctx.host.sqlite.query).not.toHaveBeenCalled()

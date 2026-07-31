@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -123,6 +123,42 @@ export function looksLikeAntigravityCliHome(homePath: string): boolean {
   return normalized.includes("/.agy-homes/") || normalized.endsWith("/.agy-homes");
 }
 
+function emailFromJwt(idToken: string): string | null {
+  const parts = idToken.split(".");
+  if (parts.length < 2) return null;
+  try {
+    const payload = Buffer.from(parts[1], "base64url").toString("utf8");
+    const parsed = JSON.parse(payload) as { email?: unknown; email_address?: unknown };
+    const email =
+      (typeof parsed.email === "string" && parsed.email.trim()) ||
+      (typeof parsed.email_address === "string" && parsed.email_address.trim()) ||
+      "";
+    return email || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Read Google email from a CLI oauth file's OIDC id_token when present. */
+export function emailFromAntigravityCliOauth(homePath: string): string | null {
+  const tokenPath = antigravityCliOauthPath(homePath);
+  try {
+    if (!existsSync(tokenPath)) return null;
+    const parsed = JSON.parse(readFileSync(tokenPath, "utf8")) as {
+      id_token?: unknown;
+    };
+    if (typeof parsed.id_token !== "string" || !parsed.id_token.trim()) return null;
+    return emailFromJwt(parsed.id_token.trim());
+  } catch {
+    return null;
+  }
+}
+
+function antigravityDetectLabel(homePath: string, baseLabel: string): string {
+  const email = emailFromAntigravityCliOauth(homePath);
+  return email ? `${baseLabel} · ${email}` : baseLabel;
+}
+
 function detectAntigravityHomes(options: {
   homeDir?: string;
   env?: NodeJS.ProcessEnv;
@@ -146,6 +182,8 @@ function detectAntigravityHomes(options: {
       homePath: join(homeDir, "Library", "Application Support", "Antigravity IDE"),
       label: "Antigravity · IDE Application Support",
     },
+    // Default `agy` (no wrapper) stores oauth under the real HOME.
+    { homePath: homeDir, label: "Antigravity · Local CLI" },
   ];
 
   const agyHomesRoot = join(homeDir, ".agy-homes");
@@ -187,7 +225,7 @@ function detectAntigravityHomes(options: {
       return {
         providerId: "antigravity" as const,
         homePath: candidate.homePath,
-        label: candidate.label,
+        label: antigravityDetectLabel(candidate.homePath, candidate.label),
         hasAuth,
       };
     })
