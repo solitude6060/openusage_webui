@@ -224,4 +224,133 @@ describe("SqliteStorage", () => {
 
     storage.close();
   });
+
+  test("aggregates token usage by provider and model with time filters", async () => {
+    const storage = new SqliteStorage();
+    await storage.init();
+    const now = Date.now();
+    await storage.upsertUsageRecords([
+      {
+        id: "t1",
+        providerId: "codex",
+        model: "gpt-5.5",
+        totalTokens: 1000,
+        startedAt: new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        source: "plugin",
+      },
+      {
+        id: "t2",
+        providerId: "codex",
+        model: "gpt-5.5",
+        totalTokens: 500,
+        startedAt: new Date(now - 1 * 60 * 60 * 1000).toISOString(),
+        source: "plugin",
+      },
+      {
+        id: "t3",
+        providerId: "cursor",
+        totalTokens: 200,
+        startedAt: new Date(now - 1 * 60 * 60 * 1000).toISOString(),
+        source: "plugin",
+      },
+      {
+        id: "t4",
+        providerId: "codex",
+        model: "old-model",
+        totalTokens: 9999,
+        startedAt: new Date(now - 40 * 24 * 60 * 60 * 1000).toISOString(),
+        source: "plugin",
+      },
+    ]);
+
+    const all = await storage.getTokenUsageBreakdown();
+    expect(all.totalTokens).toBe(1000 + 500 + 200 + 9999);
+    expect(all.providers.find((row) => row.providerId === "codex")?.models).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ model: "old-model", totalTokens: 9999 }),
+        expect.objectContaining({ model: "gpt-5.5", totalTokens: 1500 }),
+      ]),
+    );
+    expect(all.providers.find((row) => row.providerId === "cursor")?.models).toEqual([
+      { model: "Unknown", totalTokens: 200, records: 1 },
+    ]);
+
+    const recent = await storage.getTokenUsageBreakdown({
+      from: new Date(now - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    });
+    expect(recent.totalTokens).toBe(1700);
+    expect(recent.providers.map((row) => row.providerId)).toEqual(["codex", "cursor"]);
+
+    storage.close();
+  });
+
+  test("applies a to-only bound inclusive of the boundary", async () => {
+    const storage = new SqliteStorage();
+    await storage.init();
+    const now = Date.now();
+    const boundary = new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString();
+    await storage.upsertUsageRecords([
+      {
+        id: "to1",
+        providerId: "codex",
+        model: "gpt-5.5",
+        totalTokens: 100,
+        startedAt: boundary,
+        source: "plugin",
+      },
+      {
+        id: "to2",
+        providerId: "codex",
+        model: "gpt-5.5",
+        totalTokens: 500,
+        startedAt: new Date(now - 1 * 60 * 60 * 1000).toISOString(),
+        source: "plugin",
+      },
+    ]);
+
+    const bounded = await storage.getTokenUsageBreakdown({ to: boundary });
+    expect(bounded.totalTokens).toBe(100);
+    expect(bounded.records).toBe(1);
+    expect(bounded.providers[0].providerId).toBe("codex");
+
+    storage.close();
+  });
+
+  test("excludes records with zero or missing total tokens", async () => {
+    const storage = new SqliteStorage();
+    await storage.init();
+    const now = Date.now();
+    await storage.upsertUsageRecords([
+      {
+        id: "z1",
+        providerId: "codex",
+        model: "gpt-5.5",
+        totalTokens: 100,
+        startedAt: new Date(now - 60 * 60 * 1000).toISOString(),
+        source: "plugin",
+      },
+      {
+        id: "z2",
+        providerId: "codex",
+        model: "gpt-5.5",
+        totalTokens: 0,
+        startedAt: new Date(now - 30 * 60 * 1000).toISOString(),
+        source: "plugin",
+      },
+      {
+        id: "z3",
+        providerId: "cursor",
+        startedAt: new Date(now - 15 * 60 * 1000).toISOString(),
+        source: "plugin",
+      },
+    ]);
+
+    const all = await storage.getTokenUsageBreakdown();
+    expect(all.totalTokens).toBe(100);
+    expect(all.records).toBe(1);
+    expect(all.providers.map((row) => row.providerId)).toEqual(["codex"]);
+    expect(all.providers[0].models).toEqual([{ model: "gpt-5.5", totalTokens: 100, records: 1 }]);
+
+    storage.close();
+  });
 });

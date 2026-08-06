@@ -441,6 +441,45 @@ describe("WebUI API", () => {
     }
   });
 
+  test("aggregates token usage by provider and model", async () => {
+    const now = Date.now();
+    const from = new Date(now - 5 * 60 * 1000).toISOString();
+    await storage.upsertUsageRecords([
+      {
+        id: "token-a",
+        providerId: "codex",
+        model: "gpt-5.5",
+        totalTokens: 100,
+        startedAt: new Date(now - 60 * 1000).toISOString(),
+        source: "plugin",
+      },
+      {
+        id: "token-b",
+        providerId: "codex",
+        totalTokens: 40,
+        startedAt: new Date(now - 30 * 1000).toISOString(),
+        source: "plugin",
+      },
+    ]);
+
+    const response = await handleRequest(
+      new Request(`http://127.0.0.1:6736/api/usage/tokens?from=${encodeURIComponent(from)}`),
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    const codex = body.providers.find((row: { providerId: string }) => row.providerId === "codex");
+    expect(codex).toMatchObject({
+      providerId: "codex",
+      totalTokens: 140,
+    });
+    expect(codex.models).toEqual(
+      expect.arrayContaining([
+        { model: "gpt-5.5", totalTokens: 100, records: 1 },
+        { model: "Unknown", totalTokens: 40, records: 1 },
+      ]),
+    );
+  });
+
   test("creates and lists provider accounts for selected providers", async () => {
     const homeA = mkdtempSync(join(tmpdir(), "openusage-codex-a-"));
     const homeB = mkdtempSync(join(tmpdir(), "openusage-claude-b-"));

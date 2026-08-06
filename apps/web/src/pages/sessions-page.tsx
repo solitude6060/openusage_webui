@@ -118,7 +118,9 @@ export function SessionsPage({
             <tbody>
               {records.length === 0 ? (
                 <tr>
-                  <td colSpan={10}>No Usage Records Yet</td>
+                  <td className="table-empty-cell" colSpan={10}>
+                    No Usage Records Yet
+                  </td>
                 </tr>
               ) : (
                 records.map((record) => (

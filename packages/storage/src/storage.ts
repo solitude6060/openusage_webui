@@ -2,6 +2,7 @@ import type {
   ProviderAccount,
   ProviderId,
   ProviderStatus,
+  TokenUsageBreakdown,
   UsageRecord,
   UsageSummary,
 } from "../../core/src/types";
@@ -16,6 +17,10 @@ export interface Storage {
     limit?: number;
   }): Promise<UsageRecord[]>;
   getUsageSummary(): Promise<UsageSummary>;
+  getTokenUsageBreakdown(params?: {
+    from?: string;
+    to?: string;
+  }): Promise<TokenUsageBreakdown>;
   upsertProviderStatus(status: ProviderStatus): Promise<void>;
   listProviderStatus(): Promise<ProviderStatus[]>;
   deleteProviderStatus(providerId: ProviderId): Promise<void>;

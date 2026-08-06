@@ -16,8 +16,9 @@ import { DashboardPage } from "./pages/dashboard-page";
 import { ProvidersPage } from "./pages/providers-page";
 import { SessionsPage } from "./pages/sessions-page";
 import { SettingsPage } from "./pages/settings-page";
+import { TokensPage } from "./pages/tokens-page";
 
-type Page = "dashboard" | "providers" | "sessions" | "settings";
+type Page = "dashboard" | "providers" | "sessions" | "tokens" | "settings";
 
 export const AUTO_REFRESH_INTERVAL_MS = 20 * 60_000;
 
@@ -25,6 +26,7 @@ const pages: Array<{ id: Page; label: string; path: string }> = [
   { id: "dashboard", label: "Dashboard", path: "/dashboard" },
   { id: "providers", label: "Providers", path: "/providers" },
   { id: "sessions", label: "Sessions", path: "/sessions" },
+  { id: "tokens", label: "Tokens", path: "/tokens" },
   { id: "settings", label: "Settings", path: "/settings" },
 ];
 
@@ -36,6 +38,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshToken, setRefreshToken] = useState(0);
   const [, setNowTick] = useState(0);
   const refreshInFlightRef = useRef(false);
 
@@ -50,6 +53,7 @@ export function App() {
       setHealth(healthData);
       setProviders(providerData);
       setRecords(recordData);
+      setRefreshToken((token) => token + 1);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load data");
     } finally {
@@ -209,6 +213,9 @@ export function App() {
         ) : null}
         {!loading && page === "sessions" ? (
           <SessionsPage records={records} providers={providers} onRecords={setRecords} />
+        ) : null}
+        {!loading && page === "tokens" ? (
+          <TokensPage providers={providers} refreshToken={refreshToken} />
         ) : null}
         {!loading && page === "settings" ? (
           <SettingsPage health={health} onCreated={loadData} />

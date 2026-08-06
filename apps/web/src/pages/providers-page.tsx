@@ -50,11 +50,13 @@ export function ProvidersPage({
             </button>
           ) : null}
         </div>
-        <p className="settings-help">
-          {accountCount > 0
-            ? `Showing ${accountCount} multi-account card${accountCount === 1 ? "" : "s"} below. Choose a provider and detect homes in Settings.`
-            : "Multi-account homes are configured in Settings → Provider Accounts. Pick a provider, detect signed-in homes, then refresh here."}
-        </p>
+        <div className="panel-body">
+          <p className="settings-help">
+            {accountCount > 0
+              ? `Showing ${accountCount} multi-account card${accountCount === 1 ? "" : "s"} below. Choose a provider and detect homes in Settings.`
+              : "Multi-account homes are configured in Settings → Provider Accounts. Pick a provider, detect signed-in homes, then refresh here."}
+          </p>
+        </div>
       </section>
       <section className="provider-grid">
       {sorted.map((provider) => {
