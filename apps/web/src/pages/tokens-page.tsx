@@ -6,33 +6,46 @@ import { providerLabel } from "../provider-ui";
 
 type RangePreset = "today" | "7d" | "30d" | "month" | "all" | "custom";
 
-function startOfLocalDay(date = new Date()): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
 function toLocalInputValue(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function rangeBounds(preset: RangePreset, customFrom: string, customTo: string): {
-  from?: string;
-  to?: string;
-} {
-  const now = new Date();
+function safeToISO(value: string): string | undefined {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
+export function rangeBounds(
+  preset: RangePreset,
+  customFrom: string,
+  customTo: string,
+  now = new Date(),
+): { from?: string; to?: string } {
   if (preset === "all") return {};
   if (preset === "custom") {
+    const to = safeToISO(customTo);
+    const toEnd = to ? new Date(to) : undefined;
+    // datetime-local only carries minute precision; extend the parsed instant to
+    // the end of that minute so records inside it are not excluded by `<=`.
+    if (toEnd) toEnd.setSeconds(59, 999);
     return {
-      from: customFrom ? new Date(customFrom).toISOString() : undefined,
-      to: customTo ? new Date(customTo).toISOString() : undefined,
+      from: safeToISO(customFrom),
+      to: toEnd?.toISOString(),
     };
   }
   if (preset === "today") {
-    return { from: startOfLocalDay(now).toISOString(), to: now.toISOString() };
+    // ccusage daily records are anchored at UTC midnight, so preset bounds use
+    // UTC day boundaries to keep day-granularity rows inside the window.
+    return {
+      from: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString(),
+      to: now.toISOString(),
+    };
   }
   if (preset === "month") {
     return {
-      from: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(),
+      from: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString(),
       to: now.toISOString(),
     };
   }
@@ -43,7 +56,21 @@ function rangeBounds(preset: RangePreset, customFrom: string, customTo: string):
   };
 }
 
-export function TokensPage({ providers }: { providers: ProviderStatus[] }) {
+export function customRangeError(customFrom: string, customTo: string): string | null {
+  if (!customFrom || !customTo) return null;
+  const from = new Date(customFrom);
+  const to = new Date(customTo);
+  if (isNaN(from.getTime()) || isNaN(to.getTime())) return null;
+  return from > to ? "From Must Be Before To" : null;
+}
+
+export function TokensPage({
+  providers,
+  refreshToken,
+}: {
+  providers: ProviderStatus[];
+  refreshToken: number;
+}) {
   const [preset, setPreset] = useState<RangePreset>("7d");
   const [customFrom, setCustomFrom] = useState(() =>
     toLocalInputValue(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)),
@@ -68,11 +95,18 @@ export function TokensPage({ providers }: { providers: ProviderStatus[] }) {
       setLoading(true);
       setError(null);
       try {
+        const customError = preset === "custom" ? customRangeError(customFrom, customTo) : null;
+        if (customError) {
+          setError(customError);
+          setData(null);
+          return;
+        }
         const bounds = rangeBounds(preset, customFrom, customTo);
         const next = await getTokenUsage(bounds);
         if (!cancelled) setData(next);
       } catch (loadError) {
         if (!cancelled) {
+          console.error("Token usage load failed:", loadError);
           setError(loadError instanceof Error ? loadError.message : "Failed to load token usage");
           setData(null);
         }
@@ -84,7 +118,7 @@ export function TokensPage({ providers }: { providers: ProviderStatus[] }) {
     return () => {
       cancelled = true;
     };
-  }, [preset, customFrom, customTo]);
+  }, [preset, customFrom, customTo, refreshToken]);
 
   function toggle(providerId: string) {
     setExpanded((current) => {
