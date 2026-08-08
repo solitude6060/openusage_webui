@@ -22,6 +22,7 @@ export interface MultiAccountProviderCapability {
   name: string;
   homeEnvVar: string;
   homeLabel: string;
+  homeEnvVarLabel?: string;
 }
 
 export const MULTI_ACCOUNT_PROVIDER_CAPABILITIES: MultiAccountProviderCapability[] = [
@@ -48,6 +49,7 @@ export const MULTI_ACCOUNT_PROVIDER_CAPABILITIES: MultiAccountProviderCapability
     name: "Antigravity",
     homeEnvVar: "OPENUSAGE_ANTIGRAVITY_CLI_HOME / OPENUSAGE_ANTIGRAVITY_CONFIG_DIR",
     homeLabel: "Antigravity CLI Overlay Or IDE Config Dir",
+    homeEnvVarLabel: "OPENUSAGE_ANTIGRAVITY_CLI_HOME",
   },
 ];
 

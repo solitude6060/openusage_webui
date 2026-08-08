@@ -3,6 +3,7 @@ import {
   buildProviderAccountId,
   isMultiAccountProviderId,
   isProviderAccountId,
+  MULTI_ACCOUNT_PROVIDER_CAPABILITIES,
   slugifyAccountLabel,
 } from "../src/provider-accounts";
 import { isValidProviderId } from "../src/types";
@@ -33,5 +34,13 @@ describe("provider account ids", () => {
     expect(buildProviderAccountId("claude-code", "Work", [])).toBe("claude-code:work");
     expect(buildProviderAccountId("cursor", "Work", [])).toBe("cursor:work");
     expect(buildProviderAccountId("codex", "Family", ["codex:family"])).toBe("codex:family-2");
+  });
+
+  test("antigravity capability has homeEnvVarLabel", () => {
+    const antigravity = MULTI_ACCOUNT_PROVIDER_CAPABILITIES.find(
+      (cap) => cap.providerId === "antigravity",
+    );
+    expect(antigravity).toBeDefined();
+    expect(antigravity?.homeEnvVarLabel).toBe("OPENUSAGE_ANTIGRAVITY_CLI_HOME");
   });
 });
