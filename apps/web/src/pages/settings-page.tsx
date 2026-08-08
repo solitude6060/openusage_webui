@@ -21,6 +21,20 @@ import { StatusPill } from "../components/status-pill";
 
 export const WEB_AUTO_REFRESH_LABEL = "Every 20 Minutes";
 
+export const MANUAL_PLACEHOLDERS: Record<
+  MultiAccountProviderId,
+  { label: string; homePath: string }
+> = {
+  codex: { label: "Codex · Family", homePath: "~/.codex-family" },
+  "claude-code": { label: "Claude · Work", homePath: "~/.claude-work" },
+  cursor: { label: "Cursor · Work", homePath: "~/.config/cursor-work" },
+  antigravity: { label: "Antigravity · Main", homePath: "~/.agy-homes/acct1" },
+};
+
+export function getManualPlaceholder(providerId: MultiAccountProviderId) {
+  return MANUAL_PLACEHOLDERS[providerId] ?? MANUAL_PLACEHOLDERS.codex;
+}
+
 export function SettingsPage({
   health,
   onCreated,
@@ -333,9 +347,7 @@ export function SettingsPage({
           <label>
             Label
             <input
-              placeholder={
-                selectedProviderId === "claude-code" ? "Claude · Work" : "Codex · Family"
-              }
+              placeholder={getManualPlaceholder(selectedProviderId).label}
               value={draft.label}
               onChange={(event) => setDraft({ ...draft, label: event.target.value })}
               required
@@ -344,9 +356,7 @@ export function SettingsPage({
           <label>
             Home Path
             <input
-              placeholder={
-                selectedProviderId === "claude-code" ? "~/.claude-work" : "~/.codex-family"
-              }
+              placeholder={getManualPlaceholder(selectedProviderId).homePath}
               value={draft.homePath}
               onChange={(event) => setDraft({ ...draft, homePath: event.target.value })}
               required
