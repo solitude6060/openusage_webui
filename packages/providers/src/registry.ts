@@ -1,6 +1,10 @@
 import { isAbsolute, relative, resolve } from "node:path";
-import type { MultiAccountProviderId, ProviderAccount } from "../../core/src/types";
-import { homeEnvForProvider } from "./account-detect";
+import {
+  isMultiAccountProviderId,
+  type MultiAccountProviderId,
+  type ProviderAccount,
+} from "../../core/src/types";
+import { applyProviderHomeEnv } from "./account-detect";
 import { CcusageProvider } from "./providers/ccusage";
 import { ManualProvider } from "./providers/manual";
 import { MiniMaxProvider } from "./providers/minimax";
@@ -59,7 +63,7 @@ function createHomedPluginProvider(options: {
 }): UsageProvider {
   const providerEnv = { ...options.env };
   if (options.homePath) {
-    providerEnv[homeEnvForProvider(options.baseProviderId)] = options.homePath;
+    applyProviderHomeEnv(providerEnv, options.baseProviderId, options.homePath);
   }
   return new OpenUsagePluginProvider({
     providerId: options.providerId,
@@ -82,12 +86,21 @@ export function getProviders(options: GetProvidersOptions = {}): UsageProvider[]
   const accounts = options.providerAccounts ?? options.codexInstances ?? [];
 
   const plugins = pluginProviders.flatMap((provider) => {
+    if (!isMultiAccountProviderId(provider.providerId)) {
+      return [
+        new OpenUsagePluginProvider({
+          providerId: provider.providerId,
+          name: provider.name,
+          pluginId: provider.pluginId,
+          scriptPath: resolveBundledPluginScriptPath(provider.pluginId),
+          env,
+        }),
+      ];
+    }
+
     const providerAccounts = accountsForProvider(provider.providerId, accounts);
     const enabledAccounts = providerAccounts.filter((account) => account.enabled);
-    if (
-      (provider.providerId === "codex" || provider.providerId === "claude-code") &&
-      enabledAccounts.length > 0
-    ) {
+    if (enabledAccounts.length > 0) {
       return enabledAccounts.map((account) =>
         createHomedPluginProvider({
           providerId: account.id,
@@ -100,25 +113,13 @@ export function getProviders(options: GetProvidersOptions = {}): UsageProvider[]
       );
     }
 
-    if (provider.providerId === "codex" || provider.providerId === "claude-code") {
-      return [
-        createHomedPluginProvider({
-          providerId: provider.providerId,
-          name: provider.name,
-          pluginId: provider.pluginId,
-          baseProviderId: provider.providerId,
-          homePath: undefined,
-          env,
-        }),
-      ];
-    }
-
     return [
-      new OpenUsagePluginProvider({
+      createHomedPluginProvider({
         providerId: provider.providerId,
         name: provider.name,
         pluginId: provider.pluginId,
-        scriptPath: resolveBundledPluginScriptPath(provider.pluginId),
+        baseProviderId: provider.providerId,
+        homePath: undefined,
         env,
       }),
     ];

@@ -121,10 +121,10 @@ The local WebUI fork keeps the original Tauri app intact and adds a localhost da
 Current WebUI provider support:
 
 - Amp via the original `plugins/amp/plugin.js` adapter
-- Antigravity via the original `plugins/antigravity/plugin.js` adapter
+- Antigravity via the original `plugins/antigravity/plugin.js` adapter (optional multi-home via Settings → Provider Accounts; includes `~/.agy-homes/*`)
 - Claude Code via the original `plugins/claude/plugin.js` adapter (optional multi-home via Settings → Provider Accounts)
 - Codex via the original `plugins/codex/plugin.js` adapter (optional multi-home via Settings → Provider Accounts)
-- Cursor via the original `plugins/cursor/plugin.js` adapter
+- Cursor via the original `plugins/cursor/plugin.js` adapter (optional multi-home via Settings → Provider Accounts)
 - Devin via the original `plugins/devin/plugin.js` adapter
 - Factory via the original `plugins/factory/plugin.js` adapter
 - Grok via the original `plugins/grok/plugin.js` adapter

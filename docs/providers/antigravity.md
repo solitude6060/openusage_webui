@@ -229,6 +229,14 @@ Base URLs tried in order:
 
 `agy` stores its auth in the macOS Keychain under service `gemini`, account `antigravity`. OpenUsage reads that exact account only; it does not use legacy Gemini CLI files.
 
+Local multi-home wrappers (for example `agy` / `agy2` via `HOME=~/.agy-homes/<profile>`) keep a private `.gemini` tree. The plugin also reads:
+
+`~/.agy-homes/<profile>/.gemini/antigravity-cli/antigravity-oauth-token`
+
+Detect also includes the default CLI home (`$HOME` with `~/.gemini/antigravity-cli/antigravity-oauth-token`) so unwrapped `agy` shows up beside `agy1` / `agy2` overlays. Account labels are just the account slug (for example "Antigravity · acct1"), not the Google email. Probes add an **Account** badge to the dashboard card for every detected home, the default CLI home included. When the oauth file has an OIDC `id_token`, the badge shows the Google email; older files without one show the home directory basename instead, plus a log line.
+
+When WebUI Provider Accounts pin a home, that path is injected as `OPENUSAGE_ANTIGRAVITY_CLI_HOME`. IDE config roots use `OPENUSAGE_ANTIGRAVITY_CONFIG_DIR` and only that root’s `state.vscdb`. A home is treated as an IDE config root when it looks like one: it contains `User/globalStorage`, ends with `/Antigravity` or `/Antigravity IDE`, or sits under `Library/Application Support/Antigravity`. Every other path counts as a CLI home, so a manual CLI home that doesn't have an oauth token file yet still gets picked up. Pinned homes skip local language-server discovery and the global keychain so accounts stay isolated.
+
 For `agy`, OpenUsage calls:
 
 1. `POST /v1internal:loadCodeAssist`
@@ -260,10 +268,14 @@ The Cloud Code model set is a superset of the LS model set. The LS returns only 
 
 ## Plugin Strategy
 
-1. Probe the Antigravity app/IDE language server.
-2. Probe the `agy` local language server.
-3. Read SQLite token candidates from both Antigravity state DB paths.
-4. Try unexpired SQLite/cached access tokens with `fetchAvailableModels`.
-5. Refresh SQLite refresh tokens only after auth failure or when no access token exists.
-6. Read `agy` keychain token from service `gemini`, account `antigravity`, then call `loadCodeAssist` and `retrieveUserQuota`.
+1. Probe the Antigravity app/IDE language server (skipped when a multi-account home env is set).
+2. Probe the `agy` local language server (skipped when a multi-account home env is set).
+3. Read CLI oauth file when `OPENUSAGE_ANTIGRAVITY_CLI_HOME` is set; otherwise read SQLite token candidates from Antigravity state DB paths (or only `OPENUSAGE_ANTIGRAVITY_CONFIG_DIR` when set).
+4. Try unexpired SQLite/CLI/cached access tokens with `fetchAvailableModels`. Expired CLI tokens are skipped and refreshed instead of tried. For pinned multi-account homes, also call `loadCodeAssist` so the plan name (for example "Google AI Pro") shows on the card.
+5. Refresh SQLite/CLI refresh tokens only after auth failure or when no access token exists.
+6. Read `agy` keychain token from service `gemini`, account `antigravity` (skipped when a multi-account home env is set), then call `loadCodeAssist` and `retrieveUserQuota`.
 7. If all strategies fail: error "Start Antigravity or run `agy` and try again."
+
+### Multi-account homes (WebUI)
+
+Settings → Provider Accounts can detect `~/.agy-homes/*` CLI overlays and default IDE config dirs. Enabled accounts become `antigravity:<slug>` cards with the matching home env injected.

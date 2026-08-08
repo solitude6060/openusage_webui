@@ -1,5 +1,10 @@
 /** Base providers that support multiple home/account instances in WebUI. */
-export const MULTI_ACCOUNT_PROVIDER_IDS = ["codex", "claude-code"] as const;
+export const MULTI_ACCOUNT_PROVIDER_IDS = [
+  "codex",
+  "claude-code",
+  "cursor",
+  "antigravity",
+] as const;
 
 export type MultiAccountProviderId = (typeof MULTI_ACCOUNT_PROVIDER_IDS)[number];
 
@@ -17,6 +22,7 @@ export interface MultiAccountProviderCapability {
   name: string;
   homeEnvVar: string;
   homeLabel: string;
+  homeEnvVarLabel?: string;
 }
 
 export const MULTI_ACCOUNT_PROVIDER_CAPABILITIES: MultiAccountProviderCapability[] = [
@@ -31,6 +37,19 @@ export const MULTI_ACCOUNT_PROVIDER_CAPABILITIES: MultiAccountProviderCapability
     name: "Claude Code",
     homeEnvVar: "CLAUDE_CONFIG_DIR",
     homeLabel: "Claude Config Dir",
+  },
+  {
+    providerId: "cursor",
+    name: "Cursor",
+    homeEnvVar: "OPENUSAGE_CURSOR_CONFIG_DIR",
+    homeLabel: "Cursor Config Dir",
+  },
+  {
+    providerId: "antigravity",
+    name: "Antigravity",
+    homeEnvVar: "OPENUSAGE_ANTIGRAVITY_CLI_HOME / OPENUSAGE_ANTIGRAVITY_CONFIG_DIR",
+    homeLabel: "Antigravity CLI Overlay Or IDE Config Dir",
+    homeEnvVarLabel: "OPENUSAGE_ANTIGRAVITY_CLI_HOME",
   },
 ];
 
@@ -57,7 +76,7 @@ export function slugifyAccountLabel(label: string): string {
   const slug = label
     .trim()
     .toLowerCase()
-    .replace(/^(codex|claude(?:\s*code)?)[\s·\-_:]+/i, "")
+    .replace(/^(codex|claude(?:\s*code)?|cursor|antigravity|agy)\s*[\s·\-_:]+\s*/i, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);

@@ -648,6 +648,608 @@ describe("antigravity plugin", () => {
     expect(capturedAuth).toBe("Bearer ya29.v1-token")
   })
 
+  it("reads OPENUSAGE_ANTIGRAVITY_CLI_HOME oauth file and skips keychain", async () => {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CLI_HOME") return "/tmp/agy-acct1"
+      return null
+    })
+    const idPayload = Buffer.from(JSON.stringify({ email: "agy1@example.com" }), "utf8")
+      .toString("base64")
+      .replace(/=+$/g, "")
+    ctx.host.fs.writeText(
+      "/tmp/agy-acct1/.gemini/antigravity-cli/antigravity-oauth-token",
+      JSON.stringify({
+        token: { access_token: "ya29.cli-token", refresh_token: "1//cli" },
+        id_token: `a.${idPayload}.c`,
+      }),
+    )
+    ctx.host.keychain.readGenericPassword.mockImplementation(() => {
+      throw new Error("keychain should not be read for pinned antigravity home")
+    })
+
+    const called = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      called.push(opts.headers.Authorization)
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.length).toBeGreaterThan(0)
+    expect(result.lines[0]).toMatchObject({
+      type: "badge",
+      label: "Account",
+      text: "agy1@example.com",
+    })
+    expect(JSON.stringify(result.lines)).not.toContain("ya29.cli-token")
+    expect(JSON.stringify(result.lines)).not.toContain("1//cli")
+    expect(called[0]).toBe("Bearer ya29.cli-token")
+    expect(ctx.host.keychain.readGenericPassword).not.toHaveBeenCalled()
+    expect(ctx.host.sqlite.query).not.toHaveBeenCalled()
+  })
+
+  it("CLI oauth file with past ISO expiry triggers refresh (never sends the expired token)", async () => {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CLI_HOME") return "/tmp/agy-acct1"
+      return null
+    })
+    const pastIso = new Date(Date.now() - 3600 * 1000).toISOString()
+    ctx.host.fs.writeText(
+      "/tmp/agy-acct1/.gemini/antigravity-cli/antigravity-oauth-token",
+      JSON.stringify({
+        token: { access_token: "ya29.cli-expired", refresh_token: "1//cli-refresh", expiry: pastIso },
+        auth_method: "oauth",
+      }),
+    )
+
+    const capturedAuths = []
+    let oauthBody = null
+    let refreshCalls = 0
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("oauth2.googleapis.com")) {
+        refreshCalls += 1
+        oauthBody = opts.bodyText
+        return { status: 200, bodyText: JSON.stringify({ access_token: "ya29.cli-refreshed", expires_in: 3600 }) }
+      }
+      if (url.includes("fetchAvailableModels")) {
+        capturedAuths.push(opts.headers.Authorization)
+        if (opts.headers.Authorization === "Bearer ya29.cli-refreshed") {
+          return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+        }
+        return { status: 401, bodyText: '{"error":"unauthorized"}' }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(refreshCalls).toBe(1)
+    expect(oauthBody).toContain("refresh_token=" + encodeURIComponent("1//cli-refresh"))
+    expect(capturedAuths).toEqual(["Bearer ya29.cli-refreshed"])
+    expect(capturedAuths).not.toContain("Bearer ya29.cli-expired")
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  it("CLI oauth file with future ISO expiry uses the token directly (no refresh)", async () => {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CLI_HOME") return "/tmp/agy-acct1"
+      return null
+    })
+    const futureIso = new Date(Date.now() + 3600 * 1000).toISOString()
+    ctx.host.fs.writeText(
+      "/tmp/agy-acct1/.gemini/antigravity-cli/antigravity-oauth-token",
+      JSON.stringify({
+        token: { access_token: "ya29.cli-valid", refresh_token: "1//cli-refresh", expiry: futureIso },
+        auth_method: "oauth",
+      }),
+    )
+
+    const capturedAuths = []
+    let refreshCalls = 0
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("oauth2.googleapis.com")) {
+        refreshCalls += 1
+        return { status: 200, bodyText: JSON.stringify({ access_token: "unused" }) }
+      }
+      if (url.includes("fetchAvailableModels")) {
+        capturedAuths.push(opts.headers.Authorization)
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(refreshCalls).toBe(0)
+    expect(capturedAuths).toEqual(["Bearer ya29.cli-valid"])
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  it("derives plan from loadCodeAssist for a pinned CLI home", async () => {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CLI_HOME") return "/tmp/agy-acct1"
+      return null
+    })
+    const futureIso = new Date(Date.now() + 3600 * 1000).toISOString()
+    ctx.host.fs.writeText(
+      "/tmp/agy-acct1/.gemini/antigravity-cli/antigravity-oauth-token",
+      JSON.stringify({
+        token: { access_token: "ya29.cli-plan-token", refresh_token: "1//cli-plan", expiry: futureIso },
+      }),
+    )
+
+    const fetchAuths = []
+    const loadAuths = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("fetchAvailableModels")) {
+        fetchAuths.push(opts.headers.Authorization)
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      if (url.includes("loadCodeAssist")) {
+        loadAuths.push({ auth: opts.headers.Authorization, userAgent: opts.headers["User-Agent"] })
+        return { status: 200, bodyText: JSON.stringify(makeAgyLoadResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(fetchAuths).toEqual(["Bearer ya29.cli-plan-token"])
+    expect(loadAuths[0].auth).toBe("Bearer ya29.cli-plan-token")
+    expect(loadAuths[0].userAgent).toBe("agy")
+    expect(result.plan).toBe("Google AI Pro")
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  it("derives plan from loadCodeAssist for a pinned IDE config dir", async () => {
+    const ctx = makeCtx()
+    const pinnedDb = "/tmp/agy-ide/User/globalStorage/state.vscdb"
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CONFIG_DIR") return "/tmp/agy-ide"
+      return null
+    })
+    setupSqliteByPath(ctx, {
+      [pinnedDb]: makeOAuthSentinelB64(ctx, {
+        accessToken: "ya29.pinned-plan-token",
+        refreshToken: "1//pinned-plan",
+        expirySeconds: futureExpiry,
+      }),
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.keychain.readGenericPassword.mockImplementation(() => {
+      throw new Error("keychain should not be read for pinned antigravity home")
+    })
+
+    let loadAuth = null
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      if (url.includes("loadCodeAssist")) {
+        loadAuth = opts.headers.Authorization
+        return { status: 200, bodyText: JSON.stringify(makeAgyLoadResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(loadAuth).toBe("Bearer ya29.pinned-plan-token")
+    expect(result.plan).toBe("Google AI Pro")
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  it("uses OPENUSAGE_ANTIGRAVITY_CONFIG_DIR sqlite only", async () => {
+    const ctx = makeCtx()
+    const pinnedDb = "/tmp/agy-ide/User/globalStorage/state.vscdb"
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CONFIG_DIR") return "/tmp/agy-ide"
+      return null
+    })
+    setupSqliteByPath(ctx, {
+      [pinnedDb]: makeOAuthSentinelB64(ctx, {
+        accessToken: "ya29.pinned-ide",
+        refreshToken: "1//pinned",
+        expirySeconds: futureExpiry,
+      }),
+      [STATE_DB_V2]: makeOAuthSentinelB64(ctx, {
+        accessToken: "ya29.default",
+        refreshToken: "1//default",
+        expirySeconds: futureExpiry,
+      }),
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.keychain.readGenericPassword.mockImplementation(() => {
+      throw new Error("keychain should not be read for pinned antigravity home")
+    })
+
+    let capturedAuth = null
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        capturedAuth = opts.headers.Authorization
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(capturedAuth).toBe("Bearer ya29.pinned-ide")
+    expect(JSON.stringify(result.lines)).not.toContain("ya29.pinned-ide")
+    expect(JSON.stringify(result.lines)).not.toContain("1//pinned")
+    expect(ctx.host.sqlite.query.mock.calls.map((call) => call[0])).toEqual([pinnedDb])
+    expect(ctx.host.keychain.readGenericPassword).not.toHaveBeenCalled()
+  })
+
+  it("ignores ambient CLI oauth when OPENUSAGE_ANTIGRAVITY_CONFIG_DIR is set", async () => {
+    const ctx = makeCtx()
+    const pinnedDb = "/tmp/agy-ide/User/globalStorage/state.vscdb"
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CONFIG_DIR") return "/tmp/agy-ide"
+      if (name === "OPENUSAGE_ANTIGRAVITY_CLI_HOME") return "/tmp/.agy-homes/other"
+      return null
+    })
+    ctx.host.fs.writeText(
+      "/tmp/.agy-homes/other/.gemini/antigravity-cli/antigravity-oauth-token",
+      JSON.stringify({ token: { access_token: "ya29.ambient-cli", refresh_token: "1//cli" } }),
+    )
+    setupSqliteByPath(ctx, {
+      [pinnedDb]: makeOAuthSentinelB64(ctx, {
+        accessToken: "ya29.pinned-ide",
+        refreshToken: "1//pinned",
+        expirySeconds: futureExpiry,
+      }),
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    let capturedAuth = null
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        capturedAuth = opts.headers.Authorization
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(capturedAuth).toBe("Bearer ya29.pinned-ide")
+    expect(capturedAuth).not.toBe("Bearer ya29.ambient-cli")
+  })
+
+  it("derives plan from loadCodeAssist for pinned CLI account (Cloud Code path)", async () => {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CLI_HOME") return "/tmp/agy-acct1"
+      return null
+    })
+    ctx.host.fs.writeText(
+      "/tmp/agy-acct1/.gemini/antigravity-cli/antigravity-oauth-token",
+      JSON.stringify({ token: { access_token: "ya29.cli-plan", refresh_token: "1//cli" } }),
+    )
+
+    const called = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      called.push(url)
+      if (url.includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      if (url.includes("loadCodeAssist")) {
+        return { status: 200, bodyText: JSON.stringify(makeAgyLoadResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Google AI Pro")
+    expect(called.some((u) => u.includes("loadCodeAssist"))).toBe(true)
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  it("derives plan from loadCodeAssist for pinned IDE account (Cloud Code path)", async () => {
+    const ctx = makeCtx()
+    const pinnedDb = "/tmp/agy-ide/User/globalStorage/state.vscdb"
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CONFIG_DIR") return "/tmp/agy-ide"
+      return null
+    })
+    setupSqliteByPath(ctx, {
+      [pinnedDb]: makeOAuthSentinelB64(ctx, {
+        accessToken: "ya29.ide-plan",
+        refreshToken: "1//ide",
+        expirySeconds: futureExpiry,
+      }),
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    const called = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      called.push(url)
+      if (url.includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      if (url.includes("loadCodeAssist")) {
+        return { status: 200, bodyText: JSON.stringify(makeAgyLoadResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Google AI Pro")
+    expect(called.some((u) => u.includes("loadCodeAssist"))).toBe(true)
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  // --- readAgyPlan fallback tests ---
+
+  it("readAgyPlan falls back to allowedTiers[0].name when paidTier and currentTier are absent (real API shape)", async () => {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CLI_HOME") return "/tmp/agy-acct1"
+      return null
+    })
+    const futureIso = new Date(Date.now() + 3600 * 1000).toISOString()
+    ctx.host.fs.writeText(
+      "/tmp/agy-acct1/.gemini/antigravity-cli/antigravity-oauth-token",
+      JSON.stringify({
+        token: { access_token: "ya29.cli-allowed-tiers", refresh_token: "1//cli", expiry: futureIso },
+      }),
+    )
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      if (url.includes("loadCodeAssist")) {
+        // Real API shape: allowedTiers + ineligibleTiers, no paidTier/currentTier
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            allowedTiers: [{ name: "Gemini Code Assist", id: "standard-tier" }],
+            ineligibleTiers: [{ tierName: "Gemini Code Assist for individuals" }],
+            cloudaicompanionProject: "projects/openusage-agy",
+          }),
+        }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Gemini Code Assist")
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  it("readAgyPlan prefers paidTier.name over allowedTiers when both present", async () => {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CLI_HOME") return "/tmp/agy-acct1"
+      return null
+    })
+    const futureIso = new Date(Date.now() + 3600 * 1000).toISOString()
+    ctx.host.fs.writeText(
+      "/tmp/agy-acct1/.gemini/antigravity-cli/antigravity-oauth-token",
+      JSON.stringify({
+        token: { access_token: "ya29.cli-paid-tier-wins", refresh_token: "1//cli", expiry: futureIso },
+      }),
+    )
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      if (url.includes("loadCodeAssist")) {
+        // Both paidTier and allowedTiers present — paidTier should win
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            paidTier: { name: "Google AI Pro" },
+            allowedTiers: [{ name: "Gemini Code Assist", id: "standard-tier" }],
+            ineligibleTiers: [{ tierName: "Gemini Code Assist for individuals" }],
+            cloudaicompanionProject: "projects/openusage-agy",
+          }),
+        }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Google AI Pro")
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  it("readAgyPlan falls back to currentTier.name when paidTier absent but currentTier present", async () => {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CLI_HOME") return "/tmp/agy-acct1"
+      return null
+    })
+    const futureIso = new Date(Date.now() + 3600 * 1000).toISOString()
+    ctx.host.fs.writeText(
+      "/tmp/agy-acct1/.gemini/antigravity-cli/antigravity-oauth-token",
+      JSON.stringify({
+        token: { access_token: "ya29.cli-current-tier", refresh_token: "1//cli", expiry: futureIso },
+      }),
+    )
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      if (url.includes("loadCodeAssist")) {
+        // currentTier present, paidTier absent
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            currentTier: { name: "Google AI Pro" },
+            allowedTiers: [{ name: "Gemini Code Assist", id: "standard-tier" }],
+            cloudaicompanionProject: "projects/openusage-agy",
+          }),
+        }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Google AI Pro")
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  it("shows account badge from HOME oauth file id_token (unpinned)", async () => {
+    const ctx = makeCtx()
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "HOME") return "/home/alice"
+      return null
+    })
+    const idPayload = Buffer.from(JSON.stringify({ email: "alice@example.com" }), "utf8")
+      .toString("base64")
+      .replace(/=+$/g, "")
+    ctx.host.fs.writeText(
+      "/home/alice/.gemini/antigravity-cli/antigravity-oauth-token",
+      JSON.stringify({
+        token: { access_token: "ya29.home", refresh_token: "1//home" },
+        id_token: `a.${idPayload}.c`,
+      }),
+    )
+    setupLsMock(ctx, makeDiscovery(), makeUserStatusResponse())
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines[0]).toMatchObject({
+      type: "badge",
+      label: "Account",
+      text: "alice@example.com",
+    })
+  })
+
+  it("pinned CLI account with no id_token falls back to home basename with a log line", async () => {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CLI_HOME") return "/tmp/agy-acct1"
+      return null
+    })
+    ctx.host.fs.writeText(
+      "/tmp/agy-acct1/.gemini/antigravity-cli/antigravity-oauth-token",
+      JSON.stringify({ token: { access_token: "ya29.cli-badge", refresh_token: "1//cli" } }),
+    )
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines[0]).toMatchObject({
+      type: "badge",
+      label: "Account",
+      text: "agy-acct1",
+    })
+    expect(ctx.host.log.info).toHaveBeenCalledWith(
+      "antigravity oauth file has no id_token; using home basename for account badge"
+    )
+  })
+
+  it("does not attach a CLI account badge when OPENUSAGE_ANTIGRAVITY_CONFIG_DIR is set", async () => {
+    const ctx = makeCtx()
+    const pinnedDb = "/tmp/agy-ide/User/globalStorage/state.vscdb"
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CONFIG_DIR") return "/tmp/agy-ide"
+      if (name === "HOME") return "/home/alice"
+      return null
+    })
+    const idPayload = Buffer.from(JSON.stringify({ email: "alice@example.com" }), "utf8")
+      .toString("base64")
+      .replace(/=+$/g, "")
+    ctx.host.fs.writeText(
+      "/home/alice/.gemini/antigravity-cli/antigravity-oauth-token",
+      JSON.stringify({
+        token: { access_token: "ya29.home", refresh_token: "1//home" },
+        id_token: `a.${idPayload}.c`,
+      }),
+    )
+    setupSqliteByPath(ctx, {
+      [pinnedDb]: makeOAuthSentinelB64(ctx, {
+        accessToken: "ya29.ide-badge",
+        refreshToken: "1//ide",
+        expirySeconds: futureExpiry,
+      }),
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.some((l) => l.type === "badge")).toBe(false)
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
   it("uses the agy keychain account when no local server or SQLite credentials work", async () => {
     const ctx = makeCtx()
     setupSqliteMock(ctx, null)
@@ -1226,6 +1828,125 @@ describe("antigravity plugin", () => {
     // Expired DB token must NOT be sent. The refreshed token is used instead.
     expect(capturedAuths).not.toContain("Bearer ya29.expired-proto-token")
     expect(capturedAuths[0]).toBe("Bearer ya29.refreshed")
+  })
+
+  it("skips expired CLI oauth token (ISO expiry) and falls through to refresh", async () => {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CLI_HOME") return "/tmp/agy-acct1"
+      return null
+    })
+    const pastIso = new Date(Date.now() - 3600 * 1000).toISOString()
+    ctx.host.fs.writeText(
+      "/tmp/agy-acct1/.gemini/antigravity-cli/antigravity-oauth-token",
+      JSON.stringify({
+        token: { access_token: "ya29.expired-cli", refresh_token: "1//cli-refresh", expiry: pastIso },
+      }),
+    )
+
+    const capturedAuths = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("oauth2.googleapis.com")) {
+        return { status: 200, bodyText: JSON.stringify({ access_token: "ya29.refreshed-cli" }) }
+      }
+      if (url.includes("fetchAvailableModels")) {
+        capturedAuths.push(opts.headers.Authorization)
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    // Expired CLI token must NOT be sent. The refreshed token is used instead.
+    expect(capturedAuths).not.toContain("Bearer ya29.expired-cli")
+    expect(capturedAuths[0]).toBe("Bearer ya29.refreshed-cli")
+  })
+
+  it("uses future-expiry CLI oauth token directly without refresh", async () => {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CLI_HOME") return "/tmp/agy-acct1"
+      return null
+    })
+    const futureIso = new Date(Date.now() + 3600 * 1000).toISOString()
+    ctx.host.fs.writeText(
+      "/tmp/agy-acct1/.gemini/antigravity-cli/antigravity-oauth-token",
+      JSON.stringify({
+        token: { access_token: "ya29.future-cli", refresh_token: "1//cli-refresh", expiry: futureIso },
+      }),
+    )
+
+    const capturedAuths = []
+    let oauthCalls = 0
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("oauth2.googleapis.com")) {
+        oauthCalls += 1
+        return { status: 200, bodyText: JSON.stringify({ access_token: "ya29.refreshed-cli" }) }
+      }
+      if (url.includes("fetchAvailableModels")) {
+        capturedAuths.push(opts.headers.Authorization)
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(oauthCalls).toBe(0)
+    expect(capturedAuths).toEqual(["Bearer ya29.future-cli"])
+  })
+
+  it("never sends id_token as a bearer token (CLI oauth with refresh_token)", async () => {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CLI_HOME") return "/tmp/agy-acct1"
+      return null
+    })
+    const idPayload = Buffer.from(JSON.stringify({ email: "agy2@example.com" }), "utf8")
+      .toString("base64")
+      .replace(/=+$/g, "")
+    const idToken = `a.${idPayload}.c`
+    const tokenPath = "/tmp/agy-acct1/.gemini/antigravity-cli/antigravity-oauth-token"
+    ctx.host.fs.writeText(
+      tokenPath,
+      JSON.stringify({ token: { refresh_token: "1//rt" }, id_token: idToken }),
+    )
+
+    const capturedAuths = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("oauth2.googleapis.com")) {
+        return { status: 200, bodyText: JSON.stringify({ access_token: "ya29.rt-refreshed" }) }
+      }
+      if (url.includes("fetchAvailableModels")) {
+        capturedAuths.push(opts.headers.Authorization)
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(capturedAuths).not.toContain("Bearer " + idToken)
+    expect(capturedAuths[0]).toBe("Bearer ya29.rt-refreshed")
+
+    // Without a refresh token the id_token-only file must throw, never probing Cloud Code.
+    ctx.host.fs.writeText(tokenPath, JSON.stringify({ id_token: idToken }))
+    ctx.host.fs.writeText(ctx.app.pluginDataDir + "/auth.json", "{}")
+    expect(() => plugin.probe(ctx)).toThrow(LOGIN_MESSAGE)
+    expect(capturedAuths).not.toContain("Bearer " + idToken)
   })
 
   it("throws when cache file is corrupt and no DB tokens", async () => {
