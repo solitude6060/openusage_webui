@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -120,43 +120,15 @@ export function antigravityCliOauthPath(homePath: string): string {
 export function looksLikeAntigravityCliHome(homePath: string): boolean {
   if (existsSync(antigravityCliOauthPath(homePath))) return true;
   const normalized = homePath.replace(/\\/g, "/");
-  return normalized.includes("/.agy-homes/") || normalized.endsWith("/.agy-homes");
+  if (normalized.includes("/.agy-homes/") || normalized.endsWith("/.agy-homes")) return true;
+  if (normalized.includes("/User/globalStorage")) return false;
+  if (/\/Antigravity(\s+IDE)?\/?$/i.test(normalized)) return false;
+  if (normalized.includes("Application Support/Antigravity")) return false;
+  return true;
 }
 
-function emailFromJwt(idToken: string): string | null {
-  const parts = idToken.split(".");
-  if (parts.length < 2) return null;
-  try {
-    const payload = Buffer.from(parts[1], "base64url").toString("utf8");
-    const parsed = JSON.parse(payload) as { email?: unknown; email_address?: unknown };
-    const email =
-      (typeof parsed.email === "string" && parsed.email.trim()) ||
-      (typeof parsed.email_address === "string" && parsed.email_address.trim()) ||
-      "";
-    return email || null;
-  } catch {
-    return null;
-  }
-}
-
-/** Read Google email from a CLI oauth file's OIDC id_token when present. */
-export function emailFromAntigravityCliOauth(homePath: string): string | null {
-  const tokenPath = antigravityCliOauthPath(homePath);
-  try {
-    if (!existsSync(tokenPath)) return null;
-    const parsed = JSON.parse(readFileSync(tokenPath, "utf8")) as {
-      id_token?: unknown;
-    };
-    if (typeof parsed.id_token !== "string" || !parsed.id_token.trim()) return null;
-    return emailFromJwt(parsed.id_token.trim());
-  } catch {
-    return null;
-  }
-}
-
-function antigravityDetectLabel(homePath: string, baseLabel: string): string {
-  const email = emailFromAntigravityCliOauth(homePath);
-  return email ? `${baseLabel} · ${email}` : baseLabel;
+function antigravityDetectLabel(baseLabel: string): string {
+  return baseLabel;
 }
 
 function detectAntigravityHomes(options: {
@@ -225,7 +197,7 @@ function detectAntigravityHomes(options: {
       return {
         providerId: "antigravity" as const,
         homePath: candidate.homePath,
-        label: antigravityDetectLabel(candidate.homePath, candidate.label),
+        label: antigravityDetectLabel(candidate.label),
         hasAuth,
       };
     })
