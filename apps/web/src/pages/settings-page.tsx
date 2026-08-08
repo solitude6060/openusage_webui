@@ -253,7 +253,7 @@ export function SettingsPage({
         </label>
         {selectedCapability ? (
           <p className="settings-help muted">
-            Homes use {selectedCapability.homeEnvVar} ({selectedCapability.homeLabel}).
+            Homes use {selectedCapability.homeEnvVarLabel ?? selectedCapability.homeEnvVar} ({selectedCapability.homeLabel}).
           </p>
         ) : null}
 
