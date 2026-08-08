@@ -31,3 +31,8 @@ Local `agy-run-profile` sets `HOME=~/.agy-homes/<profile>` and keeps a private `
 - Registry fans out enabled accounts to `cursor:*` / `antigravity:*` cards
 - Plugin tests cover env override + keychain suppression
 - WebUI Settings provider select includes the new providers
+
+## Follow-ups (deferred)
+
+- The raw `$HOME` directory is still offered as a detectable "Antigravity · Local CLI" account candidate. Pinning it suppresses language-server discovery and keychain for the default account; consider marking it non-pinnable in a future change.
+- When the first account for antigravity or cursor is created, the base (non-account) `provider_status` rows are removed and their usage history becomes unreachable (the user's DB holds 1651 antigravity and 1169 cursor records). This is the same established pattern as codex; consider a migration or a user-guide note.
