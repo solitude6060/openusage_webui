@@ -196,9 +196,23 @@
           refreshToken = parsed.token.refreshToken.trim()
         }
       }
+      var expirySeconds = null
+      if (parsed.token && typeof parsed.token === "object") {
+        var expiryValue = parsed.token.expiry
+        if (typeof expiryValue === "number" && Number.isFinite(expiryValue)) {
+          expirySeconds = expiryValue > 1e11 ? Math.floor(expiryValue / 1000) : Math.floor(expiryValue)
+        } else if (typeof expiryValue === "string" && expiryValue.trim()) {
+          var expiryMs = Date.parse(expiryValue.trim())
+          if (Number.isFinite(expiryMs)) expirySeconds = Math.floor(expiryMs / 1000)
+        }
+        if (typeof parsed.token.expirySeconds === "number" && Number.isFinite(parsed.token.expirySeconds)) {
+          expirySeconds = parsed.token.expirySeconds
+        }
+      }
+      if (!accessToken) accessToken = extractTokenFromObject(parsed.token)
       if (!accessToken) accessToken = extractTokenFromObject(parsed)
       if (!accessToken && !refreshToken) return null
-      return { accessToken: accessToken, refreshToken: refreshToken, expirySeconds: null }
+      return { accessToken: accessToken, refreshToken: refreshToken, expirySeconds: expirySeconds }
     } catch (e) {
       ctx.host.log.warn("failed to read antigravity CLI oauth token: " + String(e))
       return null
@@ -314,8 +328,6 @@
       "access_token",
       "accessToken",
       "token",
-      "id_token",
-      "idToken",
       "bearerToken",
       "auth_token",
       "authToken",
@@ -736,16 +748,23 @@
   }
 
   function resolvePinnedCliAccountEmail(ctx) {
-    var cliHome = readEnvText(ctx, "OPENUSAGE_ANTIGRAVITY_CLI_HOME")
-    if (!cliHome) return null
-    var tokenPath = joinPath(cliHome, ".gemini/antigravity-cli/antigravity-oauth-token")
+    if (readEnvText(ctx, "OPENUSAGE_ANTIGRAVITY_CONFIG_DIR")) return null
+    var pinnedCliHome = readEnvText(ctx, "OPENUSAGE_ANTIGRAVITY_CLI_HOME")
+    var home = pinnedCliHome || readEnvText(ctx, "HOME")
+    if (!home) return null
+    var basename = String(home).replace(/\/+$/, "").split("/").pop() || null
+    var tokenPath = joinPath(home, ".gemini/antigravity-cli/antigravity-oauth-token")
     try {
-      if (!ctx.host.fs || typeof ctx.host.fs.exists !== "function" || !ctx.host.fs.exists(tokenPath)) {
-        return null
+      if (ctx.host.fs && typeof ctx.host.fs.exists === "function" && ctx.host.fs.exists(tokenPath)) {
+        var parsed = ctx.util.tryParseJson(ctx.host.fs.readText(tokenPath))
+        if (parsed && typeof parsed.id_token === "string") {
+          return emailFromIdToken(ctx, parsed.id_token)
+        }
+        ctx.host.log.info("antigravity oauth file has no id_token; using home basename for account badge")
+        return basename
       }
-      var parsed = ctx.util.tryParseJson(ctx.host.fs.readText(tokenPath))
-      if (!parsed || typeof parsed.id_token !== "string") return null
-      return emailFromIdToken(ctx, parsed.id_token)
+      if (pinnedCliHome) return basename
+      return null
     } catch (e) {
       ctx.host.log.warn("failed to read antigravity account email: " + String(e))
       return null
@@ -788,10 +807,12 @@
 
     var ccData = null
     var sawAuthFailure = false
+    var winningToken = null
     for (var i = 0; i < tokens.length; i++) {
       var nextData = probeCloudCode(ctx, tokens[i])
       if (nextData && !nextData._authFailed) {
         ccData = nextData
+        winningToken = tokens[i]
         break
       }
       if (nextData && nextData._authFailed) sawAuthFailure = true
@@ -813,6 +834,7 @@
         var refreshedData = probeCloudCode(ctx, refreshed)
         if (refreshedData && !refreshedData._authFailed) {
           ccData = refreshedData
+          winningToken = refreshed
           break
         }
         if (refreshedData && refreshedData._authFailed) ccData = refreshedData
@@ -832,7 +854,14 @@
     if (ccData && !ccData._authFailed) {
       var configs = parseCloudCodeModels(ccData)
       var lines = buildModelLines(ctx, configs)
-      if (lines.length > 0) return attachAccountBadge(ctx, { plan: null, lines: lines })
+      if (lines.length > 0) {
+        var plan = null
+        if (winningToken && hasPinnedAntigravityHome(ctx)) {
+          var loadData = requestCloudCodeJson(ctx, LOAD_CODE_ASSIST_PATH, winningToken, "agy", {})
+          if (loadData && !loadData._authFailed) plan = readAgyPlan(loadData)
+        }
+        return attachAccountBadge(ctx, { plan: plan, lines: lines })
+      }
     }
 
     throw LOGIN_MESSAGE
