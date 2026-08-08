@@ -123,4 +123,32 @@ describe("Dashboard line grouping", () => {
       "Other Model",
     ]);
   });
+
+  test("promotes first progress line when summary is empty but details have progress", () => {
+    const result = splitDashboardLines([
+      { type: "text", label: "Credits", value: "$0.00" },
+      { type: "text", label: "Rate Limit Resets", value: "4 available" },
+      { type: "progress", label: "Custom Quota", used: 50, limit: 100, format: { kind: "percent" } },
+      { type: "progress", label: "Another Quota", used: 30, limit: 100, format: { kind: "percent" } },
+    ]);
+
+    expect(result.summaryLines.map((line) => line.label)).toEqual(["Custom Quota"]);
+    expect(result.detailLines.map((line) => line.label)).toEqual([
+      "Credits",
+      "Rate Limit Resets",
+      "Another Quota",
+    ]);
+  });
+
+  test("promotes first progress line when summary has badges but no progress", () => {
+    const result = splitDashboardLines([
+      { type: "badge", label: "Account", text: "user@example.com" },
+      { type: "badge", label: "Status", text: "Active" },
+      { type: "progress", label: "Custom Quota", used: 50, limit: 100, format: { kind: "percent" } },
+      { type: "progress", label: "Another Quota", used: 30, limit: 100, format: { kind: "percent" } },
+    ]);
+
+    expect(result.summaryLines.map((line) => line.label)).toEqual(["Account", "Status", "Custom Quota"]);
+    expect(result.detailLines.map((line) => line.label)).toEqual(["Another Quota"]);
+  });
 });

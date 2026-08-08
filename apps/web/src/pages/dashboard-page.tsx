@@ -92,14 +92,7 @@ export function splitDashboardLines(lines: DashboardLine[]): {
     }
   }
 
-  if (summaryLines.length === 0) {
-    const firstUsefulIndex = detailLines.findIndex((line) => line.type === "progress");
-    if (firstUsefulIndex >= 0) {
-      summaryLines.push(detailLines[firstUsefulIndex]);
-      detailLines.splice(firstUsefulIndex, 1);
-    }
-  } else if (!summaryLines.some((line) => line.type === "progress")) {
-    // Keep identity badges (e.g. Account) visible without hiding the first quota bar.
+  if (!summaryLines.some((line) => line.type === "progress")) {
     const firstUsefulIndex = detailLines.findIndex((line) => line.type === "progress");
     if (firstUsefulIndex >= 0) {
       summaryLines.push(detailLines[firstUsefulIndex]);
