@@ -613,6 +613,14 @@
     if (currentTier && typeof currentTier.name === "string" && currentTier.name.trim()) {
       return currentTier.name.trim()
     }
+    // Fallback for live API response shape: allowedTiers array (no paidTier/currentTier)
+    var allowedTiers = loadData && loadData.allowedTiers
+    if (Array.isArray(allowedTiers) && allowedTiers.length > 0) {
+      var firstTier = allowedTiers[0]
+      if (firstTier && typeof firstTier.name === "string" && firstTier.name.trim()) {
+        return firstTier.name.trim()
+      }
+    }
     return null
   }
 

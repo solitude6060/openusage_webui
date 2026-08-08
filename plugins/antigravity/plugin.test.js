@@ -1018,6 +1018,135 @@ describe("antigravity plugin", () => {
     expect(result.lines.length).toBeGreaterThan(0)
   })
 
+  // --- readAgyPlan fallback tests ---
+
+  it("readAgyPlan falls back to allowedTiers[0].name when paidTier and currentTier are absent (real API shape)", async () => {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CLI_HOME") return "/tmp/agy-acct1"
+      return null
+    })
+    const futureIso = new Date(Date.now() + 3600 * 1000).toISOString()
+    ctx.host.fs.writeText(
+      "/tmp/agy-acct1/.gemini/antigravity-cli/antigravity-oauth-token",
+      JSON.stringify({
+        token: { access_token: "ya29.cli-allowed-tiers", refresh_token: "1//cli", expiry: futureIso },
+      }),
+    )
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      if (url.includes("loadCodeAssist")) {
+        // Real API shape: allowedTiers + ineligibleTiers, no paidTier/currentTier
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            allowedTiers: [{ name: "Gemini Code Assist", id: "standard-tier" }],
+            ineligibleTiers: [{ tierName: "Gemini Code Assist for individuals" }],
+            cloudaicompanionProject: "projects/openusage-agy",
+          }),
+        }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Gemini Code Assist")
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  it("readAgyPlan prefers paidTier.name over allowedTiers when both present", async () => {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CLI_HOME") return "/tmp/agy-acct1"
+      return null
+    })
+    const futureIso = new Date(Date.now() + 3600 * 1000).toISOString()
+    ctx.host.fs.writeText(
+      "/tmp/agy-acct1/.gemini/antigravity-cli/antigravity-oauth-token",
+      JSON.stringify({
+        token: { access_token: "ya29.cli-paid-tier-wins", refresh_token: "1//cli", expiry: futureIso },
+      }),
+    )
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      if (url.includes("loadCodeAssist")) {
+        // Both paidTier and allowedTiers present — paidTier should win
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            paidTier: { name: "Google AI Pro" },
+            allowedTiers: [{ name: "Gemini Code Assist", id: "standard-tier" }],
+            ineligibleTiers: [{ tierName: "Gemini Code Assist for individuals" }],
+            cloudaicompanionProject: "projects/openusage-agy",
+          }),
+        }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Google AI Pro")
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  it("readAgyPlan falls back to currentTier.name when paidTier absent but currentTier present", async () => {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "OPENUSAGE_ANTIGRAVITY_CLI_HOME") return "/tmp/agy-acct1"
+      return null
+    })
+    const futureIso = new Date(Date.now() + 3600 * 1000).toISOString()
+    ctx.host.fs.writeText(
+      "/tmp/agy-acct1/.gemini/antigravity-cli/antigravity-oauth-token",
+      JSON.stringify({
+        token: { access_token: "ya29.cli-current-tier", refresh_token: "1//cli", expiry: futureIso },
+      }),
+    )
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      if (url.includes("loadCodeAssist")) {
+        // currentTier present, paidTier absent
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            currentTier: { name: "Google AI Pro" },
+            allowedTiers: [{ name: "Gemini Code Assist", id: "standard-tier" }],
+            cloudaicompanionProject: "projects/openusage-agy",
+          }),
+        }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Google AI Pro")
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
   it("shows account badge from HOME oauth file id_token (unpinned)", async () => {
     const ctx = makeCtx()
     ctx.host.env.get.mockImplementation((name) => {
