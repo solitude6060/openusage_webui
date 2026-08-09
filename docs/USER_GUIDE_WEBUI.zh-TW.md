@@ -171,8 +171,11 @@ Tokens 頁面依時間區間加總本機 `usage_records` 的 token：
 - 時間：Today／Last 7 Days／Last 30 Days／This Month／All／Custom
 - 外層依 Provider 顯示總 token
 - 展開後看各 Model（沒有 model 的列顯示為 Unknown）
+- Claude／Codex 會使用本機 usage logs；Cursor 會使用完整取得的 usage events
 
-這頁只統計已經寫進 usage records 且有 `total_tokens` 的資料；儀表板卡片上的即時配額／事件圖表若沒寫入 records，不會出現在這裡。
+按下 Refresh All 或等待自動 refresh 後，上述來源會更新對應日期與 model 的 token
+records。未完整取得的 Cursor events 不會寫入，避免把部分資料顯示成完整總量。只提供即時
+配額的 provider 不會列入 token totals。
 
 ### 5.5 Settings
 

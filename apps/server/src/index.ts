@@ -431,7 +431,7 @@ async function refreshProviders(
     try {
       detected = await provider.detect();
       const records = await provider.refresh();
-      await storage.upsertUsageRecords(records);
+      await storage.upsertUsageRecords(records, { replaceScopes: true });
       await storage.upsertProviderStatus({
         providerId: provider.id,
         name: provider.name,

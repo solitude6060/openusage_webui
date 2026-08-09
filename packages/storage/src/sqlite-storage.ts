@@ -170,7 +170,10 @@ export class SqliteStorage implements Storage {
     db.exec("DROP TABLE IF EXISTS codex_instances");
   }
 
-  async upsertUsageRecords(records: UsageRecord[]): Promise<void> {
+  async upsertUsageRecords(
+    records: UsageRecord[],
+    options: { replaceScopes?: boolean } = {},
+  ): Promise<void> {
     if (records.length === 0) {
       return;
     }
@@ -210,8 +213,22 @@ export class SqliteStorage implements Storage {
         source = excluded.source,
         raw_json = excluded.raw_json
     `);
+    const deleteScope = db.prepare(`
+      DELETE FROM usage_records
+      WHERE provider_id = ? AND tool = ? AND started_at = ? AND source = ?
+    `);
 
     const transaction = db.transaction((items: UsageRecord[]) => {
+      if (options.replaceScopes) {
+        const scopes = new Set<string>();
+        for (const record of items) {
+          if (record.totalTokens === undefined || !record.tool) continue;
+          const scope = JSON.stringify([record.providerId, record.tool, record.startedAt, record.source]);
+          if (scopes.has(scope)) continue;
+          scopes.add(scope);
+          deleteScope.run(record.providerId, record.tool, record.startedAt, record.source);
+        }
+      }
       for (const record of items) {
         insert.run(
           record.id,

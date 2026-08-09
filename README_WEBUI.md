@@ -25,7 +25,8 @@ A local-first WebUI dashboard for AI coding usage on Ubuntu/Linux.
 - Gemini CLI / Google AI Pro coding usage via ccusage
 - MiniMax Token Plan remains via API key
 - Manual usage entries
-- Token totals by provider and model on the Tokens page (`/tokens`)
+- Token totals by provider and model on the Tokens page (`/tokens`), populated from
+  Claude/Codex local usage and complete Cursor usage-event refreshes
 
 ## What It Does Not Do
 
