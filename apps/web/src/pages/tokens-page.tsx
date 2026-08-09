@@ -50,8 +50,7 @@ export function canonicalModelName(model: string): string {
     value = `claude-${claudeOrder[2]}-${claudeOrder[1]}${claudeOrder[3]}`;
   }
   value = value
-    .replace(/-20\d{6}$/, "")
-    .replace(/(?:-(?:thinking|low|medium|high|xhigh|max|fast))+$/, "")
+    .replace(/(?:-20\d{6}|-(?:thinking|low|medium|high|xhigh|max|fast))+$/, "")
     .replace(
       /^(gpt|grok|composer|claude-(?:opus|sonnet|haiku|fable))-(\d+)-(\d+)(?=-|$)/,
       "$1-$2.$3",
