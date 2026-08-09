@@ -1,10 +1,57 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import type { ProviderStatus, TokenUsageBreakdown } from "../../../../packages/core/src/types";
+import type {
+  ProviderStatus,
+  TokenUsageBreakdown,
+} from "../../../../packages/core/src/types";
 import { getTokenUsage } from "../lib/api";
 import { formatNumber } from "../lib/format";
 import { providerLabel } from "../provider-ui";
 
 type RangePreset = "today" | "7d" | "30d" | "month" | "all" | "custom";
+export type TokenGrouping = "provider" | "model";
+
+export type TokenTableGroup = {
+  key: string;
+  kind: TokenGrouping;
+  label: string;
+  totalTokens: number;
+  records: number;
+  children: Array<{
+    key: string;
+    kind: TokenGrouping;
+    label: string;
+    totalTokens: number;
+    records: number;
+  }>;
+};
+
+export function formatCompactTokenCount(value: number): string {
+  return formatNumber(value);
+}
+
+export function canonicalModelName(model: string): string {
+  return model;
+}
+
+export function buildTokenGroups(
+  data: TokenUsageBreakdown,
+  _grouping: TokenGrouping,
+): TokenTableGroup[] {
+  return data.providers.map((provider) => ({
+    key: `provider:${provider.providerId}`,
+    kind: "provider",
+    label: provider.providerId,
+    totalTokens: provider.totalTokens,
+    records: provider.records,
+    children: provider.models.map((model) => ({
+      key: `model:${provider.providerId}:${model.model}`,
+      kind: "model",
+      label: model.model,
+      totalTokens: model.totalTokens,
+      records: model.records,
+    })),
+  }));
+}
 
 function toLocalInputValue(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
