@@ -174,8 +174,9 @@ Tokens 頁面依時間區間加總本機 `usage_records` 的 token：
 - Claude／Codex 會使用本機 usage logs；Cursor 會使用完整取得的 usage events
 
 按下 Refresh All 或等待自動 refresh 後，上述來源會更新對應日期與 model 的 token
-records。未完整取得的 Cursor events 不會寫入，避免把部分資料顯示成完整總量。只提供即時
-配額的 provider 不會列入 token totals。
+records；第一次 refresh 也會取代同日期的舊版 Claude／Codex `ccusage` token 數值，舊有
+費用與來源資料仍會保留。Cursor events 必須完整取得才會寫入，避免把部分資料顯示成完整
+總量。只提供即時配額的 provider 不會列入 token totals。
 
 ### 5.5 Settings
 

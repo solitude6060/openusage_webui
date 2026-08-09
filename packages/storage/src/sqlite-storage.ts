@@ -12,7 +12,7 @@ import type {
   UsageRecord,
   UsageSummary,
 } from "../../core/src/types";
-import { isMultiAccountProviderId } from "../../core/src/types";
+import { isMultiAccountProviderId, providerIdFromAccountId } from "../../core/src/types";
 import type { Storage } from "./storage";
 
 type UsageRecordRow = {
@@ -217,12 +217,34 @@ export class SqliteStorage implements Storage {
       DELETE FROM usage_records
       WHERE provider_id = ? AND tool = ? AND started_at = ? AND source = ?
     `);
+    const clearLegacyCcusageTokens = db.prepare(`
+      UPDATE usage_records
+      SET input_tokens = NULL,
+          output_tokens = NULL,
+          cache_creation_tokens = NULL,
+          cache_read_tokens = NULL,
+          total_tokens = NULL
+      WHERE provider_id = ? AND started_at = ? AND source = 'cli'
+    `);
 
     const transaction = db.transaction((items: UsageRecord[]) => {
       if (options.replaceScopes) {
         const scopes = new Set<string>();
+        const legacyScopes = new Set<string>();
         for (const record of items) {
           if (record.totalTokens === undefined || !record.tool) continue;
+          const baseProviderId = providerIdFromAccountId(record.providerId) ?? record.providerId;
+          if (
+            record.tool === "ccusage" &&
+            record.source === "local-log" &&
+            (baseProviderId === "claude-code" || baseProviderId === "codex")
+          ) {
+            const legacyScope = JSON.stringify([baseProviderId, record.startedAt]);
+            if (!legacyScopes.has(legacyScope)) {
+              legacyScopes.add(legacyScope);
+              clearLegacyCcusageTokens.run(baseProviderId, record.startedAt);
+            }
+          }
           const scope = JSON.stringify([record.providerId, record.tool, record.startedAt, record.source]);
           if (scopes.has(scope)) continue;
           scopes.add(scope);
