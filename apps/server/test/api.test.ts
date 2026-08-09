@@ -526,6 +526,14 @@ describe("WebUI API", () => {
       undefined,
       [provider],
     );
+    await storage.upsertUsageRecords([{
+      id: "legacy-codex-daily",
+      providerId: "codex",
+      tool: "Codex",
+      totalTokens: 120,
+      startedAt: "2026-08-08T00:00:00.000Z",
+      source: "cli",
+    }]);
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const refresh = await handleRequest(new Request(
