@@ -531,8 +531,10 @@ describe("WebUI API", () => {
       providerId: "codex",
       tool: "Codex",
       totalTokens: 120,
+      costUsd: 0.5,
       startedAt: "2026-08-08T00:00:00.000Z",
       source: "cli",
+      raw: { command: "daily" },
     }]);
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -560,6 +562,10 @@ describe("WebUI API", () => {
         ],
       },
     ]);
+    const legacy = (await storage.listUsageRecords({ providerId: "codex" }))
+      .find((record) => record.id === "legacy-codex-daily");
+    expect(legacy).toMatchObject({ costUsd: 0.5, raw: { command: "daily" } });
+    expect(legacy?.totalTokens).toBeUndefined();
   });
 
   test("refresh all does not count Claude usage from both ccusage and its plugin", async () => {
