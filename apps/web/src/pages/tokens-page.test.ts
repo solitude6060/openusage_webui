@@ -97,7 +97,10 @@ describe("token grouping", () => {
   test("detects known model aliases without merging distinct named variants", () => {
     expect(canonicalModelName("Claude Opus 5 Thinking High")).toBe("claude-opus-5");
     expect(canonicalModelName("claude-opus-5-20250805")).toBe("claude-opus-5");
+    expect(canonicalModelName("claude-opus-5-20250805-thinking")).toBe("claude-opus-5");
     expect(canonicalModelName("claude-4.6-sonnet-high-thinking")).toBe("claude-sonnet-4.6");
+    expect(canonicalModelName("cursor-claude-4.6-opus-20250805-high-thinking"))
+      .toBe("claude-opus-4.6");
     expect(canonicalModelName("cursor-grok-4.5-high-fast")).toBe("grok-4.5");
     expect(canonicalModelName("gpt-5.6-sol-medium")).toBe("gpt-5.6-sol");
     expect(canonicalModelName("kimi-k3-max")).toBe("kimi-k3");
