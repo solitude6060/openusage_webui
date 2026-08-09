@@ -11,4 +11,4 @@ Updated: 2026-08-09
 - [x] Preserve legacy cost and provenance during token de-duplication.
 - [x] Update user documentation and README provider support.
 - [x] Pass focused tests, plugin tests, production build, and independent review.
-- [ ] Merge pull request #33 after required GitHub checks pass.
+- [x] Open pull request #33; GitHub reports it as clean and mergeable with no configured checks.

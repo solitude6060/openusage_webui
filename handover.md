@@ -2,7 +2,7 @@
 
 Updated: 2026-08-09
 
-## Active Change
+## Token Usage Fix
 
 - Branch: `fix/token-usage-ingestion`
 - Pull request: https://github.com/solitude6060/openusage_webui/pull/33
