@@ -45,7 +45,7 @@ describe("CcusageProvider", () => {
     ]);
   });
 
-  test("refresh returns normalized records from the first JSON command", async () => {
+  test("refresh leaves Claude ingestion to its plugin and keeps independent providers", async () => {
     const { runner, calls } = makeRunner(async (_command, args) => {
       if (args.includes("--help")) {
         return { ok: true, stdout: "Usage: ccusage", stderr: "" };
@@ -60,6 +60,12 @@ describe("CcusageProvider", () => {
               totalTokens: 123,
               totalCost: 0.5,
             },
+            {
+              date: "2026-02-21",
+              tool: "Gemini CLI",
+              totalTokens: 20,
+              totalCost: 0.1,
+            },
           ],
         }),
         stderr: "",
@@ -71,9 +77,9 @@ describe("CcusageProvider", () => {
 
     expect(records).toHaveLength(1);
     expect(records[0]).toMatchObject({
-      providerId: "claude-code",
-      totalTokens: 123,
-      costUsd: 0.5,
+      providerId: "gemini-cli",
+      totalTokens: 20,
+      costUsd: 0.1,
     });
     expect(calls).toEqual([
       { command: "bunx", args: ["ccusage", "--help"] },
@@ -95,7 +101,7 @@ describe("CcusageProvider", () => {
     const provider = new CcusageProvider(runner);
 
     await expect(provider.detect()).resolves.toBe(true);
-    await expect(provider.refresh()).resolves.toHaveLength(1);
+    await expect(provider.refresh()).resolves.toEqual([]);
 
     expect(calls.filter((call) => call.args.includes("--help"))).toHaveLength(1);
   });

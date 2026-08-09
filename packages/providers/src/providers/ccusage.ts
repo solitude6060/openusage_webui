@@ -53,9 +53,14 @@ export class CcusageProvider implements UsageProvider {
 
       const parsed = parseCcusageRecords(result.stdout, command);
       sawStructuredOutput = sawStructuredOutput || parsed.parsed;
-      const records = parsed.records;
+      const records = parsed.records.filter(
+        (record) => record.providerId === "github-copilot" || record.providerId === "gemini-cli",
+      );
       if (records.length > 0) {
         return records;
+      }
+      if (parsed.records.length > 0) {
+        return [];
       }
       if (!parsed.parsed && result.stdout.trim()) {
         return [createRawCcusageRecord(result.stdout, command)];
