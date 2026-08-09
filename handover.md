@@ -7,6 +7,7 @@ Updated: 2026-08-09
 - Branch: `fix/token-usage-ingestion`
 - Pull request: https://github.com/solitude6060/openusage_webui/pull/33
 - Plan: `docs/plans/2026-08-09-token-usage-ingestion-fix.md`
+- Grouping plan: `docs/plans/2026-08-09-token-grouping-ux.md`
 
 ## Verification Commands
 
@@ -27,3 +28,7 @@ bun run build:webui
 
 After deployment, run Refresh All once. This writes dated token totals and clears overlapping legacy
 Claude and Codex token fields while retaining their cost and raw provenance.
+
+At verification time, an older server process still owned port 6736. The current branch was started
+without stopping it by using `OPENUSAGE_WEBUI_PORT=6746 bun run dev:webui`; both ports use the same
+SQLite database, and the 6746 Token page has data after Refresh All.

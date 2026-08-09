@@ -12,3 +12,6 @@ Updated: 2026-08-09
 - [x] Update user documentation and README provider support.
 - [x] Pass focused tests, plugin tests, production build, and independent review.
 - [x] Open pull request #33; GitHub reports it as clean and mergeable with no configured checks.
+- [x] Add Provider → Model and Model → Provider Token views.
+- [x] Add deterministic model-family detection and compact M/B parent totals.
+- [x] Capture and inspect before and after Token page screenshots.
