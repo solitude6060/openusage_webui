@@ -26,31 +26,105 @@ export type TokenTableGroup = {
 };
 
 export function formatCompactTokenCount(value: number): string {
+  if (value >= 1_000_000_000) {
+    return `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value / 1_000_000_000)}B`;
+  }
+  if (value >= 1_000_000) {
+    return `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value / 1_000_000)}M`;
+  }
   return formatNumber(value);
 }
 
 export function canonicalModelName(model: string): string {
-  return model;
+  let value = model
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  if (!value || value === "unknown") return "Unknown";
+
+  value = value.replace(/^cursor-/, "");
+  const claudeOrder = value.match(/^claude-(\d+(?:[.-]\d+)?)-(opus|sonnet|haiku|fable)(.*)$/);
+  if (claudeOrder) {
+    value = `claude-${claudeOrder[2]}-${claudeOrder[1]}${claudeOrder[3]}`;
+  }
+  value = value
+    .replace(/-20\d{6}$/, "")
+    .replace(/(?:-(?:thinking|low|medium|high|xhigh|max|fast))+$/, "")
+    .replace(
+      /^(gpt|grok|composer|claude-(?:opus|sonnet|haiku|fable))-(\d+)-(\d+)(?=-|$)/,
+      "$1-$2.$3",
+    );
+  return value || "Unknown";
 }
 
 export function buildTokenGroups(
   data: TokenUsageBreakdown,
-  _grouping: TokenGrouping,
+  grouping: TokenGrouping,
 ): TokenTableGroup[] {
-  return data.providers.map((provider) => ({
-    key: `provider:${provider.providerId}`,
-    kind: "provider",
-    label: provider.providerId,
-    totalTokens: provider.totalTokens,
-    records: provider.records,
-    children: provider.models.map((model) => ({
-      key: `model:${provider.providerId}:${model.model}`,
-      kind: "model",
-      label: model.model,
-      totalTokens: model.totalTokens,
-      records: model.records,
-    })),
-  }));
+  const byTotal = <T extends { label: string; totalTokens: number }>(left: T, right: T) =>
+    right.totalTokens - left.totalTokens || left.label.localeCompare(right.label);
+  const providerGroups = data.providers.map((provider) => {
+    const models = new Map<string, TokenTableGroup["children"][number]>();
+    for (const model of provider.models) {
+      const label = canonicalModelName(model.model);
+      const current = models.get(label);
+      if (current) {
+        current.totalTokens += model.totalTokens;
+        current.records += model.records;
+      } else {
+        models.set(label, {
+          key: `model:${provider.providerId}:${label}`,
+          kind: "model",
+          label,
+          totalTokens: model.totalTokens,
+          records: model.records,
+        });
+      }
+    }
+    return {
+      key: `provider:${provider.providerId}`,
+      kind: "provider" as const,
+      label: provider.providerId,
+      totalTokens: provider.totalTokens,
+      records: provider.records,
+      children: [...models.values()].sort(byTotal),
+    };
+  }).sort(byTotal);
+
+  if (grouping === "provider") return providerGroups;
+
+  const modelGroups = new Map<string, TokenTableGroup>();
+  for (const provider of providerGroups) {
+    for (const model of provider.children) {
+      const current = modelGroups.get(model.label);
+      const providerRow = {
+        key: `provider:${model.label}:${provider.label}`,
+        kind: "provider" as const,
+        label: provider.label,
+        totalTokens: model.totalTokens,
+        records: model.records,
+      };
+      if (current) {
+        current.totalTokens += model.totalTokens;
+        current.records += model.records;
+        current.children.push(providerRow);
+      } else {
+        modelGroups.set(model.label, {
+          key: `model:${model.label}`,
+          kind: "model",
+          label: model.label,
+          totalTokens: model.totalTokens,
+          records: model.records,
+          children: [providerRow],
+        });
+      }
+    }
+  }
+  return [...modelGroups.values()]
+    .map((group) => ({ ...group, children: group.children.sort(byTotal) }))
+    .sort(byTotal);
 }
 
 function toLocalInputValue(date: Date): string {
@@ -119,6 +193,7 @@ export function TokensPage({
   refreshToken: number;
 }) {
   const [preset, setPreset] = useState<RangePreset>("7d");
+  const [grouping, setGrouping] = useState<TokenGrouping>("provider");
   const [customFrom, setCustomFrom] = useState(() =>
     toLocalInputValue(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)),
   );
@@ -135,6 +210,7 @@ export function TokensPage({
     }
     return map;
   }, [providers]);
+  const groups = useMemo(() => data ? buildTokenGroups(data, grouping) : [], [data, grouping]);
 
   useEffect(() => {
     let cancelled = false;
@@ -167,13 +243,17 @@ export function TokensPage({
     };
   }, [preset, customFrom, customTo, refreshToken]);
 
-  function toggle(providerId: string) {
+  function toggle(key: string) {
     setExpanded((current) => {
       const next = new Set(current);
-      if (next.has(providerId)) next.delete(providerId);
-      else next.add(providerId);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
+  }
+
+  function rowLabel(kind: TokenGrouping, label: string): string {
+    return kind === "provider" ? providerLabel(label, providerNames.get(label)) : label;
   }
 
   const presets: Array<{ id: RangePreset; label: string }> = [
@@ -190,20 +270,40 @@ export function TokensPage({
       <section className="panel">
         <div className="panel-header">
           <h3>Token Usage</h3>
-          <span>{data ? `${formatNumber(data.totalTokens)} Tokens · ${data.records} Rows` : "—"}</span>
+          <span title={data ? `${formatNumber(data.totalTokens)} Tokens` : undefined}>
+            {data ? `${formatCompactTokenCount(data.totalTokens)} Tokens · ${data.records} Rows` : "—"}
+          </span>
         </div>
         <div className="token-range-bar">
-          <div className="chip-list" role="group" aria-label="Time Range">
-            {presets.map((item) => (
+          <div className="token-control-row">
+            <div className="chip-list" role="group" aria-label="Time Range">
+              {presets.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={preset === item.id ? "value-chip token-range-active" : "value-chip"}
+                  onClick={() => setPreset(item.id)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <div className="chip-list" role="group" aria-label="Token Grouping">
               <button
-                key={item.id}
                 type="button"
-                className={preset === item.id ? "value-chip token-range-active" : "value-chip"}
-                onClick={() => setPreset(item.id)}
+                className={grouping === "provider" ? "value-chip token-range-active" : "value-chip"}
+                onClick={() => setGrouping("provider")}
               >
-                {item.label}
+                By Provider
               </button>
-            ))}
+              <button
+                type="button"
+                className={grouping === "model" ? "value-chip token-range-active" : "value-chip"}
+                onClick={() => setGrouping("model")}
+              >
+                By Model
+              </button>
+            </div>
           </div>
           {preset === "custom" ? (
             <div className="token-custom-range">
@@ -228,8 +328,8 @@ export function TokensPage({
         </div>
         <div className="panel-body">
           <p className="settings-help muted">
-            Totals come from local usage records that already store token counts. Provider cards that
-            only show live quotas are not included unless refresh wrote records.
+            Parent totals use compact units. Expand a row for exact provider and model values.
+            Provider cards that only show live quotas are not included unless refresh wrote records.
           </p>
           {error ? <div className="alert error">{error}</div> : null}
           {loading ? <div className="loading-indicator">Loading...</div> : null}
@@ -242,37 +342,44 @@ export function TokensPage({
             <table className="token-table">
               <thead>
                 <tr>
-                  <th>Provider / Model</th>
+                  <th>{grouping === "provider" ? "Provider / Model" : "Model / Provider"}</th>
                   <th>Tokens</th>
                   <th>Rows</th>
                 </tr>
               </thead>
               <tbody>
-                {data.providers.map((provider) => {
-                  const open = expanded.has(provider.providerId);
+                {groups.map((group) => {
+                  const open = expanded.has(group.key);
+                  const compactTotal = formatCompactTokenCount(group.totalTokens);
+                  const exactTotal = formatNumber(group.totalTokens);
                   return (
-                    <Fragment key={provider.providerId}>
+                    <Fragment key={group.key}>
                       <tr className="token-provider-row">
                         <td>
                           <button
                             type="button"
                             className="token-expand"
                             aria-expanded={open}
-                            onClick={() => toggle(provider.providerId)}
+                            onClick={() => toggle(group.key)}
                           >
                             <span aria-hidden>{open ? "▾" : "▸"}</span>
-                            {providerLabel(provider.providerId, providerNames.get(provider.providerId))}
+                            {rowLabel(group.kind, group.label)}
                           </button>
                         </td>
-                        <td>{formatNumber(provider.totalTokens)}</td>
-                        <td>{formatNumber(provider.records)}</td>
+                        <td>
+                          <span title={`${exactTotal} Tokens`}>{compactTotal}</span>
+                          {open && compactTotal !== exactTotal ? (
+                            <span className="token-exact-total">{exactTotal}</span>
+                          ) : null}
+                        </td>
+                        <td>{formatNumber(group.records)}</td>
                       </tr>
                       {open
-                        ? provider.models.map((model) => (
-                            <tr key={`${provider.providerId}:${model.model}`} className="token-model-row">
-                              <td>{model.model}</td>
-                              <td>{formatNumber(model.totalTokens)}</td>
-                              <td>{formatNumber(model.records)}</td>
+                        ? group.children.map((child) => (
+                            <tr key={child.key} className="token-model-row">
+                              <td>{rowLabel(child.kind, child.label)}</td>
+                              <td>{formatNumber(child.totalTokens)}</td>
+                              <td>{formatNumber(child.records)}</td>
                             </tr>
                           ))
                         : null}

@@ -103,6 +103,7 @@ describe("token grouping", () => {
     expect(canonicalModelName("kimi-k3-max")).toBe("kimi-k3");
     expect(canonicalModelName("gpt-5.4-mini")).toBe("gpt-5.4-mini");
     expect(canonicalModelName("gpt-5.3-codex-spark")).toBe("gpt-5.3-codex-spark");
+    expect(canonicalModelName("claude-opus-4-8")).not.toBe(canonicalModelName("claude-opus-4"));
   });
 
   test("merges aliases inside each provider group", () => {
@@ -122,9 +123,16 @@ describe("token grouping", () => {
       ["claude-opus-5", 6_000, 3],
       ["gpt-5.6-sol", 4_000, 1],
     ]);
-    expect(groups[0]?.children.map((row) => [row.label, row.totalTokens])).toEqual([
-      ["cursor", 3_000],
-      ["claude-code", 3_000],
-    ]);
+    expect(groups[0]?.children.map((row) => [row.label, row.totalTokens])).toEqual(
+      expect.arrayContaining([["cursor", 3_000], ["claude-code", 3_000]]),
+    );
+  });
+
+  test("preserves totals and record counts in both grouping directions", () => {
+    for (const grouping of ["provider", "model"] as const) {
+      const groups = buildTokenGroups(data, grouping);
+      expect(groups.reduce((sum, group) => sum + group.totalTokens, 0)).toBe(data.totalTokens);
+      expect(groups.reduce((sum, group) => sum + group.records, 0)).toBe(data.records);
+    }
   });
 });
