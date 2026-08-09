@@ -29,7 +29,8 @@ WebUI adapter stores only display snapshots, leaving `total_tokens` empty.
 ## Exit Criteria
 
 - Claude and Codex ccusage daily model data produce stable token records.
-- Cursor usage events produce stable per-event model token records.
+- Complete Cursor usage-event samples produce stable daily model token records; partial
+  pagination results do not replace previously complete totals.
 - Two identical refreshes return the same token totals and record count.
 - Existing targeted provider, storage, server, and WebUI tests pass.
 - Production build succeeds.
