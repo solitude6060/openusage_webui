@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createRequestHandler } from "../src/index";
 import { SqliteStorage } from "../../../packages/storage/src/index";
 import {
+  CcusageProvider,
   MiniMaxProvider,
   OpenUsagePluginProvider,
   type UsageProvider,
@@ -550,6 +551,68 @@ describe("WebUI API", () => {
           { model: "gpt-5.6-luna", totalTokens: 20, records: 1 },
         ],
       },
+    ]);
+  });
+
+  test("refresh all does not count Claude usage from both ccusage and its plugin", async () => {
+    const ccusage = new CcusageProvider(async (_command, args) => ({
+      ok: true,
+      stderr: "",
+      stdout: args.includes("--help")
+        ? "Usage: ccusage"
+        : JSON.stringify({
+            daily: [
+              { date: "2026-08-08", tool: "Claude Code", totalTokens: 120 },
+              { date: "2026-08-08", tool: "Gemini CLI", totalTokens: 20 },
+            ],
+          }),
+    }));
+    const claude = new OpenUsagePluginProvider({
+      providerId: "claude-code",
+      name: "Claude Code",
+      pluginId: "claude",
+      scriptText: `
+        globalThis.__openusage_plugin = {
+          id: "claude",
+          probe(ctx) {
+            ctx.host.ccusage.query({ provider: "claude" });
+            return { lines: [] };
+          },
+        };
+      `,
+      ccusageQuery: () => ({
+        status: "ok",
+        data: {
+          daily: [{
+            date: "2026-08-08",
+            totalTokens: 120,
+            models: { "claude-sonnet-4": { totalTokens: 120 } },
+          }],
+        },
+      }),
+      now: () => "2026-08-09T10:00:00.000Z",
+    });
+    handleRequest = createRequestHandler(
+      storage,
+      { host: "127.0.0.1", port: 6736 },
+      undefined,
+      [ccusage, claude],
+    );
+
+    const refresh = await handleRequest(new Request(
+      "http://127.0.0.1:6736/api/providers/refresh",
+      { method: "POST" },
+    ));
+    expect(refresh.status).toBe(200);
+
+    const response = await handleRequest(new Request(
+      "http://127.0.0.1:6736/api/usage/tokens?from=2026-08-08T00%3A00%3A00.000Z",
+    ));
+    const body = await response.json();
+    expect(body.totalTokens).toBe(140);
+    expect(body.providers.map((provider: { providerId: string }) => provider.providerId)).toEqual([
+      "claude-code",
+      "gemini-cli",
     ]);
   });
 
