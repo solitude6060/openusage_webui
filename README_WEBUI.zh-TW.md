@@ -127,7 +127,7 @@ bunx ccusage
 npx ccusage
 ```
 
-如果 `ccusage` 支援 JSON output，WebUI 會 normalize 成 usage records。如果只有非 JSON output，WebUI 會保留 raw fallback record，不做脆弱的表格 parsing。
+如果 `ccusage` 支援 JSON output，WebUI 會 normalize 成 usage records。如果只有非 JSON output，WebUI 會保留 raw fallback record，不做脆弱的表格 parsing。Claude／Codex plugin refresh 失敗時會保留本機 ccusage token totals；成功時會移除重疊的 token totals。
 
 ## Claude / Codex 設定
 

@@ -11,6 +11,9 @@ Updated: 2026-08-11
 - Fixture isolation plan: `docs/plans/2026-08-11-plugin-fixture-isolation.md`
 - Fixture isolation review: `docs/CODEX_2026-08-11_PLUGIN_FIXTURE_ISOLATION_REVIEW.md`
 - Fixture isolation fix log: `docs/CODEX_2026-08-11_PLUGIN_FIXTURE_ISOLATION_FIX_LOG.md`
+- ccusage fallback decision: `docs/ADR_2026-08-11_CCUSAGE_FALLBACK.md`
+- Pull request review: `docs/CODEX_GPT56_2026-08-11_PR33_REVIEW.md`
+- Pull request fix log: `docs/CODEX_GPT56_2026-08-11_PR33_FIX_LOG.md`
 
 ## Verification Commands
 
@@ -28,8 +31,8 @@ bun run build:webui
 TMPDIR="$PWD/node_modules/.cache/openusage-tests" bun run test:webui
 ```
 
-The complete WebUI suite passes with 236 tests after plugin fixtures were isolated from ambient
-GitHub, Cursor, and Antigravity credentials.
+The complete WebUI suite passes with 237 tests after plugin fixtures were isolated from ambient
+credentials and local ccusage fallback was retained for failed provider refreshes.
 
 ## Operational Note
 
