@@ -26,4 +26,3 @@ Approve after commit `1203d00`.
 The focused isolation and fixture tests passed with the external Antigravity sentinel still set.
 See [the fix log](CODEX_2026-08-11_PLUGIN_FIXTURE_ISOLATION_FIX_LOG.md) for the correction and final
 verification results.
-

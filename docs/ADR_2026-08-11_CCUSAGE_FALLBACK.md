@@ -23,4 +23,3 @@ successful structured Claude or Codex refresh. It preserves historical cost and 
 - Local token usage remains visible during provider authentication or usage API failures.
 - Successful Refresh All runs continue to count Claude and Codex totals once.
 - No API, database schema, or user setting changes are required.
-

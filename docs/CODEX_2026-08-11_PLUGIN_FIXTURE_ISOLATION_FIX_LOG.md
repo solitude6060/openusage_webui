@@ -20,4 +20,3 @@ and moved GitHub Copilot and bundled authentication fixtures into isolated homes
 - Complete WebUI suite: 236 passed, 0 failed.
 - Production WebUI build: passed.
 - Independent Codex GPT-5.6 review: approved after F001 was corrected.
-
