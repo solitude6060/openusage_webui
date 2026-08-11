@@ -16,6 +16,7 @@ describe("OpenUsagePluginProvider original API plugin fixtures", () => {
         pluginId: "antigravity",
         homeDir: home,
         pluginDataDir,
+        env: {},
         scriptText: readPluginScript("antigravity"),
         request: requestByUrl({
           "https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist": {
