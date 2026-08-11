@@ -29,6 +29,10 @@ import {
   type PluginRequestResponse,
 } from "./openusage-plugin-runtime";
 import type { UsageProvider } from "../types";
+import {
+  CursorUsageCollector,
+  normalizeCcusageDailyRecords,
+} from "./structured-usage";
 
 export {
   discoverLanguageServer,
@@ -94,9 +98,9 @@ export class OpenUsagePluginProvider implements UsageProvider {
     this.pluginId = options.pluginId;
     this.scriptPath = options.scriptPath;
     this.scriptText = options.scriptText;
-    this.env = options.env ?? process.env;
+    this.homeDir = normalizeHomeDir(options.homeDir ?? options.env?.HOME);
+    this.env = { ...(options.env ?? process.env), HOME: this.homeDir };
     this.now = options.now ?? (() => new Date().toISOString());
-    this.homeDir = normalizeHomeDir(options.homeDir);
     this.requestImpl = options.request ?? runPluginHttpRequest;
     this.ccusageQueryImpl =
       options.ccusageQuery ??
@@ -120,14 +124,21 @@ export class OpenUsagePluginProvider implements UsageProvider {
       throw new Error("OpenUsage plugin does not export probe(ctx).");
     }
 
+    const usageRecords = new Map<string, UsageRecord>();
+    const cursorUsage = new CursorUsageCollector();
+    const captureUsage = (records: UsageRecord[]) => {
+      for (const record of records) usageRecords.set(record.id, record);
+    };
+
     let result: unknown;
     try {
-      result = await plugin.probe(this.createContext());
+      result = await plugin.probe(this.createContext(captureUsage, cursorUsage));
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : String(error));
     }
 
     const snapshot = normalizePluginResult(result);
+    captureUsage(cursorUsage.records(this.id));
     const startedAt = this.now();
     const raw = {
       pluginId: plugin.id ?? this.pluginId ?? this.id,
@@ -147,6 +158,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
         source: "api",
         raw,
       },
+      ...usageRecords.values(),
     ];
   }
 
@@ -170,8 +182,21 @@ export class OpenUsagePluginProvider implements UsageProvider {
     return plugin as LoadedPlugin;
   }
 
-  private createContext(): Record<string, unknown> {
+  private createContext(
+    captureUsage: (records: UsageRecord[]) => void = () => undefined,
+    cursorUsage = new CursorUsageCollector(),
+  ): Record<string, unknown> {
     const filesBase = dirname(this.pluginDataDir);
+    const request = (opts: PluginRequestOptions) => {
+      if (!this.requestImpl) {
+        throw new Error("OpenUsage plugin HTTP host is not configured for this provider.");
+      }
+      const response = this.requestImpl(opts);
+      if (this.pluginId === "cursor" && opts.url.includes("get-filtered-usage-events")) {
+        cursorUsage.capture(response.status, response.bodyText);
+      }
+      return response;
+    };
     return {
       nowIso: this.now(),
       app: {
@@ -228,12 +253,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
           decryptAes256Gcm: decryptAes256Gcm,
         },
         http: {
-          request: (opts: PluginRequestOptions) => {
-            if (!this.requestImpl) {
-              throw new Error("OpenUsage plugin HTTP host is not configured for this provider.");
-            }
-            return this.requestImpl(opts);
-          },
+          request,
         },
         sqlite: {
           query: (databasePath: string, sql: string) => querySqlite(databasePath, sql, this.homeDir),
@@ -243,7 +263,13 @@ export class OpenUsagePluginProvider implements UsageProvider {
           discover: (opts: LanguageServerDiscoveryOptions) => discoverLanguageServer(opts ?? {}),
         },
         ccusage: {
-          query: (opts: PluginCcusageQueryOptions) => this.ccusageQueryImpl(opts ?? {}),
+          query: (opts: PluginCcusageQueryOptions) => {
+            const result = this.ccusageQueryImpl(opts ?? {});
+            if (result.status === "ok") {
+              captureUsage(normalizeCcusageDailyRecords(this.id, result.data.daily));
+            }
+            return result;
+          },
         },
         log: {
           trace: () => undefined,
@@ -257,12 +283,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
       fmt: createFormatApi(),
       base64: createBase64Api(),
       jwt: createJwtApi(),
-      util: createUtilApi((opts) => {
-        if (!this.requestImpl) {
-          throw new Error("OpenUsage plugin HTTP host is not configured for this provider.");
-        }
-        return this.requestImpl(opts);
-      }),
+      util: createUtilApi(request),
       __openusageFilesBase: filesBase,
     };
   }
@@ -274,7 +295,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
     }
 
     try {
-      const env = { ...process.env, ...this.env, HOME: this.homeDir };
+      const env = { ...this.env, HOME: this.homeDir };
       const proc = this.gitHubTokenRunner
         ? this.gitHubTokenRunner(["gh", "auth", "token"], { env })
         : Bun.spawnSync(["gh", "auth", "token"], {

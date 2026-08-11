@@ -9,7 +9,10 @@ import type {
 
 export interface Storage {
   init(): Promise<void>;
-  upsertUsageRecords(records: UsageRecord[]): Promise<void>;
+  upsertUsageRecords(
+    records: UsageRecord[],
+    options?: { replaceScopes?: boolean },
+  ): Promise<void>;
   listUsageRecords(params?: {
     providerId?: ProviderId;
     from?: string;

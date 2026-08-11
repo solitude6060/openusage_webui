@@ -5,6 +5,30 @@ import { join } from "node:path";
 import { OpenUsagePluginProvider } from "../src/index";
 
 describe("OpenUsagePluginProvider isolation behavior", () => {
+  test("keeps plugin HOME aligned with the configured home directory", async () => {
+    const home = mkdtempSync(join(tmpdir(), "openusage-provider-home-"));
+    const provider = new OpenUsagePluginProvider({
+      providerId: "synthetic",
+      name: "Synthetic",
+      homeDir: home,
+      env: { HOME: "/ambient-home" },
+      scriptText: `
+        globalThis.__openusage_plugin = {
+          id: "isolated-home",
+          probe(ctx) {
+            return { lines: [ctx.line.text({ label: "Home", value: ctx.host.env.get("HOME") })] };
+          },
+        };
+      `,
+    });
+
+    const records = await provider.refresh();
+
+    expect(records[0]?.raw).toMatchObject({
+      lines: [{ type: "text", label: "Home", value: home }],
+    });
+  });
+
   test("expands plugin ccusage home paths against configured homeDir", async () => {
     const home = mkdtempSync(join(tmpdir(), "openusage-ccusage-home-"));
     const capturedEnv: Array<Record<string, string | undefined> | undefined> = [];
@@ -96,32 +120,45 @@ describe("OpenUsagePluginProvider isolation behavior", () => {
 
   test("runs GitHub CLI token lookup with configured homeDir environment", async () => {
     const home = mkdtempSync(join(tmpdir(), "openusage-gh-home-"));
+    const ambientKey = "OPENUSAGE_TEST_AMBIENT_GITHUB";
+    const previousAmbient = process.env[ambientKey];
+    process.env[ambientKey] = "ambient-value";
     const capturedEnv: Array<Record<string, string | undefined> | undefined> = [];
-    const provider = new OpenUsagePluginProvider({
-      providerId: "github-copilot",
-      name: "GitHub Copilot",
-      homeDir: home,
-      gitHubTokenRunner: (_args, opts) => {
-        capturedEnv.push(opts.env);
-        return {
-          exitCode: 0,
-          stdout: Buffer.from("gh-cli-token\n"),
-        };
-      },
-      scriptText: `
-        globalThis.__openusage_plugin = {
-          id: "gh-env",
-          probe(ctx) {
-            const token = ctx.host.keychain.readGenericPassword("gh:github.com");
-            return { lines: [ctx.line.text({ label: "Token", value: token })] };
-          },
-        };
-      `,
-    });
+    try {
+      const provider = new OpenUsagePluginProvider({
+        providerId: "github-copilot",
+        name: "GitHub Copilot",
+        homeDir: home,
+        env: {},
+        gitHubTokenRunner: (_args, opts) => {
+          capturedEnv.push(opts.env);
+          return {
+            exitCode: 0,
+            stdout: Buffer.from("gh-cli-token\n"),
+          };
+        },
+        scriptText: `
+          globalThis.__openusage_plugin = {
+            id: "gh-env",
+            probe(ctx) {
+              const token = ctx.host.keychain.readGenericPassword("gh:github.com");
+              return { lines: [ctx.line.text({ label: "Token", value: token })] };
+            },
+          };
+        `,
+      });
 
-    await provider.refresh();
+      await provider.refresh();
 
-    expect(capturedEnv[0]?.HOME).toBe(home);
+      expect(capturedEnv[0]?.HOME).toBe(home);
+      expect(capturedEnv[0]?.[ambientKey]).toBeUndefined();
+    } finally {
+      if (previousAmbient === undefined) {
+        delete process.env[ambientKey];
+      } else {
+        process.env[ambientKey] = previousAmbient;
+      }
+    }
   });
 
   test("uses injected GitHub token runner before the global spawn fallback", async () => {

@@ -25,7 +25,9 @@ A local-first WebUI dashboard for AI coding usage on Ubuntu/Linux.
 - Gemini CLI / Google AI Pro coding usage via ccusage
 - MiniMax Token Plan remains via API key
 - Manual usage entries
-- Token totals by provider and model on the Tokens page (`/tokens`)
+- Token totals on the Tokens page (`/tokens`) with Provider → Model and Model → Provider views,
+  compact M/B totals, deterministic model-family grouping, and exact expanded values; populated
+  from Claude/Codex local usage and complete Cursor usage-event refreshes
 
 ## What It Does Not Do
 
@@ -94,7 +96,7 @@ Original OpenUsage plugins that write keychain items use a local WebUI shim at `
 
 ## ccusage Notes
 
-Manual entries, MiniMax quota refresh, and original OpenUsage plugin-backed providers are implemented. ccusage refresh attempts `bunx ccusage` first and then `npx ccusage`, using JSON output when available. If ccusage returns non-JSON output, the WebUI stores a raw fallback record instead of brittle table parsing.
+Manual entries, MiniMax quota refresh, and original OpenUsage plugin-backed providers are implemented. ccusage refresh attempts `bunx ccusage` first and then `npx ccusage`, using JSON output when available. If ccusage returns non-JSON output, the WebUI stores a raw fallback record instead of brittle table parsing. Local Claude and Codex ccusage totals remain available when their plugin refresh fails; a successful plugin refresh removes overlapping token totals.
 
 ## Claude And Codex Notes
 

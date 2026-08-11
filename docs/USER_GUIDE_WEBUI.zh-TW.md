@@ -169,10 +169,17 @@ Sessions 頁面顯示 usage records 表格。
 Tokens 頁面依時間區間加總本機 `usage_records` 的 token：
 
 - 時間：Today／Last 7 Days／Last 30 Days／This Month／All／Custom
-- 外層依 Provider 顯示總 token
-- 展開後看各 Model（沒有 model 的列顯示為 Unknown）
+- 分組：By Provider 顯示 Provider → Model；By Model 顯示 Model → Provider
+- 父層總量以 M／B 縮寫，展開後顯示完整 token 整數
+- 已知的 routing、日期 revision 與 inference profile 名稱差異會歸入同一 model family；
+  不同 model 版本仍分開顯示
+- Claude／Codex 會使用本機 usage logs；Cursor 會使用完整取得的 usage events
 
-這頁只統計已經寫進 usage records 且有 `total_tokens` 的資料；儀表板卡片上的即時配額／事件圖表若沒寫入 records，不會出現在這裡。
+按下 Refresh All 或等待自動 refresh 後，上述來源會更新對應日期與 model 的 token
+records。Claude／Codex plugin refresh 失敗時，本機 `ccusage` token 數值仍會保留；plugin
+refresh 成功時，同日期的重疊 token 數值會被取代，舊有費用與來源資料仍會保留。Cursor
+events 必須完整取得才會寫入，避免把部分資料顯示成完整總量。只提供即時配額的 provider
+不會列入 token totals。
 
 ### 5.5 Settings
 

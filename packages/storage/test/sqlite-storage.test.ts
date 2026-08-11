@@ -353,4 +353,50 @@ describe("SqliteStorage", () => {
 
     storage.close();
   });
+
+  test("replaces stale model rows inside a complete structured refresh scope", async () => {
+    const storage = new SqliteStorage();
+    await storage.init();
+    const startedAt = "2026-08-08T00:00:00.000Z";
+
+    await storage.upsertUsageRecords([
+      {
+        id: "codex-sol",
+        providerId: "codex:family",
+        tool: "ccusage",
+        model: "gpt-5.6-sol",
+        totalTokens: 100,
+        startedAt,
+        source: "local-log",
+      },
+      {
+        id: "codex-unknown",
+        providerId: "codex:family",
+        tool: "ccusage",
+        model: "Unknown",
+        totalTokens: 20,
+        startedAt,
+        source: "local-log",
+      },
+    ], { replaceScopes: true });
+    await storage.upsertUsageRecords([
+      {
+        id: "codex-sol",
+        providerId: "codex:family",
+        tool: "ccusage",
+        model: "gpt-5.6-sol",
+        totalTokens: 80,
+        startedAt,
+        source: "local-log",
+      },
+    ], { replaceScopes: true });
+
+    const totals = await storage.getTokenUsageBreakdown();
+    expect(totals).toMatchObject({ totalTokens: 80, records: 1 });
+    expect(totals.providers[0]?.models).toEqual([
+      { model: "gpt-5.6-sol", totalTokens: 80, records: 1 },
+    ]);
+
+    storage.close();
+  });
 });

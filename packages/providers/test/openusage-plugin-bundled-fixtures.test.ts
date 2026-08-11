@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { OpenUsagePluginProvider } from "../src/index";
+import { withIsolatedHome } from "./openusage-plugin-fixture-helpers";
 
 describe("OpenUsagePluginProvider original bundled plugin fixtures", () => {
   test("adapts the original GitHub Copilot plugin state-file auth flow", async () => {
@@ -70,36 +71,39 @@ describe("OpenUsagePluginProvider original bundled plugin fixtures", () => {
   });
 
   test("bridges GitHub CLI keychain reads to GH_TOKEN on Linux WebUI", async () => {
-    const scriptText = readFileSync(resolve(import.meta.dir, "../../../plugins/copilot/plugin.js"), "utf8");
-    const requests: Array<{ authorization?: string }> = [];
-    const provider = new OpenUsagePluginProvider({
-      providerId: "github-copilot",
-      name: "GitHub Copilot",
-      scriptText,
-      env: { GH_TOKEN: "env-gh-token" },
-      now: () => "2026-06-17T09:30:00.000Z",
-      request: (opts) => {
-        requests.push({ authorization: opts.headers?.Authorization });
-        return {
-          status: 200,
-          headers: {},
-          bodyText: JSON.stringify({
-            copilot_plan: "pro",
-            quota_reset_date: "2026-07-01T00:00:00.000Z",
-            quota_snapshots: {
-              premium_interactions: { percent_remaining: 50 },
-            },
-          }),
-        };
-      },
-    });
+    await withIsolatedHome(async (home) => {
+      const scriptText = readFileSync(resolve(import.meta.dir, "../../../plugins/copilot/plugin.js"), "utf8");
+      const requests: Array<{ authorization?: string }> = [];
+      const provider = new OpenUsagePluginProvider({
+        providerId: "github-copilot",
+        name: "GitHub Copilot",
+        scriptText,
+        homeDir: home,
+        env: { GH_TOKEN: "env-gh-token" },
+        now: () => "2026-06-17T09:30:00.000Z",
+        request: (opts) => {
+          requests.push({ authorization: opts.headers?.Authorization });
+          return {
+            status: 200,
+            headers: {},
+            bodyText: JSON.stringify({
+              copilot_plan: "pro",
+              quota_reset_date: "2026-07-01T00:00:00.000Z",
+              quota_snapshots: {
+                premium_interactions: { percent_remaining: 50 },
+              },
+            }),
+          };
+        },
+      });
 
-    const records = await provider.refresh();
+      const records = await provider.refresh();
 
-    expect(requests).toEqual([{ authorization: "token env-gh-token" }]);
-    expect(records[0]?.raw).toMatchObject({
-      pluginId: "copilot",
-      plan: "Pro",
+      expect(requests).toEqual([{ authorization: "token env-gh-token" }]);
+      expect(records[0]?.raw).toMatchObject({
+        pluginId: "copilot",
+        plan: "Pro",
+      });
     });
   });
 
@@ -294,18 +298,21 @@ describe("OpenUsagePluginProvider original bundled plugin fixtures", () => {
   ] as const)(
     "runs the original %s plugin through the WebUI host shim to a stable auth/config result",
     async (providerId, name, pluginId, expectedErrorFragment) => {
-      const scriptText = readFileSync(resolve(import.meta.dir, "../../../plugins", pluginId, "plugin.js"), "utf8");
-      const provider = new OpenUsagePluginProvider({
-        providerId,
-        name,
-        pluginId,
-        scriptText,
-        env: {},
-        request: () => ({ status: 500, headers: {}, bodyText: "{}" }),
-        ccusageQuery: () => ({ status: "no_runner", data: null }),
-      });
+      await withIsolatedHome(async (home) => {
+        const scriptText = readFileSync(resolve(import.meta.dir, "../../../plugins", pluginId, "plugin.js"), "utf8");
+        const provider = new OpenUsagePluginProvider({
+          providerId,
+          name,
+          pluginId,
+          scriptText,
+          homeDir: home,
+          env: {},
+          request: () => ({ status: 500, headers: {}, bodyText: "{}" }),
+          ccusageQuery: () => ({ status: "no_runner", data: null }),
+        });
 
-      await expect(provider.refresh()).rejects.toThrow(expectedErrorFragment);
+        await expect(provider.refresh()).rejects.toThrow(expectedErrorFragment);
+      });
     },
   );
 });
