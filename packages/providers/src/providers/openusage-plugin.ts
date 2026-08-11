@@ -295,7 +295,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
     }
 
     try {
-      const env = { ...process.env, ...this.env, HOME: this.homeDir };
+      const env = { ...this.env, HOME: this.homeDir };
       const proc = this.gitHubTokenRunner
         ? this.gitHubTokenRunner(["gh", "auth", "token"], { env })
         : Bun.spawnSync(["gh", "auth", "token"], {
