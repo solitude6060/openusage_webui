@@ -1,5 +1,9 @@
 # Token Usage Ingestion Fix Plan
 
+> Updated 2026-08-11: generic Claude and Codex rows are retained as failure fallback. Successful
+> structured plugin refreshes remove overlapping token fields through the storage replacement path.
+> See `docs/ADR_2026-08-11_CCUSAGE_FALLBACK.md`.
+
 ## Problem
 
 The Tokens page only aggregates positive `usage_records.total_tokens` values. Claude,
