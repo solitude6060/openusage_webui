@@ -5,6 +5,30 @@ import { join } from "node:path";
 import { OpenUsagePluginProvider } from "../src/index";
 
 describe("OpenUsagePluginProvider isolation behavior", () => {
+  test("keeps plugin HOME aligned with the configured home directory", async () => {
+    const home = mkdtempSync(join(tmpdir(), "openusage-provider-home-"));
+    const provider = new OpenUsagePluginProvider({
+      providerId: "synthetic",
+      name: "Synthetic",
+      homeDir: home,
+      env: { HOME: "/ambient-home" },
+      scriptText: `
+        globalThis.__openusage_plugin = {
+          id: "isolated-home",
+          probe(ctx) {
+            return { lines: [ctx.line.text({ label: "Home", value: ctx.host.env.get("HOME") })] };
+          },
+        };
+      `,
+    });
+
+    const records = await provider.refresh();
+
+    expect(records[0]?.raw).toMatchObject({
+      lines: [{ type: "text", label: "Home", value: home }],
+    });
+  });
+
   test("expands plugin ccusage home paths against configured homeDir", async () => {
     const home = mkdtempSync(join(tmpdir(), "openusage-ccusage-home-"));
     const capturedEnv: Array<Record<string, string | undefined> | undefined> = [];
