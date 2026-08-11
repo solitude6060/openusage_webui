@@ -1,6 +1,6 @@
 # Handover
 
-Updated: 2026-08-09
+Updated: 2026-08-11
 
 ## Token Usage Fix
 
@@ -8,6 +8,9 @@ Updated: 2026-08-09
 - Pull request: https://github.com/solitude6060/openusage_webui/pull/33
 - Plan: `docs/plans/2026-08-09-token-usage-ingestion-fix.md`
 - Grouping plan: `docs/plans/2026-08-09-token-grouping-ux.md`
+- Fixture isolation plan: `docs/plans/2026-08-11-plugin-fixture-isolation.md`
+- Fixture isolation review: `docs/CODEX_2026-08-11_PLUGIN_FIXTURE_ISOLATION_REVIEW.md`
+- Fixture isolation fix log: `docs/CODEX_2026-08-11_PLUGIN_FIXTURE_ISOLATION_FIX_LOG.md`
 
 ## Verification Commands
 
@@ -22,7 +25,11 @@ bunx vitest run plugins/claude/plugin.ccusage.test.js \
   plugins/codex/plugin.ccusage.test.js \
   plugins/cursor/plugin.test.js
 bun run build:webui
+TMPDIR="$PWD/node_modules/.cache/openusage-tests" bun run test:webui
 ```
+
+The complete WebUI suite passes with 236 tests after plugin fixtures were isolated from ambient
+GitHub, Cursor, and Antigravity credentials.
 
 ## Operational Note
 
