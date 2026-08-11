@@ -98,9 +98,9 @@ export class OpenUsagePluginProvider implements UsageProvider {
     this.pluginId = options.pluginId;
     this.scriptPath = options.scriptPath;
     this.scriptText = options.scriptText;
-    this.env = options.env ?? process.env;
+    this.homeDir = normalizeHomeDir(options.homeDir ?? options.env?.HOME);
+    this.env = { ...(options.env ?? process.env), HOME: this.homeDir };
     this.now = options.now ?? (() => new Date().toISOString());
-    this.homeDir = normalizeHomeDir(options.homeDir);
     this.requestImpl = options.request ?? runPluginHttpRequest;
     this.ccusageQueryImpl =
       options.ccusageQuery ??
