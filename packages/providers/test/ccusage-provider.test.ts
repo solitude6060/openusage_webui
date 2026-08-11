@@ -45,7 +45,7 @@ describe("CcusageProvider", () => {
     ]);
   });
 
-  test("refresh leaves Claude ingestion to its plugin and keeps independent providers", async () => {
+  test("refresh keeps Claude fallback usage with independent providers", async () => {
     const { runner, calls } = makeRunner(async (_command, args) => {
       if (args.includes("--help")) {
         return { ok: true, stdout: "Usage: ccusage", stderr: "" };
@@ -75,12 +75,18 @@ describe("CcusageProvider", () => {
 
     const records = await provider.refresh();
 
-    expect(records).toHaveLength(1);
-    expect(records[0]).toMatchObject({
-      providerId: "gemini-cli",
-      totalTokens: 20,
-      costUsd: 0.1,
-    });
+    expect(records).toEqual([
+      expect.objectContaining({
+        providerId: "claude-code",
+        totalTokens: 123,
+        costUsd: 0.5,
+      }),
+      expect.objectContaining({
+        providerId: "gemini-cli",
+        totalTokens: 20,
+        costUsd: 0.1,
+      }),
+    ]);
     expect(calls).toEqual([
       { command: "bunx", args: ["ccusage", "--help"] },
       { command: "bunx", args: ["ccusage", "daily", "--json"] },
@@ -101,7 +107,9 @@ describe("CcusageProvider", () => {
     const provider = new CcusageProvider(runner);
 
     await expect(provider.detect()).resolves.toBe(true);
-    await expect(provider.refresh()).resolves.toEqual([]);
+    await expect(provider.refresh()).resolves.toEqual([
+      expect.objectContaining({ providerId: "codex", totalTokens: 100 }),
+    ]);
 
     expect(calls.filter((call) => call.args.includes("--help"))).toHaveLength(1);
   });

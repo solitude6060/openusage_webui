@@ -630,6 +630,55 @@ describe("WebUI API", () => {
     ]);
   });
 
+  test("refresh all keeps local Claude usage when its plugin refresh fails", async () => {
+    const ccusage = new CcusageProvider(async (_command, args) => ({
+      ok: true,
+      stderr: "",
+      stdout: args.includes("--help")
+        ? "Usage: ccusage"
+        : JSON.stringify({
+            daily: [
+              { date: "2026-08-08", tool: "Claude Code", totalTokens: 120 },
+              { date: "2026-08-08", tool: "Gemini CLI", totalTokens: 20 },
+            ],
+          }),
+    }));
+    const claude: UsageProvider = {
+      id: "claude-code",
+      name: "Claude Code",
+      detect: async () => true,
+      refresh: async () => {
+        throw new Error("Claude usage API unavailable");
+      },
+    };
+    handleRequest = createRequestHandler(
+      storage,
+      { host: "127.0.0.1", port: 6736 },
+      undefined,
+      [ccusage, claude],
+    );
+
+    const refresh = await handleRequest(new Request(
+      "http://127.0.0.1:6736/api/providers/refresh",
+      { method: "POST" },
+    ));
+    const refreshBody = await refresh.json();
+    expect(refreshBody.results).toEqual([
+      { providerId: "ccusage", ok: true, records: 2 },
+      { providerId: "claude-code", ok: false, error: "Claude usage API unavailable" },
+    ]);
+
+    const response = await handleRequest(new Request(
+      "http://127.0.0.1:6736/api/usage/tokens?from=2026-08-08T00%3A00%3A00.000Z",
+    ));
+    const body = await response.json();
+    expect(body.totalTokens).toBe(140);
+    expect(body.providers.map((provider: { providerId: string }) => provider.providerId)).toEqual([
+      "claude-code",
+      "gemini-cli",
+    ]);
+  });
+
   test("creates and lists provider accounts for selected providers", async () => {
     const homeA = mkdtempSync(join(tmpdir(), "openusage-codex-a-"));
     const homeB = mkdtempSync(join(tmpdir(), "openusage-claude-b-"));
