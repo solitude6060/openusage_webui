@@ -21,7 +21,7 @@ http://127.0.0.1:6736
 - Cursor via 原本 OpenUsage plugin adapter（可選 **Provider Accounts** 追蹤多個 Cursor 設定目錄）
 - Devin via 原本 OpenUsage plugin adapter
 - Factory / Droid via 原本 OpenUsage plugin adapter
-- Grok via 原本 OpenUsage plugin adapter — 週配額、方案名稱、pay-as-you-go 上限
+- Grok via 原本 OpenUsage plugin adapter — 週配額、方案名稱、pay-as-you-go 上限，以及本機 CLI log 的花費磁磚
 - GitHub Copilot via 原本 OpenUsage plugin adapter
 - JetBrains AI Assistant via 原本 OpenUsage plugin adapter
 - Kimi via 原本 OpenUsage plugin adapter

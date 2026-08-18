@@ -7,6 +7,7 @@
 **2026-08-18**
 
 - **Grok Weekly Pool:** SuperGrok and other unified-billing accounts now show the shared weekly pool and pay-as-you-go status, instead of a billing-response error.
+- **Grok Local Spend:** Today, Yesterday, and Last 30 Days are estimated from the Grok CLI log. A day with no token rows stays blank instead of a fake `$0.00`.
 
 **2026-08-11**
 
@@ -124,7 +125,7 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 - [**Copilot**](docs/providers/copilot.md) / premium, chat, completions
 - [**Cursor**](docs/providers/cursor.md) / credits, total usage, auto usage, API usage, on-demand, CLI auth
 - [**Factory / Droid**](docs/providers/factory.md) / standard, premium tokens
-- [**Grok**](docs/providers/grok.md) / weekly pool, plan, pay-as-you-go cap
+- [**Grok**](docs/providers/grok.md) / weekly pool, plan, pay-as-you-go cap, local spend
 - [**JetBrains AI Assistant**](docs/providers/jetbrains-ai-assistant.md) / quota, remaining
 - [**Kiro**](docs/providers/kiro.md) / credits, bonus credits, overages
 - [**Kimi Code**](docs/providers/kimi.md) / session, weekly
@@ -152,7 +153,7 @@ Current WebUI provider support:
 - Cursor via the original `plugins/cursor/plugin.js` adapter (optional multi-home via Settings → Provider Accounts)
 - Devin via the original `plugins/devin/plugin.js` adapter
 - Factory via the original `plugins/factory/plugin.js` adapter
-- Grok via the original `plugins/grok/plugin.js` adapter — weekly shared pool, plan, and pay-as-you-go cap
+- Grok via the original `plugins/grok/plugin.js` adapter — weekly shared pool, plan, pay-as-you-go cap, and local spend tiles
 - GitHub Copilot via the original `plugins/copilot/plugin.js` adapter
 - JetBrains AI Assistant via the original `plugins/jetbrains-ai-assistant/plugin.js` adapter
 - Kimi via the original `plugins/kimi/plugin.js` adapter

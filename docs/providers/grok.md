@@ -11,6 +11,7 @@ Tracks Grok subscription usage from the local Grok CLI login.
 - **Auth:** cached Grok CLI token from `~/.grok/auth.json`
 - **Refresh:** Grok CLI refresh token from the same file
 - **Usage:** weekly shared pool percent from the CLI credits response
+- **Local spend:** Today / Yesterday / Last 30 Days from `~/.grok/logs/unified.jsonl`
 - **Plan source:** `GET /settings` (`subscription_tier_display`)
 - **Reset period:** current weekly period from the credits response
 
@@ -74,11 +75,18 @@ Accounts that still report a non-weekly period have no Weekly line. Pay as you g
 
 Returns remote CLI settings. OpenUsage reads `subscription_tier_display` from this response and shows it as the provider plan label, for example `SuperGrok Heavy`.
 
+## Local Spend
+
+Today, Yesterday, and Last 30 Days come from the Grok CLI log at `~/.grok/logs/unified.jsonl`, or `$GROK_HOME/logs/unified.jsonl` when that environment variable is set. Each `shell.turn.inference_done` row is attributed to that process's current model, then priced at public xAI API rates. These dollars are local estimates. They are not the weekly pool and they do not include Cursor-billed Grok usage.
+
+A period with no priced token rows is omitted, rather than shown as `$0.00 · 0 tokens`. Older CLI versions that never logged token counts stay blank until a Grok CLI session writes `inference_done` rows. A missing or unreadable log does not fail the weekly refresh.
+
 ## Displayed Lines
 
 | Line | Description |
 |------|-------------|
 | Weekly | Percent of the shared weekly pool used |
+| Today / Yesterday / Last 30 Days | Local cost and tokens estimated from the Grok CLI log |
 | Pay as you go | Disabled, or the configured pay-as-you-go cap |
 
 ## Errors

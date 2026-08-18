@@ -13,7 +13,7 @@
 - Cursor
 - Devin
 - Factory / Droid
-- Grok（週配額與 pay-as-you-go）
+- Grok（週配額、pay-as-you-go，以及本機 CLI log 的 Today／Yesterday／Last 30 Days）
 - GitHub Copilot CLI
 - JetBrains AI Assistant
 - Kimi

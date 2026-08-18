@@ -207,6 +207,71 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
     });
   });
 
+  test("adapts Grok local spend tiles from the CLI unified log", async () => {
+    await withIsolatedHome(async (home) => {
+      writeJson(join(home, ".grok/auth.json"), {
+        "https://auth.x.ai::client": {
+          key: "grok-token",
+          email: "user@example.com",
+          expires_at: "2099-01-01T00:00:00Z",
+        },
+      });
+      const now = new Date();
+      const ts = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0).toISOString();
+      mkdirSync(join(home, ".grok/logs"), { recursive: true });
+      writeFileSync(
+        join(home, ".grok/logs/unified.jsonl"),
+        [
+          JSON.stringify({
+            ts,
+            msg: "model catalog: notifying clients",
+            pid: 44,
+            ctx: { current_model_id: "grok-4.6" },
+          }),
+          JSON.stringify({
+            ts,
+            msg: "shell.turn.inference_done",
+            pid: 44,
+            ctx: {
+              prompt_tokens: 100000,
+              completion_tokens: 10000,
+            },
+          }),
+        ].join("\n") + "\n",
+      );
+      const provider = new OpenUsagePluginProvider({
+        providerId: "grok",
+        name: "Grok",
+        pluginId: "grok",
+        homeDir: home,
+        scriptText: readPluginScript("grok"),
+        request: requestByUrl({
+          "https://cli-chat-proxy.grok.com/v1/billing?format=credits": {
+            config: {
+              currentPeriod: {
+                type: "USAGE_PERIOD_TYPE_WEEKLY",
+                start: "2099-01-01T00:00:00Z",
+                end: "2099-01-08T00:00:00Z",
+              },
+              creditUsagePercent: 10,
+              onDemandCap: { val: 0 },
+            },
+          },
+          "https://cli-chat-proxy.grok.com/v1/settings": {
+            subscription_tier_display: "SuperGrok Heavy",
+          },
+        }),
+      });
+
+      const records = await provider.refresh();
+      const labels = (records[0]?.raw as any).lines.map((line: any) => line.label);
+      const today = (records[0]?.raw as any).lines.find((line: any) => line.label === "Today");
+
+      expect(labels).toEqual(["Weekly", "Pay as you go", "Today", "Last 30 Days"]);
+      expect(today?.value).toBe("$0.26 · 110K tokens");
+    });
+  });
+
   test("adapts the original JetBrains AI Assistant plugin through local quota XML", async () => {
     await withIsolatedHome(async (home) => {
       const quotaPath = join(home, ".config/JetBrains/IntelliJIdea2025.3/options/AIAssistantQuotaManager2.xml");
