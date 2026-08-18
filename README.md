@@ -4,6 +4,31 @@
 
 ### What's New
 
+**2026-08-18**
+
+- **Grok Weekly Pool:** SuperGrok and other unified-billing accounts now show the shared weekly pool and pay-as-you-go status, instead of a billing-response error.
+
+**2026-08-11**
+
+- **Tokens Page:** A new Tokens view lists dated provider and model totals. Switch between Provider → Model and Model → Provider. Parent rows use compact M/B figures; expand a row for the exact count.
+- **Token Persistence:** Claude, Codex, and complete Cursor usage-event totals persist across refresh without double-counting. If a Claude or Codex plugin refresh fails, local ccusage totals stay visible.
+
+**2026-08-08**
+
+- **Provider Accounts:** Settings can track more than one home for Codex, Claude Code, Cursor, and Antigravity. Each enabled home becomes its own dashboard card. Antigravity detect also finds `~/.agy-homes/*`.
+
+**2026-07-29**
+
+- **Cursor Usage Charts:** Cursor details now include last-7-day and billing-cycle cost and token charts.
+
+**2026-07-05**
+
+- **Tailscale Access:** You can allow specific Tailscale hosts to open the local dashboard, without exposing it to the whole LAN.
+
+**2026-07-04**
+
+- **Clearer Usage Cards:** Cards stay compact, extra quota lines sit under Show Details, and Claude Fable Weekly appears only when the live usage API reports that window. Providers also auto-refresh every 20 minutes.
+
 **2026-06-29**
 
 - **Credit Reset Sync:** You can now see the exact date and live countdown for your credit reset on both the CLI and the web dashboard.

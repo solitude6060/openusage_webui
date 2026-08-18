@@ -13,7 +13,7 @@
 - Cursor
 - Devin
 - Factory / Droid
-- Grok
+- Grok（週配額與 pay-as-you-go）
 - GitHub Copilot CLI
 - JetBrains AI Assistant
 - Kimi
