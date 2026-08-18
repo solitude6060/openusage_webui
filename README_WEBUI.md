@@ -13,7 +13,7 @@ A local-first WebUI dashboard for AI coding usage on Ubuntu/Linux.
 - Cursor via the original OpenUsage plugin adapter
 - Devin via the original OpenUsage plugin adapter
 - Factory / Droid via the original OpenUsage plugin adapter
-- Grok via the original OpenUsage plugin adapter
+- Grok via the original OpenUsage plugin adapter — weekly shared pool, plan, and pay-as-you-go cap
 - GitHub Copilot via the original OpenUsage plugin adapter
 - JetBrains AI Assistant via the original OpenUsage plugin adapter
 - Kimi via the original OpenUsage plugin adapter

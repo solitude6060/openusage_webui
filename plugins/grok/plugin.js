@@ -1,12 +1,13 @@
 (function () {
   const AUTH_PATH = "~/.grok/auth.json"
-  const BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing"
+  const CREDITS_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
   const SETTINGS_URL = "https://cli-chat-proxy.grok.com/v1/settings"
   const REFRESH_URL = "https://auth.x.ai/oauth2/token"
   const DEFAULT_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828"
   const TOKEN_AUTH_HEADER = "xai-grok-cli"
   const AUTH_REFRESH_BUFFER_MS = 5 * 60 * 1000
   const LOGIN_HINT = "Grok auth expired. Run `grok login` again."
+  const WEEKLY_PERIOD_TYPE = "USAGE_PERIOD_TYPE_WEEKLY"
 
   function readJson(ctx, path) {
     if (!ctx.host.fs.exists(path)) return null
@@ -177,10 +178,28 @@
     throw "Grok auth invalid. Run `grok login` again."
   }
 
-  function unitsValue(obj) {
-    if (!obj || typeof obj !== "object") return null
-    const n = Number(obj.val)
+  function failChanged(ctx, reason) {
+    ctx.host.log.error("Grok billing response changed: " + reason)
+    throw "Grok billing response changed."
+  }
+
+  function readFiniteNumber(value) {
+    const n = Number(value)
     return Number.isFinite(n) ? n : null
+  }
+
+  function readOnDemandCap(ctx, config) {
+    if (!("onDemandCap" in config)) return 0
+    const cap = config.onDemandCap
+    if (!cap || typeof cap !== "object") {
+      failChanged(ctx, "invalid onDemandCap")
+    }
+    if (!("val" in cap)) return 0
+    const n = readFiniteNumber(cap.val)
+    if (n === null) {
+      failChanged(ctx, "invalid onDemandCap")
+    }
+    return n
   }
 
   function clampPercent(value) {
@@ -195,7 +214,7 @@
     try {
       return ctx.util.request({
         method: "GET",
-        url: BILLING_URL,
+        url: CREDITS_URL,
         headers: {
           Authorization: "Bearer " + token,
           "X-XAI-Token-Auth": TOKEN_AUTH_HEADER,
@@ -219,9 +238,57 @@
 
     const data = ctx.util.tryParseJson(resp.bodyText)
     if (!data) {
-      throw "Grok billing response changed."
+      failChanged(ctx, "invalid JSON")
     }
     return data
+  }
+
+  function parseCreditsConfig(ctx, data) {
+    if (!data || typeof data !== "object") {
+      failChanged(ctx, "missing object")
+    }
+
+    const config = data.config
+    if (!config || typeof config !== "object") {
+      failChanged(ctx, "missing config")
+    }
+
+    const period = config.currentPeriod
+    if (!period || typeof period !== "object") {
+      failChanged(ctx, "missing currentPeriod")
+    }
+
+    const periodType = typeof period.type === "string" ? period.type.trim() : ""
+    if (!periodType) {
+      failChanged(ctx, "missing currentPeriod.type")
+    }
+
+    const startMs = ctx.util.parseDateMs(period.start)
+    const endMs = ctx.util.parseDateMs(period.end)
+    const resetsAt = ctx.util.toIso(period.end)
+    if (startMs === null || endMs === null || !resetsAt || endMs <= startMs) {
+      failChanged(ctx, "invalid currentPeriod dates")
+    }
+
+    let usedPercent
+    if ("creditUsagePercent" in config) {
+      usedPercent = readFiniteNumber(config.creditUsagePercent)
+      if (usedPercent === null) {
+        failChanged(ctx, "invalid creditUsagePercent")
+      }
+    } else {
+      usedPercent = 0
+    }
+
+    const onDemandCapUnits = readOnDemandCap(ctx, config)
+
+    return {
+      periodType,
+      usedPercent: clampPercent(usedPercent),
+      resetsAt,
+      periodDurationMs: Math.round(endMs - startMs),
+      onDemandCapUnits,
+    }
   }
 
   function fetchPlanName(ctx, token) {
@@ -256,39 +323,23 @@
         return refreshed
       },
     })
-    const data = parseBilling(ctx, billingResp)
-    const config = data && data.config
-    if (!config || typeof config !== "object") {
-      throw "Grok billing response changed."
-    }
-
-    const usedUnits = unitsValue(config.used)
-    const limitUnits = unitsValue(config.monthlyLimit)
-    const onDemandCapUnits = unitsValue(config.onDemandCap)
-    if (usedUnits === null || limitUnits === null || limitUnits <= 0 || onDemandCapUnits === null) {
-      throw "Grok billing response changed."
-    }
-
-    const resetsAt = ctx.util.toIso(config.billingPeriodEnd)
-    if (!resetsAt) {
-      throw "Grok billing response changed."
-    }
-
-    const usedPercent = clampPercent((usedUnits / limitUnits) * 100)
-    const lines = [
-      ctx.line.progress({
-        label: "Credits used",
-        used: usedPercent,
+    const credits = parseCreditsConfig(ctx, parseBilling(ctx, billingResp))
+    const lines = []
+    if (credits.periodType === WEEKLY_PERIOD_TYPE) {
+      lines.push(ctx.line.progress({
+        label: "Weekly",
+        used: credits.usedPercent,
         limit: 100,
         format: { kind: "percent" },
-        resetsAt,
-      }),
-      ctx.line.badge({
-        label: "Pay as you go",
-        text: onDemandCapUnits > 0 ? String(onDemandCapUnits) + " cap" : "Disabled",
-        color: onDemandCapUnits > 0 ? "#22c55e" : "#a3a3a3",
-      }),
-    ]
+        resetsAt: credits.resetsAt,
+        periodDurationMs: credits.periodDurationMs,
+      }))
+    }
+    lines.push(ctx.line.badge({
+      label: "Pay as you go",
+      text: credits.onDemandCapUnits > 0 ? String(credits.onDemandCapUnits) + " cap" : "Disabled",
+      color: credits.onDemandCapUnits > 0 ? "#22c55e" : "#a3a3a3",
+    }))
 
     return { plan: fetchPlanName(ctx, auth.token), lines }
   }
