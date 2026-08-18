@@ -15,13 +15,13 @@ http://127.0.0.1:6736
 ## 目前支援
 
 - Amp via 原本 OpenUsage plugin adapter
-- Antigravity via 原本 OpenUsage plugin adapter
+- Antigravity via 原本 OpenUsage plugin adapter（可選 **Provider Accounts** 追蹤多個 CLI／IDE 家目錄，含 `~/.agy-homes/*`）
 - Claude Code via 原本 OpenUsage plugin adapter（可選 **Provider Accounts** 追蹤多個 `CLAUDE_CONFIG_DIR`）
 - Codex CLI via 原本 OpenUsage plugin adapter（可選 **Provider Accounts** 追蹤多個 `CODEX_HOME`）
-- Cursor via 原本 OpenUsage plugin adapter
+- Cursor via 原本 OpenUsage plugin adapter（可選 **Provider Accounts** 追蹤多個 Cursor 設定目錄）
 - Devin via 原本 OpenUsage plugin adapter
 - Factory / Droid via 原本 OpenUsage plugin adapter
-- Grok via 原本 OpenUsage plugin adapter
+- Grok via 原本 OpenUsage plugin adapter — 週配額、方案名稱、pay-as-you-go 上限
 - GitHub Copilot via 原本 OpenUsage plugin adapter
 - JetBrains AI Assistant via 原本 OpenUsage plugin adapter
 - Kimi via 原本 OpenUsage plugin adapter
