@@ -177,12 +177,15 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
         homeDir: home,
         scriptText: readPluginScript("grok"),
         request: requestByUrl({
-          "https://cli-chat-proxy.grok.com/v1/billing": {
+          "https://cli-chat-proxy.grok.com/v1/billing?format=credits": {
             config: {
-              monthlyLimit: { val: 60000 },
-              used: { val: 6000 },
+              currentPeriod: {
+                type: "USAGE_PERIOD_TYPE_WEEKLY",
+                start: "2099-01-01T00:00:00Z",
+                end: "2099-01-08T00:00:00Z",
+              },
+              creditUsagePercent: 10,
               onDemandCap: { val: 0 },
-              billingPeriodEnd: "2099-02-01T00:00:00Z",
             },
           },
           "https://cli-chat-proxy.grok.com/v1/settings": {
@@ -198,7 +201,7 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
         plan: "SuperGrok Heavy",
       });
       expect((records[0]?.raw as any).lines.map((line: any) => line.label)).toEqual([
-        "Credits used",
+        "Weekly",
         "Pay as you go",
       ]);
     });

@@ -99,7 +99,7 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 - [**Copilot**](docs/providers/copilot.md) / premium, chat, completions
 - [**Cursor**](docs/providers/cursor.md) / credits, total usage, auto usage, API usage, on-demand, CLI auth
 - [**Factory / Droid**](docs/providers/factory.md) / standard, premium tokens
-- [**Grok**](docs/providers/grok.md) / credits used, plan, pay-as-you-go cap
+- [**Grok**](docs/providers/grok.md) / weekly pool, plan, pay-as-you-go cap
 - [**JetBrains AI Assistant**](docs/providers/jetbrains-ai-assistant.md) / quota, remaining
 - [**Kiro**](docs/providers/kiro.md) / credits, bonus credits, overages
 - [**Kimi Code**](docs/providers/kimi.md) / session, weekly
@@ -127,7 +127,7 @@ Current WebUI provider support:
 - Cursor via the original `plugins/cursor/plugin.js` adapter (optional multi-home via Settings → Provider Accounts)
 - Devin via the original `plugins/devin/plugin.js` adapter
 - Factory via the original `plugins/factory/plugin.js` adapter
-- Grok via the original `plugins/grok/plugin.js` adapter
+- Grok via the original `plugins/grok/plugin.js` adapter — weekly shared pool, plan, and pay-as-you-go cap
 - GitHub Copilot via the original `plugins/copilot/plugin.js` adapter
 - JetBrains AI Assistant via the original `plugins/jetbrains-ai-assistant/plugin.js` adapter
 - Kimi via the original `plugins/kimi/plugin.js` adapter
