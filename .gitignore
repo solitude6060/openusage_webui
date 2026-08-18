@@ -30,6 +30,9 @@ tmpcov-gem
 !.env.example
 
 # Agent working files
+status.md
+tracker.md
+handover.md
 .playwright-mcp/
 docs/choices.md
 docs/breadcrumbs.md
