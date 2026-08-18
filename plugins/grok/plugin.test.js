@@ -8,6 +8,7 @@ const REFRESH_URL = "https://auth.x.ai/oauth2/token"
 const WEEKLY_START = "2026-08-16T17:26:56.286320+00:00"
 const WEEKLY_END = "2026-08-23T17:26:56.286320+00:00"
 const WEEKLY_MS = 7 * 24 * 60 * 60 * 1000
+const DEFAULT_LOG_PATH = "~/.grok/logs/unified.jsonl"
 
 const loadPlugin = async () => {
   await import("./plugin.js?test=" + Math.random())
@@ -57,6 +58,20 @@ function mockGrokApi(ctx, data, settings) {
     }
     return { status: 404, bodyText: "" }
   })
+}
+
+function logLine(ts, msg, pid, ctx) {
+  return JSON.stringify({ ts, msg, pid, ctx: ctx || {} })
+}
+
+function writeLog(ctx, path, lines) {
+  ctx.host.fs.writeText(path, lines.join("\n") + "\n")
+}
+
+function spendLabels(result) {
+  return result.lines
+    .filter((line) => line.label === "Today" || line.label === "Yesterday" || line.label === "Last 30 Days")
+    .map((line) => line.label)
 }
 
 describe("grok plugin", () => {
@@ -507,6 +522,136 @@ describe("grok plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Grok billing response changed.")
     expect(ctx.host.log.error).toHaveBeenCalledWith(
       expect.stringContaining("currentPeriod")
+    )
+  })
+
+  it("omits spend tiles when the CLI log is missing", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    mockGrokApi(ctx)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(spendLabels(result)).toEqual([])
+  })
+
+  it("omits spend tiles when the CLI log has no inference rows", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    mockGrokApi(ctx)
+    writeLog(ctx, DEFAULT_LOG_PATH, [
+      logLine("2026-02-02T12:00:00.000Z", "model catalog: notifying clients", 11, {
+        current_model_id: "grok-4.6",
+      }),
+    ])
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(spendLabels(result)).toEqual([])
+  })
+
+  it("reads spend from GROK_HOME when that env is set", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    mockGrokApi(ctx)
+    ctx.host.env.get.mockImplementation((name) => (
+      name === "GROK_HOME" ? "/tmp/grok-home-test" : null
+    ))
+    writeLog(ctx, "/tmp/grok-home-test/logs/unified.jsonl", [
+      logLine("2026-02-02T08:00:00.000Z", "model catalog: notifying clients", 22, {
+        current_model_id: "grok-4.6",
+      }),
+      logLine("2026-02-02T12:00:00.000Z", "shell.turn.inference_done", 22, {
+        prompt_tokens: 1_000_000,
+        cached_prompt_tokens: 200_000,
+        completion_tokens: 50_000,
+        reasoning_tokens: 50_000,
+      }),
+    ])
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Today").value).toBe("$4.60 · 1.1M tokens")
+    expect(ctx.host.fs.exists("/tmp/grok-home-test/logs/unified.jsonl")).toBe(true)
+  })
+
+  it("attributes inference rows to the process model and splits Today, Yesterday, and Last 30 Days", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    mockGrokApi(ctx)
+    writeLog(ctx, DEFAULT_LOG_PATH, [
+      logLine("2026-01-01T12:00:00.000Z", "model catalog: notifying clients", 9, {
+        current_model_id: "grok-4.6",
+      }),
+      logLine("2026-01-01T13:00:00.000Z", "shell.turn.inference_done", 9, {
+        prompt_tokens: 500_000,
+        completion_tokens: 10_000,
+      }),
+      logLine("2026-02-01T12:00:00.000Z", "model changed", 7, { model: "grok-4.6" }),
+      logLine("2026-02-01T12:00:00.000Z", "shell.turn.inference_done", 7, {
+        prompt_tokens: 100_000,
+        completion_tokens: 10_000,
+      }),
+      logLine("2026-02-02T12:00:00.000Z", "shell.turn.inference_done", 7, {
+        prompt_tokens: 1_000_000,
+        cached_prompt_tokens: 200_000,
+        completion_tokens: 50_000,
+        reasoning_tokens: 50_000,
+      }),
+    ])
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Today").value).toBe("$4.60 · 1.1M tokens")
+    expect(result.lines.find((line) => line.label === "Yesterday").value).toBe("$0.26 · 110K tokens")
+    expect(result.lines.find((line) => line.label === "Last 30 Days").value).toBe("$4.86 · 1.2M tokens")
+  })
+
+  it("skips unattributed inference rows and unpriced models", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    mockGrokApi(ctx)
+    writeLog(ctx, DEFAULT_LOG_PATH, [
+      logLine("2026-02-02T12:00:00.000Z", "shell.turn.inference_done", 3, {
+        prompt_tokens: 1_000_000,
+        completion_tokens: 10_000,
+      }),
+      logLine("2026-02-02T12:00:00.000Z", "model changed", 4, { model: "mystery-model" }),
+      logLine("2026-02-02T12:05:00.000Z", "shell.turn.inference_done", 4, {
+        prompt_tokens: 1_000_000,
+        completion_tokens: 10_000,
+      }),
+    ])
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(spendLabels(result)).toEqual([])
+  })
+
+  it("keeps weekly billing when the CLI log cannot be read", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    mockGrokApi(ctx)
+    const exists = ctx.host.fs.exists
+    const readText = ctx.host.fs.readText
+    ctx.host.fs.exists = (path) => path === DEFAULT_LOG_PATH || exists(path)
+    ctx.host.fs.readText = (path) => {
+      if (path === DEFAULT_LOG_PATH) throw new Error("permission denied")
+      return readText(path)
+    }
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
+    expect(spendLabels(result)).toEqual([])
+    expect(ctx.host.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining("unified.jsonl")
     )
   })
 })

@@ -11,6 +11,9 @@
   ],
   "lines": [
     { "type": "progress", "label": "Weekly", "scope": "overview", "period": "weekly", "primaryOrder": 1 },
+    { "type": "text", "label": "Today", "scope": "overview" },
+    { "type": "text", "label": "Yesterday", "scope": "detail" },
+    { "type": "text", "label": "Last 30 Days", "scope": "detail" },
     { "type": "badge", "label": "Pay as you go", "scope": "detail" }
   ]
 }

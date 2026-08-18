@@ -1,7 +1,18 @@
 (function () {
   const AUTH_PATH = "~/.grok/auth.json"
+  const DEFAULT_LOG_PATH = "~/.grok/logs/unified.jsonl"
   const CREDITS_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
   const SETTINGS_URL = "https://cli-chat-proxy.grok.com/v1/settings"
+  const SPEND_DAYS_BACK = 30
+  const LONG_CONTEXT_PROMPT_TOKENS = 200000
+  const MODEL_RATES = {
+    "grok-4.6": { input: 2, cached: 0.5, output: 6, longInput: 4, longCached: 1, longOutput: 12 },
+    "grok-4.5": { input: 2, cached: 0.3, output: 6, longInput: 4, longCached: 0.6, longOutput: 12 },
+    "grok-4.3": { input: 1.25, cached: 0.2, output: 2.5, longInput: 2.5, longCached: 0.4, longOutput: 5 },
+    "grok-4.20": { input: 1.25, cached: 0.2, output: 2.5, longInput: 2.5, longCached: 0.4, longOutput: 5 },
+    "grok-build-0.1": { input: 1, cached: 0.2, output: 2, longInput: 2, longCached: 0.4, longOutput: 4 },
+    "grok-build": { input: 1, cached: 0.2, output: 2, longInput: 2, longCached: 0.4, longOutput: 4 },
+  }
   const REFRESH_URL = "https://auth.x.ai/oauth2/token"
   const DEFAULT_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828"
   const TOKEN_AUTH_HEADER = "xai-grok-cli"
@@ -291,6 +302,169 @@
     }
   }
 
+  function readEnv(ctx, name) {
+    if (!ctx.host.env || typeof ctx.host.env.get !== "function") return ""
+    const value = ctx.host.env.get(name)
+    return typeof value === "string" ? value.trim() : ""
+  }
+
+  function spendLogPath(ctx) {
+    const home = readEnv(ctx, "GROK_HOME")
+    if (home) return home.replace(/\/+$/, "") + "/logs/unified.jsonl"
+    return DEFAULT_LOG_PATH
+  }
+
+  function dayKeyFromMs(ms) {
+    const date = new Date(ms)
+    const year = date.getFullYear()
+    const month = date.getMonth() + 1
+    const day = date.getDate()
+    return year + "-" + (month < 10 ? "0" : "") + month + "-" + (day < 10 ? "0" : "") + day
+  }
+
+  function fmtTokens(n) {
+    const abs = Math.abs(n)
+    const sign = n < 0 ? "-" : ""
+    const units = [
+      { threshold: 1e9, divisor: 1e9, suffix: "B" },
+      { threshold: 1e6, divisor: 1e6, suffix: "M" },
+      { threshold: 1e3, divisor: 1e3, suffix: "K" },
+    ]
+    for (let i = 0; i < units.length; i++) {
+      const unit = units[i]
+      if (abs >= unit.threshold) {
+        const scaled = abs / unit.divisor
+        const formatted = scaled >= 10
+          ? Math.round(scaled).toString()
+          : scaled.toFixed(1).replace(/\.0$/, "")
+        return sign + formatted + unit.suffix
+      }
+    }
+    return sign + Math.round(abs).toString()
+  }
+
+  function spendValue(tokens, cost) {
+    return "$" + cost.toFixed(2) + " \u00b7 " + fmtTokens(tokens) + " tokens"
+  }
+
+  function resolveRates(model) {
+    const name = String(model || "").trim().toLowerCase()
+    if (!name) return null
+    if (MODEL_RATES[name]) return MODEL_RATES[name]
+    const keys = Object.keys(MODEL_RATES).sort((a, b) => b.length - a.length)
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i]
+      if (name.startsWith(key + "-") || name.startsWith(key + ".")) return MODEL_RATES[key]
+    }
+    return null
+  }
+
+  function estimateCost(model, promptTokens, cacheRead, output) {
+    const rates = resolveRates(model)
+    if (!rates) return null
+    const long = promptTokens >= LONG_CONTEXT_PROMPT_TOKENS
+    const inputNoCache = Math.max(0, promptTokens - cacheRead)
+    const inputRate = long ? rates.longInput : rates.input
+    const cachedRate = long ? rates.longCached : rates.cached
+    const outputRate = long ? rates.longOutput : rates.output
+    return (inputNoCache * inputRate + cacheRead * cachedRate + output * outputRate) / 1e6
+  }
+
+  function modelID(msg, eventCtx) {
+    let raw
+    if (msg === "model changed") raw = eventCtx.model
+    else if (msg === "model catalog: notifying clients") raw = eventCtx.current_model_id
+    else if (msg === "backend_search: model switch") {
+      raw = eventCtx.model || eventCtx.current_model_id || eventCtx.model_id
+    } else if (msg === "subagent model resolved") raw = eventCtx.model_id || eventCtx.model
+    else return null
+    if (typeof raw !== "string") return null
+    const model = raw.trim()
+    return model || null
+  }
+
+  function parseSpendLog(ctx, text, nowMsValue) {
+    const sinceMs = nowMsValue - SPEND_DAYS_BACK * 24 * 60 * 60 * 1000
+    const modelByPid = {}
+    const days = {}
+    const rows = String(text).split(/\r?\n/)
+    for (let i = 0; i < rows.length; i++) {
+      const line = rows[i]
+      if (!line || (line.indexOf("inference_done") < 0 && line.indexOf("model") < 0)) continue
+      const object = ctx.util.tryParseJson(line)
+      if (!object || typeof object !== "object") continue
+      const msg = typeof object.msg === "string" ? object.msg : ""
+      const eventCtx = object.ctx && typeof object.ctx === "object" ? object.ctx : {}
+      const pid = readFiniteNumber(object.pid)
+      const model = modelID(msg, eventCtx)
+      if (model) {
+        if (pid !== null) modelByPid[String(Math.round(pid))] = model
+        continue
+      }
+      if (msg !== "shell.turn.inference_done") continue
+      const promptTokens = readFiniteNumber(eventCtx.prompt_tokens)
+      if (promptTokens === null) continue
+      const tsMs = ctx.util.parseDateMs(object.ts)
+      if (tsMs === null || tsMs < sinceMs) continue
+      const attributed = pid === null ? null : modelByPid[String(Math.round(pid))]
+      if (!attributed) continue
+      const completion = readFiniteNumber(eventCtx.completion_tokens)
+      const reasoning = readFiniteNumber(eventCtx.reasoning_tokens)
+      const cachedRaw = readFiniteNumber(eventCtx.cached_prompt_tokens)
+      const cached = Math.min(cachedRaw === null ? 0 : cachedRaw, promptTokens)
+      const output = (completion === null ? 0 : completion) + (reasoning === null ? 0 : reasoning)
+      const cost = estimateCost(attributed, promptTokens, cached, output)
+      if (cost === null) continue
+      const day = dayKeyFromMs(tsMs)
+      if (!days[day]) days[day] = { tokens: 0, cost: 0 }
+      days[day].tokens += Math.round(promptTokens + output)
+      days[day].cost += cost
+    }
+    return days
+  }
+
+  function pushSpendLine(lines, ctx, label, entry) {
+    if (!entry || !(entry.tokens > 0 || entry.cost > 0)) return
+    lines.push(ctx.line.text({
+      label: label,
+      value: spendValue(entry.tokens, entry.cost),
+    }))
+  }
+
+  function appendLocalSpend(ctx, lines) {
+    const path = spendLogPath(ctx)
+    if (!ctx.host.fs.exists(path)) return
+    let text
+    try {
+      text = ctx.host.fs.readText(path)
+    } catch {
+      ctx.host.log.warn("Grok CLI log unreadable: " + path)
+      return
+    }
+    if (typeof text !== "string" || !text.trim()) return
+    const currentMs = nowMs(ctx)
+    const days = parseSpendLog(ctx, text, currentMs)
+    const todayKey = dayKeyFromMs(currentMs)
+    const yesterday = new Date(currentMs)
+    yesterday.setDate(yesterday.getDate() - 1)
+    const yesterdayKey = dayKeyFromMs(yesterday.getTime())
+    pushSpendLine(lines, ctx, "Today", days[todayKey])
+    pushSpendLine(lines, ctx, "Yesterday", days[yesterdayKey])
+    let totalTokens = 0
+    let totalCost = 0
+    const keys = Object.keys(days)
+    for (let i = 0; i < keys.length; i++) {
+      totalTokens += days[keys[i]].tokens
+      totalCost += days[keys[i]].cost
+    }
+    if (totalTokens > 0 || totalCost > 0) {
+      lines.push(ctx.line.text({
+        label: "Last 30 Days",
+        value: spendValue(totalTokens, totalCost),
+      }))
+    }
+  }
+
   function fetchPlanName(ctx, token) {
     try {
       const resp = ctx.util.request({
@@ -340,6 +514,7 @@
       text: credits.onDemandCapUnits > 0 ? String(credits.onDemandCapUnits) + " cap" : "Disabled",
       color: credits.onDemandCapUnits > 0 ? "#22c55e" : "#a3a3a3",
     }))
+    appendLocalSpend(ctx, lines)
 
     return { plan: fetchPlanName(ctx, auth.token), lines }
   }
