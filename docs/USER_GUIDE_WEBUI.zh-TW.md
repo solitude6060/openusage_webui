@@ -13,7 +13,7 @@
 - Cursor
 - Devin
 - Factory / Droid
-- Grok（週配額、pay-as-you-go，以及本機 CLI log 的 Today／Yesterday／Last 30 Days）
+- Grok Build（週配額、pay-as-you-go，本機 CLI log 的 Today／Yesterday／Last 30 Days，以及 Tokens 頁從 Grok CLI session transcripts（本機完成回合紀錄）讀到的 token）
 - GitHub Copilot CLI
 - JetBrains AI Assistant
 - Kimi
@@ -143,7 +143,7 @@ Providers 頁面顯示各 provider 狀態：
 - last error
 - refresh button
 
-Amp、Antigravity、Claude Code、Codex、Cursor、Devin、Factory、Grok、GitHub Copilot、JetBrains AI Assistant、Kimi、Kiro、OpenCode Go、Perplexity、Synthetic、Z.ai 目前透過原本 OpenUsage provider plugin adapter refresh。Gemini CLI / Google AI Pro 仍主要透過 `ccusage` 匯入，因為原本 repo 目前沒有 Gemini provider plugin。
+Amp、Antigravity、Claude Code、Codex、Cursor、Devin、Factory、Grok Build、GitHub Copilot、JetBrains AI Assistant、Kimi、Kiro、OpenCode Go、Perplexity、Synthetic、Z.ai 目前透過原本 OpenUsage provider plugin adapter refresh。Gemini CLI / Google AI Pro 仍主要透過 `ccusage` 匯入，因為原本 repo 目前沒有 Gemini provider plugin。
 
 ### 5.3 Sessions
 
@@ -173,12 +173,13 @@ Tokens 頁面依時間區間加總本機 `usage_records` 的 token：
 - 父層總量以 M／B 縮寫，展開後顯示完整 token 整數
 - 已知的 routing、日期 revision 與 inference profile 名稱差異會歸入同一 model family；
   不同 model 版本仍分開顯示
-- Claude／Codex 會使用本機 usage logs；Cursor 會使用完整取得的 usage events
+- Claude／Codex 會使用本機 usage logs；Cursor 會使用完整取得的 usage events；Grok Build 會使用 Grok CLI session transcripts（`~/.grok/sessions/**/updates.jsonl` 裡的完成回合）
 
 按下 Refresh All 或等待自動 refresh 後，上述來源會更新對應日期與 model 的 token
 records。Claude／Codex plugin refresh 失敗時，本機 `ccusage` token 數值仍會保留；plugin
 refresh 成功時，同日期的重疊 token 數值會被取代，舊有費用與來源資料仍會保留。Cursor
-events 必須完整取得才會寫入，避免把部分資料顯示成完整總量。只提供即時配額的 provider
+events 必須完整取得才會寫入，避免把部分資料顯示成完整總量。Grok Build 的 Tokens 列來自
+完成的 CLI session turns，不含 Cursor 帳單裡的 Grok。只提供即時配額的 provider
 不會列入 token totals。
 
 ### 5.5 Settings

@@ -21,7 +21,7 @@ http://127.0.0.1:6736
 - Cursor via 原本 OpenUsage plugin adapter（可選 **Provider Accounts** 追蹤多個 Cursor 設定目錄）
 - Devin via 原本 OpenUsage plugin adapter
 - Factory / Droid via 原本 OpenUsage plugin adapter
-- Grok via 原本 OpenUsage plugin adapter — 週配額、方案名稱、pay-as-you-go 上限，以及本機 CLI log 的花費磁磚
+- Grok Build via 原本 OpenUsage plugin adapter — 週配額、方案名稱、pay-as-you-go 上限、本機 CLI log 的花費磁磚，以及 Tokens 頁從 Grok CLI 本機完成回合紀錄（`~/.grok/sessions/**/updates.jsonl`）加總的 token
 - GitHub Copilot via 原本 OpenUsage plugin adapter
 - JetBrains AI Assistant via 原本 OpenUsage plugin adapter
 - Kimi via 原本 OpenUsage plugin adapter
@@ -34,8 +34,8 @@ http://127.0.0.1:6736
 - MiniMax Token Plan remains API key 查詢
 - 手動 usage entries
 - Tokens 頁可依時間區間切換 Provider → Model 與 Model → Provider，父層以 M／B 顯示，
-  展開後顯示完整數值；Claude／Codex 本機用量與 Cursor 完整 usage events 會在 refresh
-  後自動寫入
+  展開後顯示完整數值；Claude／Codex 本機用量、Cursor 完整 usage events，以及 Grok Build
+  CLI 本機完成回合紀錄會在 refresh 後自動寫入。Cursor 帳單裡的 Grok 仍掛在 Cursor 底下。
 
 ## 目前不做
 
@@ -156,6 +156,12 @@ CODEX_HOME/auth.json
 ```
 
 原本 plugin 可能會 refresh OAuth token，並把更新後的 credential 寫回同一個檔案來源。WebUI 不使用 browser cookies。
+
+## Grok Build 設定
+
+Grok Build 沿用原本 OpenUsage 的 `plugins/grok/plugin.js`。先執行 `grok login`。WebUI 會讀 `~/.grok/auth.json`（依 process `HOME` 展開）。`$GROK_HOME` 只用在 session 完成回合紀錄與本機花費 log，不會改 `auth.json` 路徑。
+
+儀表板的週配額與 pay-as-you-go 來自 Grok CLI billing API。卡片上的 Today／Yesterday／Last 30 Days 仍從 `~/.grok/logs/unified.jsonl` 估算。Tokens 頁不使用這份 debug log；Grok refresh 成功後，會加總 `~/.grok/sessions/**/updates.jsonl` 裡已完成的回合（`turn_completed`／`modelUsage`）。複製的 session 依 `eventId` 與 model 各算一次；子 session、resume、fork 都會列入。Cursor 帳單裡的 Grok 仍掛在 Cursor 底下。
 
 ## GitHub Copilot 設定
 

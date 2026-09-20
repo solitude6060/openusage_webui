@@ -23,6 +23,7 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
         name: "Amp",
         pluginId: "amp",
         homeDir: home,
+        env: { HOME: home },
         scriptText: readPluginScript("amp"),
         request: requestByUrl({
           "https://ampcode.com/api/internal": {
@@ -57,6 +58,7 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
         name: "Cursor",
         pluginId: "cursor",
         homeDir: home,
+        env: { HOME: home },
         scriptText: readPluginScript("cursor"),
         request: requestByUrl({
           "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage": {
@@ -96,6 +98,7 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
         name: "Devin",
         pluginId: "devin",
         homeDir: home,
+        env: { HOME: home },
         scriptText: readPluginScript("devin"),
         request: requestByUrl({
           "https://server.codeium.test/exa.seat_management_pb.SeatManagementService/GetUserStatus": {
@@ -138,6 +141,7 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
         name: "Factory",
         pluginId: "factory",
         homeDir: home,
+        env: { HOME: home },
         scriptText: readPluginScript("factory"),
         request: requestByUrl({
           "https://api.factory.ai/api/organization/subscription/usage": {
@@ -172,9 +176,10 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
       });
       const provider = new OpenUsagePluginProvider({
         providerId: "grok",
-        name: "Grok",
+        name: "Grok Build",
         pluginId: "grok",
         homeDir: home,
+        env: { HOME: home },
         scriptText: readPluginScript("grok"),
         request: requestByUrl({
           "https://cli-chat-proxy.grok.com/v1/billing?format=credits": {
@@ -241,9 +246,10 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
       );
       const provider = new OpenUsagePluginProvider({
         providerId: "grok",
-        name: "Grok",
+        name: "Grok Build",
         pluginId: "grok",
         homeDir: home,
+        env: { HOME: home },
         scriptText: readPluginScript("grok"),
         request: requestByUrl({
           "https://cli-chat-proxy.grok.com/v1/billing?format=credits": {
@@ -290,6 +296,7 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
         name: "JetBrains AI Assistant",
         pluginId: "jetbrains-ai-assistant",
         homeDir: home,
+        env: { HOME: home },
         scriptText: readPluginScript("jetbrains-ai-assistant"),
         request: () => {
           throw new Error("JetBrains fixture should not call HTTP");
@@ -321,6 +328,7 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
         name: "Kimi",
         pluginId: "kimi",
         homeDir: home,
+        env: { HOME: home },
         scriptText: readPluginScript("kimi"),
         request: requestByUrl({
           "https://api.kimi.com/coding/v1/usages": {
@@ -413,6 +421,7 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
         name: "Kiro",
         pluginId: "kiro",
         homeDir: home,
+        env: { HOME: home },
         now: () => "2026-02-02T00:00:00.000Z",
         scriptText: readPluginScript("kiro"),
         request: () => {
@@ -449,6 +458,7 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
         name: "OpenCode Go",
         pluginId: "opencode-go",
         homeDir: home,
+        env: { HOME: home },
         scriptText: readPluginScript("opencode-go"),
       });
 
@@ -488,6 +498,7 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
         name: "Perplexity",
         pluginId: "perplexity",
         homeDir: home,
+        env: { HOME: home },
         scriptText: readPluginScript("perplexity"),
         request: requestByUrl({
           "https://www.perplexity.ai/api/user": notFoundResponse,

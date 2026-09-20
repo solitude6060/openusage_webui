@@ -17,7 +17,7 @@ export const providerCards: Array<{ providerId: ProviderId; name: string; note?:
   { providerId: "cursor", name: "Cursor", note: "OpenUsage Plugin" },
   { providerId: "devin", name: "Devin", note: "OpenUsage Plugin" },
   { providerId: "factory", name: "Factory", note: "OpenUsage Plugin" },
-  { providerId: "grok", name: "Grok", note: "OpenUsage Plugin" },
+  { providerId: "grok", name: "Grok Build", note: "OpenUsage Plugin" },
   { providerId: "github-copilot", name: "GitHub Copilot", note: "OpenUsage Plugin" },
   { providerId: "jetbrains-ai-assistant", name: "JetBrains AI Assistant", note: "OpenUsage Plugin" },
   { providerId: "kimi", name: "Kimi", note: "OpenUsage Plugin" },

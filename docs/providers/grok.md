@@ -1,6 +1,6 @@
-# Grok
+# Grok Build
 
-Tracks Grok subscription usage from the local Grok CLI login.
+Tracks Grok Build credit usage from the local Grok CLI login.
 
 > Reverse-engineered, undocumented API. May change without notice.
 
@@ -11,11 +11,12 @@ Tracks Grok subscription usage from the local Grok CLI login.
 - **Auth:** cached Grok CLI token from `~/.grok/auth.json`
 - **Refresh:** Grok CLI refresh token from the same file
 - **Usage:** weekly shared pool percent from the CLI credits response
-- **Local spend:** Today / Yesterday / Last 30 Days from `~/.grok/logs/unified.jsonl`
+- **Local spend tiles:** Today / Yesterday / Last 30 Days from `~/.grok/logs/unified.jsonl`
+- **Tokens page:** daily per-model totals from Grok CLI session transcripts under `~/.grok/sessions/**/updates.jsonl`
 - **Plan source:** `GET /settings` (`subscription_tier_display`)
 - **Reset period:** current weekly period from the credits response
 
-SuperGrok and other unified-billing accounts use a weekly shared pool. The older monthly credits meter is no longer shown.
+This is the Grok Build CLI provider. SuperGrok and other unified-billing accounts use a weekly shared pool. The older monthly credits meter is no longer shown. Cursor-billed Grok usage stays under Cursor.
 
 ## Setup
 
@@ -77,17 +78,21 @@ Returns remote CLI settings. OpenUsage reads `subscription_tier_display` from th
 
 ## Local Spend
 
-Today, Yesterday, and Last 30 Days come from the Grok CLI log at `~/.grok/logs/unified.jsonl`, or `$GROK_HOME/logs/unified.jsonl` when that environment variable is set. Each `shell.turn.inference_done` row is attributed to that process's current model, then priced at public xAI API rates. These dollars are local estimates. They are not the weekly pool and they do not include Cursor-billed Grok usage.
+Today, Yesterday, and Last 30 Days on the dashboard card come from the Grok CLI log at `~/.grok/logs/unified.jsonl`, or `$GROK_HOME/logs/unified.jsonl` when that environment variable is set. Each `shell.turn.inference_done` row is attributed to that process's current model, then priced at public xAI API rates. These dollars are local estimates. They are not the weekly pool and they do not include Cursor-billed Grok usage.
 
-A period with no priced token rows is omitted, rather than shown as `$0.00 · 0 tokens`. Older CLI versions that never logged token counts stay blank until a Grok CLI session writes `inference_done` rows. A missing or unreadable log does not fail the weekly refresh.
+The Tokens page does not use that debug log. After a Grok refresh, it reads completed turns in `~/.grok/sessions/**/updates.jsonl` (or `$GROK_HOME/sessions/**/updates.jsonl`). Each `turn_completed` row contributes per-model `inputTokens` and `outputTokens`. `reasoningTokens` are already inside `outputTokens` and are not added again. Copied session transcripts count once per `eventId` and model. Child, resumed, and forked sessions are included. A missing or unreadable session directory does not fail the weekly refresh.
+
+A card period with no priced token rows is omitted, rather than shown as `$0.00 · 0 tokens`. Older CLI versions that never logged token counts stay blank on the card until a Grok CLI session writes `inference_done` rows. Tokens-page totals appear once `turn_completed` rows exist in session transcripts.
 
 ## Displayed Lines
 
 | Line | Description |
 |------|-------------|
 | Weekly | Percent of the shared weekly pool used |
-| Today / Yesterday / Last 30 Days | Local cost and tokens estimated from the Grok CLI log |
+| Today / Yesterday / Last 30 Days | Local cost and tokens estimated from the Grok CLI debug log |
 | Pay as you go | Disabled, or the configured pay-as-you-go cap |
+
+The Tokens page lists this provider as **Grok Build**. Its token totals come from session transcripts, not from the weekly pool and not from Cursor.
 
 ## Errors
 

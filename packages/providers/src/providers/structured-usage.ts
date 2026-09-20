@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import type { ProviderId, UsageRecord } from "../../../core/src/types";
+import type { ProviderId, UsageRecord, UsageSource } from "../../../core/src/types";
 
 type JsonObject = Record<string, unknown>;
-type TokenRecordKind = "ccusage" | "cursor-event";
+type TokenRecordKind = "ccusage" | "cursor-event" | "grok-session";
 
 export function normalizeCcusageDailyRecords(
   providerId: ProviderId,
@@ -143,23 +143,26 @@ function tokenValues(usage: JsonObject): TokenValues | null {
   return { inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, totalTokens };
 }
 
-function createTokenRecord(
+export function createTokenRecord(
   providerId: ProviderId,
   startedAt: string,
   model: string,
   tokens: TokenValues,
   kind: TokenRecordKind,
 ): UsageRecord {
+  const tool =
+    kind === "ccusage" ? "ccusage" : kind === "grok-session" ? "Grok Session" : "Cursor Usage Event";
+  const source: UsageSource = kind === "cursor-event" ? "api" : "local-log";
   return {
     id: createHash("sha256")
       .update([providerId, kind, startedAt, model].join("|"))
       .digest("hex"),
     providerId,
-    tool: kind === "ccusage" ? "ccusage" : "Cursor Usage Event",
+    tool,
     model,
     ...tokens,
     startedAt,
-    source: kind === "ccusage" ? "local-log" : "api",
+    source,
   };
 }
 

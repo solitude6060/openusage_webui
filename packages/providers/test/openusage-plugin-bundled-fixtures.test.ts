@@ -287,7 +287,7 @@ describe("OpenUsagePluginProvider original bundled plugin fixtures", () => {
     ["cursor", "Cursor", "cursor", "agent login"],
     ["devin", "Devin", "devin", "devin auth login"],
     ["factory", "Factory", "factory", "droid"],
-    ["grok", "Grok", "grok", "Grok not logged in"],
+    ["grok", "Grok Build", "grok", "Grok not logged in"],
     ["jetbrains-ai-assistant", "JetBrains AI Assistant", "jetbrains-ai-assistant", "JetBrains AI Assistant not detected"],
     ["kimi", "Kimi", "kimi", "kimi login"],
     ["kiro", "Kiro", "kiro", "Open Kiro"],
