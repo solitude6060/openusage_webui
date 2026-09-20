@@ -13,7 +13,7 @@ A local-first WebUI dashboard for AI coding usage on Ubuntu/Linux.
 - Cursor via the original OpenUsage plugin adapter — optional **Provider Accounts** for multiple Cursor config homes
 - Devin via the original OpenUsage plugin adapter
 - Factory / Droid via the original OpenUsage plugin adapter
-- Grok via the original OpenUsage plugin adapter — weekly shared pool, plan, pay-as-you-go cap, and local spend from the Grok CLI log
+- Grok Build via the original OpenUsage plugin adapter — weekly shared pool, plan, pay-as-you-go cap, local spend from the Grok CLI log, and Tokens-page totals from Grok CLI session transcripts
 - GitHub Copilot via the original OpenUsage plugin adapter
 - JetBrains AI Assistant via the original OpenUsage plugin adapter
 - Kimi via the original OpenUsage plugin adapter
@@ -27,7 +27,8 @@ A local-first WebUI dashboard for AI coding usage on Ubuntu/Linux.
 - Manual usage entries
 - Token totals on the Tokens page (`/tokens`) with Provider → Model and Model → Provider views,
   compact M/B totals, deterministic model-family grouping, and exact expanded values; populated
-  from Claude/Codex local usage and complete Cursor usage-event refreshes
+  from Claude/Codex local usage, complete Cursor usage-event refreshes, and Grok Build
+  CLI session transcripts
 
 ## What It Does Not Do
 
@@ -96,7 +97,7 @@ Original OpenUsage plugins that write keychain items use a local WebUI shim at `
 
 ## ccusage Notes
 
-Manual entries, MiniMax quota refresh, and original OpenUsage plugin-backed providers are implemented. ccusage refresh attempts `bunx ccusage` first and then `npx ccusage`, using JSON output when available. If ccusage returns non-JSON output, the WebUI stores a raw fallback record instead of brittle table parsing. Local Claude and Codex ccusage totals remain available when their plugin refresh fails; a successful plugin refresh removes overlapping token totals.
+Manual entries, MiniMax quota refresh, and original OpenUsage plugin-backed providers are implemented. ccusage refresh attempts `bunx ccusage` first and then `npx ccusage`, using JSON output when available. If ccusage returns non-JSON output, the WebUI stores a raw fallback record instead of brittle table parsing. Local Claude and Codex ccusage totals remain available when their plugin refresh fails; a successful plugin refresh removes overlapping token totals. Grok Build token totals come from Grok CLI session transcripts on a successful Grok refresh.
 
 ## Claude And Codex Notes
 
@@ -107,6 +108,12 @@ Claude reads `CLAUDE_CONFIG_DIR/.credentials.json` when `CLAUDE_CONFIG_DIR` is s
 Codex reads `CODEX_HOME/auth.json` when `CODEX_HOME` is set, otherwise `~/.config/codex/auth.json` and `~/.codex/auth.json`.
 
 The original plugins may refresh OAuth tokens and write updated credentials back to the same file source. Browser cookies are not used.
+
+## Grok Build Notes
+
+Grok Build uses the original `plugins/grok/plugin.js` adapter. Sign in with `grok login`. The plugin reads `~/.grok/auth.json`, or `$GROK_HOME/auth.json` when that variable is set.
+
+Dashboard weekly pool and pay-as-you-go come from the Grok CLI billing API. Card spend tiles (Today / Yesterday / Last 30 Days) are estimated from `~/.grok/logs/unified.jsonl`. The Tokens page does not use that log. After a successful Grok refresh it sums completed turns in `~/.grok/sessions/**/updates.jsonl` (`turn_completed` / `modelUsage`). Copied events count once per `eventId` and model. Child, resumed, and forked sessions are included. Cursor-billed Grok stays under Cursor.
 
 ## GitHub Copilot Notes
 

@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { OpenUsagePluginProvider } from "../src/index";
+import { withIsolatedHome } from "./openusage-plugin-fixture-helpers";
 
 function tokenRecords(records: Awaited<ReturnType<OpenUsagePluginProvider["refresh"]>>) {
   return records
@@ -313,5 +316,62 @@ describe("OpenUsagePluginProvider token ingestion", () => {
     expect(first).toHaveLength(2);
     expect(second).toHaveLength(2);
     expect(second.map((record) => record.id)).toEqual(first.map((record) => record.id));
+  });
+
+  test("emits Grok Build session token records from updates.jsonl", async () => {
+    await withIsolatedHome(async (home) => {
+      const sessionFile = join(home, ".grok/sessions/work/s1/updates.jsonl");
+      mkdirSync(join(sessionFile, ".."), { recursive: true });
+      writeFileSync(
+        sessionFile,
+        JSON.stringify({
+          timestamp: "2026-06-10T10:00:00.000Z",
+          params: {
+            update: {
+              sessionUpdate: "turn_completed",
+              usage: {
+                modelUsage: {
+                  "grok-4.6-build": { inputTokens: 80, outputTokens: 20, reasoningTokens: 8 },
+                },
+              },
+            },
+            _meta: { eventId: "turn-1" },
+          },
+        }) + "\n",
+      );
+      const provider = new OpenUsagePluginProvider({
+        providerId: "grok",
+        name: "Grok Build",
+        pluginId: "grok",
+        homeDir: home,
+        env: { HOME: home },
+        scriptText: `
+          globalThis.__openusage_plugin = {
+            id: "grok",
+            probe() {
+              return { plan: "SuperGrok Heavy", lines: [] };
+            },
+          };
+        `,
+        now: () => "2026-06-11T10:00:00.000Z",
+      });
+
+      const first = tokenRecords(await provider.refresh());
+      const second = tokenRecords(await provider.refresh());
+
+      expect(first).toEqual([
+        expect.objectContaining({
+          providerId: "grok",
+          tool: "Grok Session",
+          model: "grok-4.6-build",
+          inputTokens: 80,
+          outputTokens: 20,
+          totalTokens: 100,
+          startedAt: "2026-06-10T00:00:00.000Z",
+          source: "local-log",
+        }),
+      ]);
+      expect(second.map((record) => record.id)).toEqual(first.map((record) => record.id));
+    });
   });
 });

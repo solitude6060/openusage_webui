@@ -29,6 +29,7 @@ import {
   type PluginRequestResponse,
 } from "./openusage-plugin-runtime";
 import type { UsageProvider } from "../types";
+import { scanGrokSessionUsage } from "./grok-session-usage";
 import {
   CursorUsageCollector,
   normalizeCcusageDailyRecords,
@@ -138,6 +139,13 @@ export class OpenUsagePluginProvider implements UsageProvider {
     }
 
     const snapshot = normalizePluginResult(result);
+    if (this.pluginId === "grok") {
+      captureUsage(scanGrokSessionUsage({
+        providerId: this.id,
+        homeDir: this.homeDir,
+        env: this.env,
+      }));
+    }
     captureUsage(cursorUsage.records(this.id));
     const startedAt = this.now();
     const raw = {

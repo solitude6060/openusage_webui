@@ -11,7 +11,7 @@ describe("provider registry", () => {
     ["cursor", "Cursor"],
     ["devin", "Devin"],
     ["factory", "Factory"],
-    ["grok", "Grok"],
+    ["grok", "Grok Build"],
     ["github-copilot", "GitHub Copilot"],
     ["jetbrains-ai-assistant", "JetBrains AI Assistant"],
     ["kimi", "Kimi"],

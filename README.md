@@ -4,6 +4,10 @@
 
 ### What's New
 
+**2026-09-20**
+
+- **Grok Build Tokens:** The Tokens page lists **Grok Build** (the Grok CLI / Grok Build login, provider id `grok`) from completed session transcripts at `~/.grok/sessions/**/updates.jsonl`, matching original OpenUsage. Dashboard spend tiles still use `~/.grok/logs/unified.jsonl`. Grok models billed through Cursor stay under Cursor.
+
 **2026-08-18**
 
 - **Grok Weekly Pool:** SuperGrok and other unified-billing accounts now show the shared weekly pool and pay-as-you-go status, instead of a billing-response error.
@@ -125,7 +129,7 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 - [**Copilot**](docs/providers/copilot.md) / premium, chat, completions
 - [**Cursor**](docs/providers/cursor.md) / credits, total usage, auto usage, API usage, on-demand, CLI auth
 - [**Factory / Droid**](docs/providers/factory.md) / standard, premium tokens
-- [**Grok**](docs/providers/grok.md) / weekly pool, plan, pay-as-you-go cap, local spend
+- [**Grok Build**](docs/providers/grok.md) / weekly pool, plan, pay-as-you-go cap, local spend, Tokens-page session transcripts
 - [**JetBrains AI Assistant**](docs/providers/jetbrains-ai-assistant.md) / quota, remaining
 - [**Kiro**](docs/providers/kiro.md) / credits, bonus credits, overages
 - [**Kimi Code**](docs/providers/kimi.md) / session, weekly
@@ -153,7 +157,7 @@ Current WebUI provider support:
 - Cursor via the original `plugins/cursor/plugin.js` adapter (optional multi-home via Settings → Provider Accounts)
 - Devin via the original `plugins/devin/plugin.js` adapter
 - Factory via the original `plugins/factory/plugin.js` adapter
-- Grok via the original `plugins/grok/plugin.js` adapter — weekly shared pool, plan, pay-as-you-go cap, and local spend tiles
+- Grok Build via the original `plugins/grok/plugin.js` adapter — weekly shared pool, plan, pay-as-you-go cap, local spend tiles, and Tokens-page session transcripts
 - GitHub Copilot via the original `plugins/copilot/plugin.js` adapter
 - JetBrains AI Assistant via the original `plugins/jetbrains-ai-assistant/plugin.js` adapter
 - Kimi via the original `plugins/kimi/plugin.js` adapter
@@ -166,9 +170,10 @@ Current WebUI provider support:
 - Gemini CLI / Google AI Pro coding usage via `ccusage`
 - Manual usage entries
 
-The WebUI Tokens page stores Claude/Codex local usage and complete Cursor usage-event
-refreshes as dated model totals, so repeated refreshes update existing totals without
-double counting.
+The WebUI Tokens page stores Claude/Codex local usage, complete Cursor usage-event
+refreshes, and Grok Build CLI session transcripts as dated model totals, so repeated
+refreshes update existing totals without double counting. Cursor-billed Grok stays
+under Cursor. Grok Build is omitted until a Grok refresh finds `turn_completed` rows.
 
 The WebUI adapter provides Linux host shims for original plugin HTTP, SQLite, local keychain, filesystem, crypto, and formatting APIs where needed. Local keychain shim data stays under `~/.openusage-webui/plugins/<provider>/keychain.json`.
 

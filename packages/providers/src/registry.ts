@@ -19,7 +19,7 @@ const pluginProviders = [
   { providerId: "cursor", name: "Cursor", pluginId: "cursor" },
   { providerId: "devin", name: "Devin", pluginId: "devin" },
   { providerId: "factory", name: "Factory", pluginId: "factory" },
-  { providerId: "grok", name: "Grok", pluginId: "grok" },
+  { providerId: "grok", name: "Grok Build", pluginId: "grok" },
   { providerId: "github-copilot", name: "GitHub Copilot", pluginId: "copilot" },
   { providerId: "jetbrains-ai-assistant", name: "JetBrains AI Assistant", pluginId: "jetbrains-ai-assistant" },
   { providerId: "kimi", name: "Kimi", pluginId: "kimi" },

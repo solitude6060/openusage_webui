@@ -172,7 +172,7 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
       });
       const provider = new OpenUsagePluginProvider({
         providerId: "grok",
-        name: "Grok",
+        name: "Grok Build",
         pluginId: "grok",
         homeDir: home,
         scriptText: readPluginScript("grok"),
@@ -241,7 +241,7 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
       );
       const provider = new OpenUsagePluginProvider({
         providerId: "grok",
-        name: "Grok",
+        name: "Grok Build",
         pluginId: "grok",
         homeDir: home,
         scriptText: readPluginScript("grok"),
