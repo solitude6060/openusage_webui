@@ -159,7 +159,7 @@ CODEX_HOME/auth.json
 
 ## Grok Build 設定
 
-Grok Build 沿用原本 OpenUsage 的 `plugins/grok/plugin.js`。先執行 `grok login`。WebUI 會讀 `~/.grok/auth.json`；若有設 `GROK_HOME` 則改讀該目錄。
+Grok Build 沿用原本 OpenUsage 的 `plugins/grok/plugin.js`。先執行 `grok login`。WebUI 會讀 `~/.grok/auth.json`（依 process `HOME` 展開）。`$GROK_HOME` 只用在 session 完成回合紀錄與本機花費 log，不會改 `auth.json` 路徑。
 
 儀表板的週配額與 pay-as-you-go 來自 Grok CLI billing API。卡片上的 Today／Yesterday／Last 30 Days 仍從 `~/.grok/logs/unified.jsonl` 估算。Tokens 頁不使用這份 debug log；Grok refresh 成功後，會加總 `~/.grok/sessions/**/updates.jsonl` 裡已完成的回合（`turn_completed`／`modelUsage`）。複製的 session 依 `eventId` 與 model 各算一次；子 session、resume、fork 都會列入。Cursor 帳單裡的 Grok 仍掛在 Cursor 底下。
 

@@ -218,6 +218,48 @@ describe("Grok session filesystem scan", () => {
     });
   });
 
+  test("reads nested subagent transcripts and dedups a copied event id across files", async () => {
+    await withIsolatedHome(async (home) => {
+      const parent = join(home, ".grok/sessions/work/parent/updates.jsonl");
+      const child = join(home, ".grok/sessions/work/parent/subagents/worker/updates.jsonl");
+      const copy = join(home, ".grok/sessions/work/fork/updates.jsonl");
+      mkdirSync(join(parent, ".."), { recursive: true });
+      mkdirSync(join(child, ".."), { recursive: true });
+      mkdirSync(join(copy, ".."), { recursive: true });
+      writeFileSync(
+        parent,
+        completedTurn({
+          timestamp: "2026-06-10T10:00:00.000Z",
+          model: "grok-4.6-build",
+          input: 400,
+          eventID: "parent-turn",
+        }) + "\n",
+      );
+      writeFileSync(
+        child,
+        completedTurn({
+          timestamp: "2026-06-10T11:00:00.000Z",
+          model: "grok-4.6-build",
+          input: 200,
+          eventID: "child-turn",
+        }) + "\n",
+      );
+      writeFileSync(
+        copy,
+        completedTurn({
+          timestamp: "2026-06-10T10:00:00.000Z",
+          model: "grok-4.6-build",
+          input: 400,
+          eventID: "parent-turn",
+        }) + "\n",
+      );
+
+      const records = scanGrokSessionUsage({ providerId: "grok", homeDir: home });
+      expect(records).toHaveLength(1);
+      expect(records[0]?.totalTokens).toBe(600);
+    });
+  });
+
   test("returns no records when the sessions directory is missing", async () => {
     await withIsolatedHome(async (home) => {
       expect(scanGrokSessionUsage({ providerId: "grok", homeDir: home })).toEqual([]);

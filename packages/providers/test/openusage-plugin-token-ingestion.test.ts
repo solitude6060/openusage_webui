@@ -374,4 +374,35 @@ describe("OpenUsagePluginProvider token ingestion", () => {
       expect(second.map((record) => record.id)).toEqual(first.map((record) => record.id));
     });
   });
+
+  test("keeps the Grok weekly snapshot when the sessions path is not a directory", async () => {
+    await withIsolatedHome(async (home) => {
+      mkdirSync(join(home, ".grok"), { recursive: true });
+      writeFileSync(join(home, ".grok/sessions"), "not-a-directory");
+      const provider = new OpenUsagePluginProvider({
+        providerId: "grok",
+        name: "Grok Build",
+        pluginId: "grok",
+        homeDir: home,
+        env: { HOME: home },
+        scriptText: `
+          globalThis.__openusage_plugin = {
+            id: "grok",
+            probe() {
+              return { plan: "SuperGrok Heavy", lines: [{ type: "progress", label: "Weekly" }] };
+            },
+          };
+        `,
+        now: () => "2026-06-11T10:00:00.000Z",
+      });
+
+      const records = await provider.refresh();
+      expect(records[0]).toMatchObject({
+        providerId: "grok",
+        tool: "OpenUsage Plugin Snapshot",
+        model: "SuperGrok Heavy",
+      });
+      expect(tokenRecords(records)).toEqual([]);
+    });
+  });
 });

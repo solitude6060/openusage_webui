@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { ProviderId, UsageRecord } from "../../../core/src/types";
 import { expandHome } from "./openusage-plugin-runtime";
@@ -210,7 +210,16 @@ function readEventId(params: JsonObject | undefined, object: JsonObject): string
 function listUpdatesJsonl(root: string): string[] {
   if (!existsSync(root)) return [];
   const files: string[] = [];
+  const seen = new Set<string>();
   const walk = (dir: string) => {
+    let real;
+    try {
+      real = realpathSync(dir);
+    } catch {
+      return;
+    }
+    if (seen.has(real)) return;
+    seen.add(real);
     let entries;
     try {
       entries = readdirSync(dir, { withFileTypes: true });

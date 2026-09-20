@@ -111,7 +111,7 @@ The original plugins may refresh OAuth tokens and write updated credentials back
 
 ## Grok Build Notes
 
-Grok Build uses the original `plugins/grok/plugin.js` adapter. Sign in with `grok login`. The plugin reads `~/.grok/auth.json`, or `$GROK_HOME/auth.json` when that variable is set.
+Grok Build uses the original `plugins/grok/plugin.js` adapter. Sign in with `grok login`. The plugin reads `~/.grok/auth.json` (expanded from the process `HOME`). `$GROK_HOME` is used for session transcripts and the local spend log, not for `auth.json`.
 
 Dashboard weekly pool and pay-as-you-go come from the Grok CLI billing API. Card spend tiles (Today / Yesterday / Last 30 Days) are estimated from `~/.grok/logs/unified.jsonl`. The Tokens page does not use that log. After a successful Grok refresh it sums completed turns in `~/.grok/sessions/**/updates.jsonl` (`turn_completed` / `modelUsage`). Copied events count once per `eventId` and model. Child, resumed, and forked sessions are included. Cursor-billed Grok stays under Cursor.
 

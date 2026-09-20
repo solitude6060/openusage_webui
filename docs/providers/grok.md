@@ -1,4 +1,4 @@
-# Grok
+# Grok Build
 
 Tracks Grok Build credit usage from the local Grok CLI login.
 

@@ -140,11 +140,18 @@ export class OpenUsagePluginProvider implements UsageProvider {
 
     const snapshot = normalizePluginResult(result);
     if (this.pluginId === "grok") {
-      captureUsage(scanGrokSessionUsage({
-        providerId: this.id,
-        homeDir: this.homeDir,
-        env: this.env,
-      }));
+      try {
+        captureUsage(scanGrokSessionUsage({
+          providerId: this.id,
+          homeDir: this.homeDir,
+          env: this.env,
+        }));
+      } catch (error) {
+        console.error(
+          "Grok session token scan failed:",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
     }
     captureUsage(cursorUsage.records(this.id));
     const startedAt = this.now();
