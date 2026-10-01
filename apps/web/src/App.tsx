@@ -12,13 +12,14 @@ import {
   setProviderEnabled,
   type HealthResponse,
 } from "./lib/api";
+import { AllowancePage } from "./pages/allowance-page";
 import { DashboardPage } from "./pages/dashboard-page";
 import { ProvidersPage } from "./pages/providers-page";
 import { SessionsPage } from "./pages/sessions-page";
 import { SettingsPage } from "./pages/settings-page";
 import { TokensPage } from "./pages/tokens-page";
 
-type Page = "dashboard" | "providers" | "sessions" | "tokens" | "settings";
+type Page = "dashboard" | "providers" | "sessions" | "tokens" | "allowance" | "settings";
 
 export const AUTO_REFRESH_INTERVAL_MS = 20 * 60_000;
 
@@ -27,6 +28,7 @@ const pages: Array<{ id: Page; label: string; path: string }> = [
   { id: "providers", label: "Providers", path: "/providers" },
   { id: "sessions", label: "Sessions", path: "/sessions" },
   { id: "tokens", label: "Tokens", path: "/tokens" },
+  { id: "allowance", label: "Allowance", path: "/allowance" },
   { id: "settings", label: "Settings", path: "/settings" },
 ];
 
@@ -216,6 +218,9 @@ export function App() {
         ) : null}
         {!loading && page === "tokens" ? (
           <TokensPage providers={providers} refreshToken={refreshToken} />
+        ) : null}
+        {!loading && page === "allowance" ? (
+          <AllowancePage providers={providers} refreshToken={refreshToken} />
         ) : null}
         {!loading && page === "settings" ? (
           <SettingsPage health={health} onCreated={loadData} />

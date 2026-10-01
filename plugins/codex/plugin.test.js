@@ -270,6 +270,38 @@ describe("codex plugin", () => {
     expect(credits.value).toBe("$4.00 · 100 credits")
   })
 
+  it("keeps the weekly body window when the session header is the only percent header", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "80" },
+      bodyText: JSON.stringify({
+        plan_type: "prolite",
+        rate_limit: {
+          primary_window: { used_percent: 10, limit_window_seconds: 604800, reset_after_seconds: 400000 },
+          secondary_window: { used_percent: 12, limit_window_seconds: 604800, reset_after_seconds: 500000 },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const session = result.lines.find((line) => line.label === "Session")
+    const weekly = result.lines.find((line) => line.label === "Weekly")
+    expect(session).toEqual(expect.objectContaining({
+      used: 80,
+      periodDurationMs: 604800000,
+    }))
+    expect(weekly).toEqual(expect.objectContaining({
+      used: 12,
+      periodDurationMs: 604800000,
+    }))
+  })
+
   it("uses zero credits from the response body when the account has no credits", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({

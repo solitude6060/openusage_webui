@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { createHash } from "node:crypto";
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
@@ -14,6 +15,7 @@ import type {
 } from "../../core/src/types";
 import { isMultiAccountProviderId, providerIdFromAccountId } from "../../core/src/types";
 import type { Storage } from "./storage";
+import type { QuotaLimitUnit, QuotaObservation } from "../../providers/src/quota-observations";
 
 type UsageRecordRow = {
   id: string;
@@ -139,6 +141,39 @@ export class SqliteStorage implements Storage {
 
       CREATE INDEX IF NOT EXISTS idx_provider_accounts_provider_id
       ON provider_accounts(provider_id);
+
+      CREATE TABLE IF NOT EXISTS quota_observations (
+        id TEXT PRIMARY KEY,
+        provider_id TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        window_key TEXT NOT NULL,
+        window_label TEXT NOT NULL,
+        period_ms INTEGER,
+        resets_at TEXT,
+        present INTEGER NOT NULL,
+        used_percent REAL,
+        limit_value REAL,
+        limit_unit TEXT,
+        used_value REAL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_quota_observations_window
+      ON quota_observations(provider_id, window_key, observed_at);
+
+      CREATE TABLE IF NOT EXISTS probe_failures (
+        id TEXT PRIMARY KEY,
+        provider_id TEXT NOT NULL,
+        failed_at TEXT NOT NULL,
+        message TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_probe_failures_provider
+      ON probe_failures(provider_id, failed_at);
+
+      CREATE TABLE IF NOT EXISTS app_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
     `);
     this.migrateCodexInstancesToProviderAccounts();
   }
@@ -308,13 +343,55 @@ export class SqliteStorage implements Storage {
 
   async getUsageSummary(): Promise<UsageSummary> {
     const rows = this.requireDb()
-      .query("SELECT provider_id, total_tokens, cost_usd, started_at FROM usage_records")
+      .query("SELECT provider_id, tool, source, total_tokens, cost_usd, started_at FROM usage_records")
       .all() as Array<{
       provider_id: ProviderId;
+      tool: string | null;
+      source: UsageRecord["source"];
       total_tokens: number | null;
       cost_usd: number | null;
       started_at: string;
     }>;
+    // Legacy CLI rows lack an account/home identifier. Only deduplicate when the
+    // provider has one known structured account; retain ambiguous account costs.
+    const accounts = new Map<string, Set<string>>();
+    const rememberAccount = (base: string, id: string) => {
+      const ids = accounts.get(base) ?? new Set<string>();
+      ids.add(id);
+      accounts.set(base, ids);
+    };
+    for (const account of await this.listProviderAccounts()) {
+      rememberAccount(account.providerId, account.id);
+    }
+    const structuredDays = new Map<string, typeof rows>();
+    const legacyPricedDays = new Set<string>();
+    for (const row of rows) {
+      const base = providerIdFromAccountId(row.provider_id) ?? row.provider_id;
+      if (base !== "codex" && base !== "claude-code") continue;
+      const key = JSON.stringify([base, row.started_at]);
+      if (row.source === "local-log" && row.tool === "ccusage") {
+        rememberAccount(base, row.provider_id);
+        const day = structuredDays.get(key) ?? [];
+        day.push(row);
+        structuredDays.set(key, day);
+      } else if (row.source === "cli" && row.provider_id === base && row.cost_usd !== null) {
+        legacyPricedDays.add(key);
+      }
+    }
+    const excludedCosts = new Set<(typeof rows)[number]>();
+    for (const row of rows) {
+      const base = providerIdFromAccountId(row.provider_id) ?? row.provider_id;
+      if (accounts.get(base)?.size !== 1) continue;
+      const key = JSON.stringify([base, row.started_at]);
+      const day = structuredDays.get(key);
+      if (!day) continue;
+      const complete = day.every((record) => record.cost_usd !== null);
+      if (complete && row.source === "cli" && row.provider_id === base) {
+        excludedCosts.add(row);
+      } else if (!complete && legacyPricedDays.has(key) && day.includes(row)) {
+        excludedCosts.add(row);
+      }
+    }
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -333,7 +410,7 @@ export class SqliteStorage implements Storage {
 
     for (const row of rows) {
       const tokens = row.total_tokens ?? 0;
-      const cost = row.cost_usd ?? 0;
+      const cost = excludedCosts.has(row) ? 0 : row.cost_usd ?? 0;
 
       const startedAtMs = Date.parse(row.started_at);
       if (!Number.isFinite(startedAtMs)) {
@@ -514,6 +591,16 @@ export class SqliteStorage implements Storage {
     this.requireDb().query("DELETE FROM usage_records WHERE provider_id = ?").run(providerId);
   }
 
+  async deleteLocalLogUsageRecords(providerIds: ProviderId[], tool: string): Promise<void> {
+    if (providerIds.length === 0) return;
+    const placeholders = providerIds.map(() => "?").join(", ");
+    this.requireDb()
+      .query(
+        `DELETE FROM usage_records WHERE provider_id IN (${placeholders}) AND tool = ? AND source = 'local-log'`,
+      )
+      .run(...providerIds, tool);
+  }
+
   async listProviderAccounts(providerId?: string): Promise<ProviderAccount[]> {
     const db = this.requireDb();
     const rows = (
@@ -590,6 +677,181 @@ export class SqliteStorage implements Storage {
     transaction(Object.entries(settings));
   }
 
+  async insertQuotaObservations(rows: QuotaObservation[]): Promise<void> {
+    if (rows.length === 0) return;
+    const db = this.requireDb();
+    const insert = db.prepare(`
+      INSERT OR IGNORE INTO quota_observations (
+        id, provider_id, observed_at, window_key, window_label, period_ms, resets_at,
+        present, used_percent, limit_value, limit_unit, used_value
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const write = db.transaction((items: QuotaObservation[]) => {
+      for (const row of items) {
+        insert.run(
+          quotaObservationId(row),
+          row.providerId,
+          row.observedAt,
+          row.windowKey,
+          row.windowLabel,
+          row.periodMs,
+          row.resetsAt,
+          row.present ? 1 : 0,
+          row.usedPercent,
+          row.limitValue,
+          row.limitUnit,
+          row.usedValue,
+        );
+      }
+    });
+    write(rows);
+  }
+
+  async listQuotaObservationsSince(from: string): Promise<QuotaObservation[]> {
+    const rows = this.requireDb().query(`
+      SELECT * FROM quota_observations
+      WHERE observed_at >= ?
+      ORDER BY observed_at ASC, id ASC
+    `).all(from) as QuotaObservationRow[];
+    return rows.map(rowToQuotaObservation);
+  }
+
+  async listLatestQuotaObservations(providerId?: string): Promise<QuotaObservation[]> {
+    const rows = this.requireDb().query(`
+      SELECT * FROM (
+        SELECT *,
+          ROW_NUMBER() OVER (
+            PARTITION BY provider_id, window_key
+            ORDER BY observed_at DESC, id DESC
+          ) AS rn
+        FROM quota_observations
+        WHERE (? IS NULL OR provider_id = ?)
+      ) WHERE rn = 1
+    `).all(providerId ?? null, providerId ?? null) as QuotaObservationRow[];
+    return rows.map(rowToQuotaObservation);
+  }
+
+  async latestQuotaObservationBeforeReset(
+    providerId: string,
+    windowKey: string,
+    resetsAt: string,
+  ): Promise<QuotaObservation | null> {
+    const row = this.requireDb().query(`
+      SELECT * FROM quota_observations
+      WHERE provider_id = ? AND window_key = ? AND present = 1
+        AND resets_at IS NOT NULL AND resets_at < ?
+        AND (
+          period_ms IS NULL OR period_ms <= 0
+          OR julianday(observed_at) >= julianday(resets_at) - (period_ms / 86400000.0) / 2
+        )
+      ORDER BY observed_at DESC, id DESC
+      LIMIT 1
+    `).get(providerId, windowKey, resetsAt) as QuotaObservationRow | null;
+    return row ? rowToQuotaObservation(row) : null;
+  }
+
+  async listPositiveTokenRows(from: string): Promise<Array<{
+    providerId: string;
+    model: string;
+    startedAt: string;
+    tokens: number;
+    costUsd: number | null;
+    bucketEnd?: string;
+  }>> {
+    const rows = this.requireDb().query(`
+      SELECT provider_id, model, started_at, total_tokens, cost_usd, tool
+      FROM usage_records
+      WHERE COALESCE(total_tokens, 0) > 0 AND started_at >= ?
+    `).all(from) as Array<{
+      provider_id: string;
+      model: string | null;
+      started_at: string;
+      total_tokens: number | null;
+      cost_usd: number | null;
+      tool: string | null;
+    }>;
+    return rows.map((row) => ({
+      providerId: row.provider_id,
+      model: row.model?.trim() ? row.model : "Unknown",
+      startedAt: row.started_at,
+      tokens: Number(row.total_tokens) || 0,
+      costUsd: row.cost_usd == null ? null : Number(row.cost_usd),
+      ...(["ccusage", "Cursor Usage Event", "Grok Session"].includes(row.tool ?? "")
+        ? { bucketEnd: new Date(Date.parse(row.started_at) + 86400000).toISOString() }
+        : {}),
+    }));
+  }
+
+  async insertProbeFailure(providerId: string, failedAt: string, message: string): Promise<void> {
+    const text = message.slice(0, 500);
+    const id = createHash("sha256").update([providerId, failedAt, text].join("|")).digest("hex");
+    this.requireDb().query(`
+      INSERT OR IGNORE INTO probe_failures (id, provider_id, failed_at, message)
+      VALUES (?, ?, ?, ?)
+    `).run(id, providerId, failedAt, text);
+  }
+
+  async listLatestProbeFailures(from: string): Promise<Array<{
+    providerId: string;
+    failedAt: string;
+    message: string;
+  }>> {
+    const rows = this.requireDb().query(`
+      SELECT provider_id, failed_at, message FROM (
+        SELECT *,
+          ROW_NUMBER() OVER (
+            PARTITION BY provider_id
+            ORDER BY failed_at DESC, id DESC
+          ) AS rn
+        FROM probe_failures
+        WHERE failed_at >= ?
+      ) WHERE rn = 1
+    `).all(from) as Array<{ provider_id: string; failed_at: string; message: string }>;
+    return rows.map((row) => ({
+      providerId: row.provider_id,
+      failedAt: row.failed_at,
+      message: row.message,
+    }));
+  }
+
+  async getAppMeta(key: string): Promise<string | null> {
+    const row = this.requireDb().query("SELECT value FROM app_meta WHERE key = ?").get(key) as
+      | { value: string }
+      | null;
+    return row?.value ?? null;
+  }
+
+  async setAppMeta(key: string, value: string): Promise<void> {
+    this.requireDb().query(`
+      INSERT INTO app_meta (key, value) VALUES (?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run(key, value);
+  }
+
+  forEachApiSnapshot(
+    onRow: (row: { providerId: string; startedAt: string; rawJson: string }) => void,
+  ): void {
+    const query = this.requireDb().query(`
+      SELECT provider_id, started_at, raw_json
+      FROM usage_records
+      WHERE source = 'api'
+        AND tool = 'OpenUsage Plugin Snapshot'
+        AND raw_json IS NOT NULL
+      ORDER BY started_at ASC, id ASC
+    `);
+    for (const row of query.iterate() as Iterable<{
+      provider_id: string;
+      started_at: string;
+      raw_json: string;
+    }>) {
+      onRow({
+        providerId: row.provider_id,
+        startedAt: row.started_at,
+        rawJson: row.raw_json,
+      });
+    }
+  }
+
   close(): void {
     this.db?.close();
     this.db = null;
@@ -637,4 +899,50 @@ function rowToProviderAccount(row: ProviderAccountRow): ProviderAccount | null {
 
 function roundCurrency(value: number): number {
   return Math.round(value * 10000) / 10000;
+}
+
+type QuotaObservationRow = {
+  provider_id: string;
+  observed_at: string;
+  window_key: string;
+  window_label: string;
+  period_ms: number | null;
+  resets_at: string | null;
+  present: number;
+  used_percent: number | null;
+  limit_value: number | null;
+  limit_unit: string | null;
+  used_value: number | null;
+};
+
+function quotaObservationId(row: QuotaObservation): string {
+  return createHash("sha256").update([
+    row.providerId,
+    row.windowKey,
+    row.observedAt,
+    row.present ? "1" : "0",
+    row.usedPercent ?? "",
+    row.limitValue ?? "",
+    row.limitUnit ?? "",
+    row.usedValue ?? "",
+    row.resetsAt ?? "",
+  ].join("|")).digest("hex");
+}
+
+function rowToQuotaObservation(row: QuotaObservationRow): QuotaObservation {
+  return {
+    providerId: row.provider_id,
+    observedAt: row.observed_at,
+    windowKey: row.window_key,
+    windowLabel: row.window_label,
+    periodMs: row.period_ms,
+    resetsAt: row.resets_at,
+    present: row.present === 1,
+    usedPercent: row.used_percent,
+    limitValue: row.limit_value,
+    limitUnit: row.limit_unit === "usd" || row.limit_unit === "tokens" || row.limit_unit === "requests"
+      ? row.limit_unit as QuotaLimitUnit
+      : null,
+    usedValue: row.used_value,
+  };
 }

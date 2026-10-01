@@ -5,6 +5,7 @@ import {
   type ProviderAccount,
 } from "../../core/src/types";
 import { applyProviderHomeEnv } from "./account-detect";
+import { codexSessionTokenOwnerIds } from "./codex-session-ownership";
 import { CcusageProvider } from "./providers/ccusage";
 import { ManualProvider } from "./providers/manual";
 import { MiniMaxProvider } from "./providers/minimax";
@@ -60,6 +61,7 @@ function createHomedPluginProvider(options: {
   baseProviderId: MultiAccountProviderId;
   homePath: string | undefined;
   env: NodeJS.ProcessEnv;
+  recordCcusageTokens?: boolean;
 }): UsageProvider {
   const providerEnv = { ...options.env };
   if (options.homePath) {
@@ -71,6 +73,7 @@ function createHomedPluginProvider(options: {
     pluginId: options.pluginId,
     scriptPath: resolveBundledPluginScriptPath(options.pluginId),
     env: providerEnv,
+    recordCcusageTokens: options.recordCcusageTokens,
   });
 }
 
@@ -100,6 +103,12 @@ export function getProviders(options: GetProvidersOptions = {}): UsageProvider[]
 
     const providerAccounts = accountsForProvider(provider.providerId, accounts);
     const enabledAccounts = providerAccounts.filter((account) => account.enabled);
+    const tokenOwnerIds = provider.providerId === "codex"
+      ? codexSessionTokenOwnerIds(providerAccounts.map((account) => ({
+          id: account.id,
+          homePath: account.homePath,
+        })))
+      : null;
     if (enabledAccounts.length > 0) {
       return enabledAccounts.map((account) =>
         createHomedPluginProvider({
@@ -109,6 +118,7 @@ export function getProviders(options: GetProvidersOptions = {}): UsageProvider[]
           baseProviderId: account.providerId,
           homePath: account.homePath,
           env,
+          recordCcusageTokens: tokenOwnerIds ? tokenOwnerIds.has(account.id) : true,
         }),
       );
     }

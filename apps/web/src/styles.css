@@ -1131,6 +1131,94 @@ textarea {
   font-weight: 500;
 }
 
+.allowance-list {
+  display: grid;
+  gap: 12px;
+}
+
+.allowance-account {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.allowance-account-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.allowance-account-header h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.allowance-account-header span,
+.allowance-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.allowance-cycle {
+  display: grid;
+  gap: 4px;
+}
+
+.allowance-figure,
+.allowance-reason {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.allowance-api {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.allowance-unit {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.allowance-reason {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.allowance-models {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.allowance-models li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink-secondary);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .token-provider-row td {
   font-weight: 600;
 }

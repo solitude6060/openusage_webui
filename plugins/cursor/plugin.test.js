@@ -538,6 +538,9 @@ describe("cursor plugin", () => {
     expect(planLine.format).toEqual({ kind: "percent" })
     // computed = (2400 - 1200) / 2400 * 100 = 50
     expect(planLine.used).toBe(50)
+    expect(planLine.limitValue).toBe(24)
+    expect(planLine.limitUnit).toBe("usd")
+    expect(planLine.usedValue).toBe(12)
   })
 
   it("renders usage + plan info", async () => {

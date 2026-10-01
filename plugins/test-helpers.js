@@ -105,6 +105,9 @@ export const makeCtx = () => {
       if (opts.resetsAt) line.resetsAt = opts.resetsAt
       if (opts.periodDurationMs) line.periodDurationMs = opts.periodDurationMs
       if (opts.color) line.color = opts.color
+      if (opts.limitValue != null) line.limitValue = opts.limitValue
+      if (opts.limitUnit) line.limitUnit = opts.limitUnit
+      if (opts.usedValue != null) line.usedValue = opts.usedValue
       return line
     },
     badge: (opts) => {

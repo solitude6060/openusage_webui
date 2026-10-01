@@ -424,9 +424,17 @@
     })
   }
 
-  // Period durations in milliseconds
+  // Period durations in milliseconds. The usage payload's limit_window_seconds
+  // wins; these defaults cover responses that only send a percent header.
   var PERIOD_SESSION_MS = 5 * 60 * 60 * 1000    // 5 hours
   var PERIOD_WEEKLY_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+
+  function periodFromWindow(window, fallback) {
+    if (window && typeof window.limit_window_seconds === "number" && window.limit_window_seconds > 0) {
+      return window.limit_window_seconds * 1000
+    }
+    return fallback
+  }
 
   function queryTokenUsage(ctx) {
     if (!ctx.host.ccusage || typeof ctx.host.ccusage.query !== "function") {
@@ -795,49 +803,36 @@
 
       const headerPrimary = readPercent(resp.headers["x-codex-primary-used-percent"])
       const headerSecondary = readPercent(resp.headers["x-codex-secondary-used-percent"])
+      const sessionPercent = headerPrimary !== null
+        ? headerPrimary
+        : primaryWindow && typeof primaryWindow.used_percent === "number"
+          ? primaryWindow.used_percent
+          : null
+      const weeklyPercent = headerSecondary !== null
+        ? headerSecondary
+        : secondaryWindow && typeof secondaryWindow.used_percent === "number"
+          ? secondaryWindow.used_percent
+          : null
 
-      if (headerPrimary !== null) {
+      if (sessionPercent !== null) {
         lines.push(ctx.line.progress({
           label: "Session",
-          used: headerPrimary,
+          used: sessionPercent,
           limit: 100,
           format: { kind: "percent" },
           resetsAt: getResetsAtIso(ctx, nowSec, primaryWindow),
-          periodDurationMs: PERIOD_SESSION_MS
+          periodDurationMs: periodFromWindow(primaryWindow, PERIOD_SESSION_MS)
         }))
       }
-      if (headerSecondary !== null) {
+      if (weeklyPercent !== null) {
         lines.push(ctx.line.progress({
           label: "Weekly",
-          used: headerSecondary,
+          used: weeklyPercent,
           limit: 100,
           format: { kind: "percent" },
           resetsAt: getResetsAtIso(ctx, nowSec, secondaryWindow),
-          periodDurationMs: PERIOD_WEEKLY_MS
+          periodDurationMs: periodFromWindow(secondaryWindow, PERIOD_WEEKLY_MS)
         }))
-      }
-
-      if (lines.length === 0 && data.rate_limit) {
-        if (data.rate_limit.primary_window && typeof data.rate_limit.primary_window.used_percent === "number") {
-          lines.push(ctx.line.progress({
-            label: "Session",
-            used: data.rate_limit.primary_window.used_percent,
-            limit: 100,
-            format: { kind: "percent" },
-            resetsAt: getResetsAtIso(ctx, nowSec, primaryWindow),
-            periodDurationMs: PERIOD_SESSION_MS
-          }))
-        }
-        if (data.rate_limit.secondary_window && typeof data.rate_limit.secondary_window.used_percent === "number") {
-          lines.push(ctx.line.progress({
-            label: "Weekly",
-            used: data.rate_limit.secondary_window.used_percent,
-            limit: 100,
-            format: { kind: "percent" },
-            resetsAt: getResetsAtIso(ctx, nowSec, secondaryWindow),
-            periodDurationMs: PERIOD_WEEKLY_MS
-          }))
-        }
       }
 
       if (Array.isArray(data.additional_rate_limits)) {

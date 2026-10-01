@@ -16,6 +16,9 @@ describe("OpenUsagePluginProvider original bundled plugin fixtures", () => {
       name: "GitHub Copilot",
       scriptText,
       pluginDataDir,
+      homeDir: pluginDataDir,
+      env: {},
+      gitHubTokenRunner: () => ({ exitCode: 1, stdout: "" }),
       now: () => "2026-06-17T09:00:00.000Z",
       request: (opts) => {
         requests.push({ url: opts.url, authorization: opts.headers?.Authorization });

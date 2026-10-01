@@ -155,6 +155,8 @@ CODEX_HOME/auth.json
 ~/.codex/auth.json
 ```
 
+多個 Codex 家目錄若解析到同一個 `sessions` 目錄，Tokens 頁只保留該目錄本體那個帳號的用量。配額卡仍依各帳號分開顯示。Allowance 頁不會把這份共用 session 用量換算成各帳號的 token 配額。
+
 原本 plugin 可能會 refresh OAuth token，並把更新後的 credential 寫回同一個檔案來源。WebUI 不使用 browser cookies。
 
 ## Grok Build 設定

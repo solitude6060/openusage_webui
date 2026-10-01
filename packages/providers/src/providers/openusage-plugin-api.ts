@@ -17,7 +17,7 @@ export function createLineApi(): Record<string, unknown> {
     progress: (opts: Record<string, unknown>) =>
       copyKnown(
         opts,
-        ["type", "label", "used", "limit", "format", "resetsAt", "periodDurationMs", "color"],
+        ["type", "label", "used", "limit", "format", "resetsAt", "periodDurationMs", "color", "limitValue", "limitUnit", "usedValue"],
         "progress",
       ),
     badge: (opts: Record<string, unknown>) =>

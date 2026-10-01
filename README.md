@@ -172,7 +172,12 @@ Current WebUI provider support:
 
 The WebUI Tokens page stores Claude/Codex local usage, complete Cursor usage-event
 refreshes, and Grok Build CLI session transcripts as dated model totals, so repeated
-refreshes update existing totals without double counting. Cursor-billed Grok stays
+refreshes update existing totals without double counting. Codex homes that share one
+`sessions` directory contribute those totals once. The Allowance page compares tokens
+and recorded API costs with quota movement over the same measured interval. It shows
+an alignment warning when daily totals cannot be split at meter readings or resets.
+Quota history retains each percent change and any absolute limit supplied by the provider.
+Cursor-billed Grok stays
 under Cursor. Grok Build is omitted until a Grok refresh finds `turn_completed` rows.
 
 The WebUI adapter provides Linux host shims for original plugin HTTP, SQLite, local keychain, filesystem, crypto, and formatting APIs where needed. Local keychain shim data stays under `~/.openusage-webui/plugins/<provider>/keychain.json`.

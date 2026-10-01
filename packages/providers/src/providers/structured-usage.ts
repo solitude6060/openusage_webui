@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ProviderId, UsageRecord, UsageSource } from "../../../core/src/types";
+import { openAiTokenCostUsd } from "../openai-token-rates";
 
 type JsonObject = Record<string, unknown>;
 type TokenRecordKind = "ccusage" | "cursor-event" | "grok-session";
@@ -14,20 +15,26 @@ export function normalizeCcusageDailyRecords(
     const startedAt = usageDate(day.date);
     if (!startedAt) continue;
 
+    const dayRecords: UsageRecord[] = [];
     const modelRows = ccusageModelRows(day);
     let modelTokens = 0;
     for (const { model, usage } of modelRows) {
       const record = tokenRecord(providerId, startedAt, model, usage, "ccusage");
       if (!record) continue;
       modelTokens += record.totalTokens ?? 0;
-      records.push(record);
+      dayRecords.push(record);
     }
 
     const dayTokens = finiteNumber(day.totalTokens);
     const remainder = dayTokens === undefined ? 0 : dayTokens - modelTokens;
     if (remainder > 0) {
-      records.push(tokenRecord(providerId, startedAt, "Unknown", { totalTokens: remainder }, "ccusage")!);
+      dayRecords.push(tokenRecord(providerId, startedAt, "Unknown", { totalTokens: remainder }, "ccusage")!);
     }
+    applyDayCost(day, dayRecords);
+    if (providerId === "codex" || providerId.startsWith("codex:")) {
+      applyListedTokenRates(dayRecords);
+    }
+    records.push(...dayRecords);
   }
 
   return records;
@@ -70,7 +77,7 @@ export class CursorUsageCollector {
 
     const totals = new Map<
       string,
-      { startedAt: string; model: string; tokens: TokenValues }
+      { startedAt: string; model: string; tokens: TokenValues; costUsd: number; costKnown: boolean }
     >();
     for (const event of this.events) {
       if (!isObject(event.tokenUsage)) continue;
@@ -80,14 +87,26 @@ export class CursorUsageCollector {
       const model = text(event.model) ?? "Unknown";
       const tokens = tokenValues(event.tokenUsage);
       if (!tokens) continue;
+      const costUsd = eventCostUsd(event);
       const key = `${startedAt}|${model}`;
       const current = totals.get(key);
-      if (current) addTokenValues(current.tokens, tokens);
-      else totals.set(key, { startedAt, model, tokens });
+      if (current) {
+        addTokenValues(current.tokens, tokens);
+        if (costUsd === undefined) current.costKnown = false;
+        else current.costUsd += costUsd;
+      } else {
+        totals.set(key, {
+          startedAt,
+          model,
+          tokens,
+          costUsd: costUsd ?? 0,
+          costKnown: costUsd !== undefined,
+        });
+      }
     }
 
-    return [...totals.values()].map(({ startedAt, model, tokens }) =>
-      createTokenRecord(providerId, startedAt, model, tokens, "cursor-event"));
+    return [...totals.values()].map(({ startedAt, model, tokens, costUsd, costKnown }) =>
+      createTokenRecord(providerId, startedAt, model, tokens, "cursor-event", costKnown ? costUsd : undefined));
   }
 }
 
@@ -114,7 +133,63 @@ function tokenRecord(
   kind: TokenRecordKind,
 ): UsageRecord | null {
   const tokens = tokenValues(usage);
-  return tokens ? createTokenRecord(providerId, startedAt, model, tokens, kind) : null;
+  if (!tokens) return null;
+  const record = createTokenRecord(providerId, startedAt, model, tokens, kind);
+  const cost = usageCostUsd(usage);
+  if (cost !== undefined) setRecordCost(record, cost, "reported-model");
+  return record;
+}
+
+function applyListedTokenRates(records: UsageRecord[]): void {
+  for (const record of records) {
+    if (record.costUsd !== undefined) continue;
+    const cost = openAiTokenCostUsd(record.model, record);
+    if (cost !== undefined) setRecordCost(record, cost, "standard-rate");
+  }
+}
+
+function applyDayCost(day: JsonObject, dayRecords: UsageRecord[]): void {
+  const dayCost = usageCostUsd(day);
+  if (dayCost === undefined || dayRecords.length === 0) return;
+  const unknown = dayRecords.filter((record) => record.costUsd === undefined);
+  if (unknown.length !== 1) return;
+  const knownSum = dayRecords.reduce((sum, record) => sum + (record.costUsd ?? 0), 0);
+  const remainder = dayCost - knownSum;
+  if (remainder >= 0) setRecordCost(unknown[0]!, remainder, "reported-day");
+}
+
+function setRecordCost(
+  record: UsageRecord,
+  costUsd: number,
+  costSource: "reported-model" | "reported-day" | "standard-rate",
+): void {
+  record.costUsd = costUsd;
+  record.raw = { ...(isObject(record.raw) ? record.raw : {}), costSource };
+}
+
+function usageCostUsd(usage: JsonObject): number | undefined {
+  return finiteNumber(usage.costUSD ?? usage.totalCost ?? usage.costUsd ?? usage.cost);
+}
+
+function eventCostUsd(event: JsonObject): number | undefined {
+  const charged = finiteNumber(event.chargedCents);
+  const usage = isObject(event.tokenUsage) ? event.tokenUsage : undefined;
+  const totalCents = usage ? finiteNumber(usage.totalCents) : undefined;
+  const cents = charged !== undefined && charged > 0
+    ? charged
+    : totalCents !== undefined && totalCents > 0
+      ? totalCents
+      : charged !== undefined
+        ? charged
+        : totalCents;
+  if (cents !== undefined) return cents / 100;
+  if (typeof event.usageBasedCosts === "string") {
+    const amount = event.usageBasedCosts.trim();
+    if (!/^\$?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/.test(amount)) return undefined;
+    const parsed = Number(amount.replace(/[$,]/g, ""));
+    if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+  }
+  return undefined;
 }
 
 type TokenValues = {
@@ -149,6 +224,7 @@ export function createTokenRecord(
   model: string,
   tokens: TokenValues,
   kind: TokenRecordKind,
+  costUsd?: number,
 ): UsageRecord {
   const tool =
     kind === "ccusage" ? "ccusage" : kind === "grok-session" ? "Grok Session" : "Cursor Usage Event";
@@ -161,6 +237,7 @@ export function createTokenRecord(
     tool,
     model,
     ...tokens,
+    ...(costUsd !== undefined ? { costUsd } : {}),
     startedAt,
     source,
   };
