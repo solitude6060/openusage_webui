@@ -8,6 +8,7 @@ import {
   getDatabasePath,
   SqliteStorage,
 } from "../../../packages/storage/src/index";
+import { parseAllowanceSpan } from "../../../packages/providers/src/allowance-estimate";
 import { createManualUsageRecord, getProviders } from "../../../packages/providers/src/index";
 import type { UsageProvider } from "../../../packages/providers/src/index";
 import {
@@ -21,6 +22,12 @@ import {
   updateProviderAccount,
   type ProvidersRef,
 } from "./provider-accounts";
+import {
+  backfillQuotaObservations,
+  loadAllowanceEstimates,
+  loadQuotaDashboard,
+  recordQuotaFromRefresh,
+} from "./quota-history";
 
 const VERSION = "0.1.0";
 const DEFAULT_HOST = "127.0.0.1";
@@ -42,6 +49,10 @@ export async function startServer(options: {
   const port = options.port ?? Number(process.env.OPENUSAGE_WEBUI_PORT ?? DEFAULT_PORT);
   const storage = new SqliteStorage();
   await storage.init();
+  const backfilled = await backfillQuotaObservations(storage);
+  if (backfilled > 0) {
+    console.log(JSON.stringify({ event: "quota_backfill_completed", observations: backfilled }));
+  }
   const providersRef: ProvidersRef = {
     current: options.providers ?? getProviders({
       providerAccounts: await storage.listProviderAccounts(),
@@ -326,6 +337,18 @@ async function handleApi(
     );
   }
 
+  if (request.method === "GET" && url.pathname === "/api/usage/quotas") {
+    return json(await loadQuotaDashboard(storage));
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/usage/allowance") {
+    const span = parseAllowanceSpan(url.searchParams);
+    if (!span) {
+      return jsonError("BAD_REQUEST", "Range must be 1, 3, 5, 7, or 30 days, month, period, or previous", 400);
+    }
+    return json(await loadAllowanceEstimates(storage, span));
+  }
+
   if (request.method === "GET" && url.pathname === "/api/usage/records") {
     const providerId = url.searchParams.get("providerId") || undefined;
     return json(
@@ -432,6 +455,7 @@ async function refreshProviders(
       detected = await provider.detect();
       const records = await provider.refresh();
       await storage.upsertUsageRecords(records, { replaceScopes: true });
+      await recordQuotaFromRefresh(storage, provider.id, records);
       await storage.upsertProviderStatus({
         providerId: provider.id,
         name: provider.name,
@@ -449,6 +473,7 @@ async function refreshProviders(
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Provider refresh failed";
+      await storage.insertProbeFailure(provider.id, new Date().toISOString(), message);
       await storage.upsertProviderStatus({
         providerId: provider.id,
         name: provider.name,

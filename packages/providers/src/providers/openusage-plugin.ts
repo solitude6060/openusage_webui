@@ -65,6 +65,7 @@ export interface OpenUsagePluginProviderOptions {
   now?: () => string;
   pluginDataDir?: string;
   homeDir?: string;
+  recordCcusageTokens?: boolean;
 }
 
 interface LoadedPlugin {
@@ -82,6 +83,7 @@ type PluginGitHubTokenRunner = (
 export class OpenUsagePluginProvider implements UsageProvider {
   readonly id: ProviderId;
   readonly name: string;
+  readonly recordCcusageTokens: boolean;
   private readonly pluginId?: string;
   private readonly scriptPath?: string;
   private readonly scriptText?: string;
@@ -107,6 +109,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
       options.ccusageQuery ??
       ((opts) => runPluginCcusageQuery(opts, this.pluginId, this.homeDir, options.ccusageRunner, this.env));
     this.gitHubTokenRunner = options.gitHubTokenRunner;
+    this.recordCcusageTokens = options.recordCcusageTokens ?? true;
     this.pluginDataDir = options.pluginDataDir ?? join(this.homeDir, ".openusage-webui", "plugins", this.id);
   }
 
@@ -280,7 +283,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
         ccusage: {
           query: (opts: PluginCcusageQueryOptions) => {
             const result = this.ccusageQueryImpl(opts ?? {});
-            if (result.status === "ok") {
+            if (result.status === "ok" && this.recordCcusageTokens) {
               captureUsage(normalizeCcusageDailyRecords(this.id, result.data.daily));
             }
             return result;

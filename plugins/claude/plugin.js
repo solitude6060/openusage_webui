@@ -832,16 +832,28 @@
     return null
   }
 
+  function finiteQuotaNumber(value) {
+    const number = Number(value)
+    return Number.isFinite(number) ? number : null
+  }
+
   function pushPercentUsageLine(lines, ctx, label, windowData, periodDurationMs) {
     if (!windowData || typeof windowData.utilization !== "number") return false
-    lines.push(ctx.line.progress({
+    const progress = {
       label: label,
       used: windowData.utilization,
       limit: 100,
       format: { kind: "percent" },
       resetsAt: ctx.util.toIso(windowData.resets_at),
-      periodDurationMs: periodDurationMs
-    }))
+      periodDurationMs: periodDurationMs,
+    }
+    const usedValue = finiteQuotaNumber(windowData.used)
+    const limitValue = finiteQuotaNumber(windowData.limit)
+    if (usedValue != null && limitValue != null && limitValue > 0) {
+      progress.usedValue = usedValue
+      progress.limitValue = limitValue
+    }
+    lines.push(ctx.line.progress(progress))
     return true
   }
 

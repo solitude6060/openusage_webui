@@ -174,6 +174,7 @@ Tokens 頁面依時間區間加總本機 `usage_records` 的 token：
 - 已知的 routing、日期 revision 與 inference profile 名稱差異會歸入同一 model family；
   不同 model 版本仍分開顯示
 - Claude／Codex 會使用本機 usage logs；Cursor 會使用完整取得的 usage events；Grok Build 會使用 Grok CLI session transcripts（`~/.grok/sessions/**/updates.jsonl` 裡的完成回合）
+- 多個 Codex 帳號的 `sessions` 目錄若解析後是同一個目錄，Tokens 只保留該目錄本體那個帳號的列。另一個帳號的配額卡仍分開更新，卡片上的 Today／Last 30 Days 也仍會顯示。
 
 按下 Refresh All 或等待自動 refresh 後，上述來源會更新對應日期與 model 的 token
 records。Claude／Codex plugin refresh 失敗時，本機 `ccusage` token 數值仍會保留；plugin
@@ -182,7 +183,30 @@ events 必須完整取得才會寫入，避免把部分資料顯示成完整總�
 完成的 CLI session turns，不含 Cursor 帳單裡的 Grok。只提供即時配額的 provider
 不會列入 token totals。
 
-### 5.5 Settings
+### 5.5 Allowance
+
+Allowance 頁用你這段時間的實際 token，除以同一個額度表移動的百分比，估出訂閱配額大約有多大。
+
+- 時間可選 1 Day、3 Days、5 Days、7 Days、30 Days、This Month、This Period、Previous Period
+- This Period 是目前這個重設週期，從週期開始算到現在。週期已經結束時，這一項留空。Previous Period 是再前一個週期；目前沒有進行中的週期時，改顯示最近結束的那一個
+- This Month 用這台電腦的本地日曆
+- 每個帳號用至少一天的額度窗口。有 Weekly 就用 Weekly；Cursor 用 Total usage。Codex 的 Session 若重設時間在一天以上，也拿來算；幾小時後就重設的 Session 不算
+- 區間裡額度重設時，重設前後各算一次，方便比較配額有沒有變小。新週期提早開始時，舊週期算到新週期開始為止
+- 計算起訖點採用所選區間內的第一筆與最後一筆額度觀測。沒有兩筆觀測時，不換算
+- UTC 單日合計無法拆出日內某一段用量。整天紀錄若跨過觀測起訖點或重設時間，會顯示 Daily Usage Cannot Align，暫停換算；下方 token 與 API Cost 只加總完整落在觀測區間的紀錄
+- 百分比移動不到 5 個點時，數字仍會顯示，並標成 Rough Estimate
+- 百分比沒有移動、區間中途往下掉，或這段沒有 token 紀錄時，不算出配額。正向移動不到 1 個百分點仍可粗估
+- 每次百分比變動都會保留，包含不到 1 個百分點的變動。下次正常啟動時，也會從已存的快照補回舊版省略的變動，保留既有紀錄
+- 兩個 Codex 家目錄共用同一份 session 時，用量記在真實目錄那個帳號，只換算那個帳號自己的額度表。另一個帳號不換算
+- 官方有給絕對上限時（例如 Cursor 的美元上限）會標成 Stated Cap
+- 同一段用量若有記下 API 價格，會用同一個百分比把這段費用換算成整包的 API 費用，標成 API Value。這段實際費用標成 API Cost。少了價格的紀錄不估金額
+- Codex 優先保留 ccusage 提供的模型費用，包含明確的 0。整天總額若只剩一個模型尚未定價，可將可確認的餘額歸給該模型；其餘已知模型才依 OpenAI 標準短上下文單價估價。多個未知模型無法拆分時，保持未知。單日合計看不出哪些請求用了長上下文或 Fast mode
+- Cursor 的非數字費用保持未知，明確數字 0 則保留。API Value 為 0 時仍會顯示
+- Summary 遇到同一天舊 CLI 費用與新模型費用時，只有能辨認單一帳號的資料才套用來源優先序：模型費用完整就使用模型總額，模型費用不完整則使用已知的舊每日總額。原始紀錄保留；多帳號的舊紀錄無法確認歸屬時仍分別顯示
+
+模型名稱列在估算下面，表示這些 token 怎麼組成，不是每個模型各有一份訂閱配額。
+
+### 5.6 Settings
 
 Settings 頁面包含：
 

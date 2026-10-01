@@ -32,7 +32,7 @@
 
 **Enterprise flow** remains request-based via the REST `/api/usage` endpoint -- unchanged.
 
-**Team detection**: an account is treated as "team" when `planName` is `"Team"`, or `spendLimitUsage.limitType` is `"team"`, or `spendLimitUsage.pooledLimit` is greater than `0`. Team accounts display Total usage in dollars; individual accounts display it as a percentage.
+**Team detection**: an account is treated as "team" when `planName` is `"Team"`, or `spendLimitUsage.limitType` is `"team"`, or `spendLimitUsage.pooledLimit` is greater than `0`. Team accounts display Total usage in dollars; individual accounts display it as a percentage. When `planUsage.limit` is present, that dollar limit is stored with the quota observation. The Allowance page shows it as Stated Cap next to the token estimate. Event prices (`chargedCents`, otherwise `tokenUsage.totalCents`) are stored on the daily token rows. Allowance scales that recorded API price by the same percent movement and shows it as API Value.
 
 ## Endpoints
 

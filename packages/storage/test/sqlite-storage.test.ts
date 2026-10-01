@@ -399,4 +399,124 @@ describe("SqliteStorage", () => {
 
     storage.close();
   });
+
+  test("deletes ccusage local-log rows for the given accounts and keeps other rows", async () => {
+    const storage = new SqliteStorage();
+    await storage.init();
+    const startedAt = "2026-09-26T00:00:00.000Z";
+    await storage.upsertUsageRecords([
+      {
+        id: "owner-sol",
+        providerId: "codex:codex",
+        tool: "ccusage",
+        model: "gpt-5.6-sol",
+        totalTokens: 100,
+        startedAt,
+        source: "local-log",
+      },
+      {
+        id: "duplicate-sol",
+        providerId: "codex:family",
+        tool: "ccusage",
+        model: "gpt-5.6-sol",
+        totalTokens: 100,
+        startedAt,
+        source: "local-log",
+      },
+      {
+        id: "family-snapshot",
+        providerId: "codex:family",
+        tool: "OpenUsage Plugin Snapshot",
+        startedAt: "2026-09-26T01:00:00.000Z",
+        source: "api",
+      },
+    ]);
+
+    await storage.deleteLocalLogUsageRecords(["codex:family"], "ccusage");
+
+    const remaining = await storage.listUsageRecords({ limit: 20 });
+    expect(remaining.map((record) => record.id).sort()).toEqual(["family-snapshot", "owner-sol"]);
+
+    storage.close();
+  });
+
+  test("stores the latest quota window and the sample from the previous reset", async () => {
+    const storage = new SqliteStorage();
+    await storage.init();
+    await storage.insertQuotaObservations([
+      {
+        providerId: "claude-code",
+        observedAt: "2026-09-19T00:00:00.000Z",
+        windowKey: "weekly",
+        windowLabel: "Weekly",
+        periodMs: 604800000,
+        resetsAt: "2026-09-20T00:00:00.000Z",
+        present: true,
+        usedPercent: 80,
+        limitValue: null,
+        limitUnit: null,
+        usedValue: null,
+      },
+      {
+        providerId: "claude-code",
+        observedAt: "2026-09-26T00:00:00.000Z",
+        windowKey: "weekly",
+        windowLabel: "Weekly",
+        periodMs: 604800000,
+        resetsAt: "2026-09-27T00:00:00.000Z",
+        present: true,
+        usedPercent: 50,
+        limitValue: null,
+        limitUnit: null,
+        usedValue: null,
+      },
+      {
+        providerId: "claude-code",
+        observedAt: "2026-09-25T12:00:00.000Z",
+        windowKey: "weekly",
+        windowLabel: "Weekly",
+        periodMs: 604800000,
+        resetsAt: "2026-09-26T23:59:00.000Z",
+        present: true,
+        usedPercent: 49,
+        limitValue: null,
+        limitUnit: null,
+        usedValue: null,
+      },
+      {
+        providerId: "claude-code",
+        observedAt: "2026-09-19T12:00:00.000Z",
+        windowKey: "weekly",
+        windowLabel: "Weekly",
+        periodMs: 604800000,
+        resetsAt: "2026-09-23T06:00:00.000Z",
+        present: true,
+        usedPercent: 100,
+        limitValue: null,
+        limitUnit: null,
+        usedValue: null,
+      },
+    ]);
+
+    const latest = await storage.listLatestQuotaObservations("claude-code");
+    expect(latest.map((row) => row.usedPercent)).toEqual([50]);
+    const previous = await storage.latestQuotaObservationBeforeReset(
+      "claude-code",
+      "weekly",
+      "2026-09-23T12:00:00.000Z",
+    );
+    expect(previous?.usedPercent).toBe(80);
+
+    await storage.insertProbeFailure("claude-code", "2026-09-27T01:00:00.000Z", "Usage request failed");
+    const failures = await storage.listLatestProbeFailures("2026-09-01T00:00:00.000Z");
+    expect(failures).toEqual([
+      {
+        providerId: "claude-code",
+        failedAt: "2026-09-27T01:00:00.000Z",
+        message: "Usage request failed",
+      },
+    ]);
+
+    storage.close();
+  });
 });

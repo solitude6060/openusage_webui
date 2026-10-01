@@ -13,6 +13,7 @@ import {
   listMultiAccountCapabilities,
   type UsageProvider,
 } from "../../../packages/providers/src/index";
+import { codexSessionTokenDuplicateIds } from "../../../packages/providers/src/codex-session-ownership";
 import type { SqliteStorage } from "../../../packages/storage/src/index";
 
 export type ProvidersRef = {
@@ -28,6 +29,14 @@ export async function rebuildProvidersFromStorage(
   providersRef: ProvidersRef,
 ): Promise<void> {
   const accounts = await storage.listProviderAccounts();
+  await storage.deleteLocalLogUsageRecords(
+    codexSessionTokenDuplicateIds(
+      accounts
+        .filter((account) => account.providerId === "codex")
+        .map((account) => ({ id: account.id, homePath: account.homePath })),
+    ),
+    "ccusage",
+  );
   providersRef.current = getProviders({ providerAccounts: accounts });
   await syncProviderStatus(storage, providersRef.current, accounts);
 }

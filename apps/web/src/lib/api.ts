@@ -99,6 +99,67 @@ export async function getUsageRecords(params: {
   return request(`/api/usage/records${search.size ? `?${search}` : ""}`);
 }
 
+export interface QuotaWindowView {
+  providerId: string;
+  windowKey: string;
+  windowLabel: string;
+  present: boolean;
+  usedPercent: number | null;
+  resetsAt: string | null;
+  periodMs: number | null;
+  tokensInWindow: number | null;
+  limitValue: number | null;
+  limitUnit: "usd" | "tokens" | "requests" | null;
+  usedValue: number | null;
+  impliedAllowance: number | null;
+  models: Array<{ model: string; tokens: number }>;
+  previous: {
+    usedPercent: number | null;
+    impliedAllowance: number | null;
+    resetsAt: string | null;
+  } | null;
+}
+
+export interface QuotaDashboard {
+  windows: QuotaWindowView[];
+  failures: Array<{ providerId: string; failedAt: string; message: string }>;
+}
+
+export async function getQuotaDashboard(): Promise<QuotaDashboard> {
+  return request("/api/usage/quotas");
+}
+
+export type AllowanceRange = "1" | "3" | "5" | "7" | "30" | "month" | "period" | "previous";
+
+export interface AllowanceEstimate {
+  providerId: string;
+  windowKey: string;
+  windowLabel: string;
+  from: string;
+  to: string;
+  resetsAt: string | null;
+  percentStart: number | null;
+  percentEnd: number | null;
+  tokens: number;
+  estimatedAllowance: number | null;
+  apiCost: number | null;
+  estimatedApiCost: number | null;
+  coarse: boolean;
+  statedLimit: number | null;
+  statedLimitUnit: "usd" | "tokens" | "requests" | null;
+  models: Array<{ model: string; tokens: number }>;
+  reason: "ok" | "shared-log" | "no-movement" | "meter-fell" | "no-tokens" | "unaligned";
+}
+
+export async function getAllowance(range: AllowanceRange): Promise<{
+  span: string;
+  days?: number;
+  estimates: AllowanceEstimate[];
+}> {
+  const named = range === "month" || range === "period" || range === "previous";
+  return request(`/api/usage/allowance?${named ? `span=${range}` : `days=${range}`}`);
+}
+
 export async function createManualUsage(input: ManualUsageInput): Promise<{
   ok: true;
   record: UsageRecord;

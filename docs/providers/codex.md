@@ -142,6 +142,11 @@ WebUI tracks multiple homes through the shared Provider Accounts feature (Settin
 
 - With **no** configured accounts for Codex, behavior stays a single provider id `codex`.
 - With one or more accounts, each is registered as `codex:<slug>` and probed with that home injected as `CODEX_HOME`. Local ccusage logs follow the same home via `homePath`.
+- When two homes resolve to the same `sessions` directory, Tokens keeps those ccusage rows on the account whose `sessions` path is the real directory. The other account still probes quota, and its card can still show Today / Last 30 Days from that probe. The Allowance page converts only the real-directory account, and only from that account's own meter. The symlink account is not converted.
+- A Codex session line uses `limit_window_seconds` when the usage payload sends it. Allowance infers a longer period only from observations with the same reset timestamp. A long cycle remains eligible near its end; a later true five-hour cycle cannot inherit its duration.
+- Allowance uses actual meter observations as common endpoints. Daily rows crossing either endpoint or a reset cannot be divided accurately, so the page shows `Daily Usage Cannot Align` and withholds conversion. Intermediate meter decreases also prevent conversion.
+- Explicit model prices, including zero, take precedence. When exactly one model price is missing, the reported day total minus explicit model prices supplies its cost. Otherwise known Codex models use the standard short-context table in `packages/providers/src/openai-token-rates.ts`; an unknown model does not receive a residual calculated from estimated prices.
+- Summary preserves original CLI prices and provenance. For one identifiable account, complete model prices supersede the legacy day price; incomplete prices use a known legacy total. Ambiguous multiple-account legacy ownership is not guessed.
 - Detect scans `~/.codex`, `~/.config/codex`, and the process `CODEX_HOME` when those paths contain `auth.json`.
 
 The original plugin may refresh OAuth tokens and write the updated credential JSON back to the same file source. Browser cookies are not used.

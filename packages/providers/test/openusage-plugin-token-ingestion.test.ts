@@ -35,9 +35,10 @@ describe("OpenUsagePluginProvider token ingestion", () => {
             {
               date: "2026-08-08",
               totalTokens: 150,
+              totalCost: 1.25,
               models: {
-                "gpt-5.6-sol": { inputTokens: 80, outputTokens: 20, totalTokens: 100 },
-                "gpt-5.6-luna": { inputTokens: 20, outputTokens: 10 },
+                "gpt-5.6-sol": { inputTokens: 80, outputTokens: 20, totalTokens: 100, costUSD: 1 },
+                "gpt-5.6-luna": { inputTokens: 20, outputTokens: 10, costUSD: 0.25 },
               },
             },
           ],
@@ -62,6 +63,7 @@ describe("OpenUsagePluginProvider token ingestion", () => {
         inputTokens: 20,
         outputTokens: 10,
         totalTokens: 30,
+        costUsd: 0.25,
         startedAt: "2026-08-08T00:00:00.000Z",
         source: "local-log",
       }),
@@ -72,6 +74,7 @@ describe("OpenUsagePluginProvider token ingestion", () => {
         inputTokens: 80,
         outputTokens: 20,
         totalTokens: 100,
+        costUsd: 1,
         startedAt: "2026-08-08T00:00:00.000Z",
         source: "local-log",
       }),
@@ -80,6 +83,7 @@ describe("OpenUsagePluginProvider token ingestion", () => {
         tool: "ccusage",
         model: "Unknown",
         totalTokens: 20,
+        costUsd: 0,
         startedAt: "2026-08-08T00:00:00.000Z",
         source: "local-log",
       }),
@@ -160,6 +164,7 @@ describe("OpenUsagePluginProvider token ingestion", () => {
           timestamp: "2026-08-08T09:30:00.000Z",
           model: "composer-2",
           displayText: "1.2M tokens",
+          chargedCents: 250,
           tokenUsage: {
             inputTokens: 120,
             outputTokens: 34,
@@ -172,6 +177,7 @@ describe("OpenUsagePluginProvider token ingestion", () => {
           timestamp: "2026-08-08T09:30:00.000Z",
           model: "composer-2",
           displayText: "1.2M tokens",
+          chargedCents: 100,
           tokenUsage: {
             inputTokens: 120,
             outputTokens: 34,
@@ -184,7 +190,8 @@ describe("OpenUsagePluginProvider token ingestion", () => {
           timestamp: "2026-08-09T09:31:00.000Z",
           model: "claude-4.6-sonnet",
           displayText: "999K tokens",
-          tokenUsage: { inputTokens: 9, outputTokens: 11, totalTokens: 20 },
+          chargedCents: 0,
+          tokenUsage: { inputTokens: 9, outputTokens: 11, totalTokens: 20, totalCents: 40 },
         },
       ],
     };
@@ -219,6 +226,7 @@ describe("OpenUsagePluginProvider token ingestion", () => {
         inputTokens: 9,
         outputTokens: 11,
         totalTokens: 20,
+        costUsd: 0.4,
         startedAt: "2026-08-09T00:00:00.000Z",
         source: "api",
       }),
@@ -231,6 +239,7 @@ describe("OpenUsagePluginProvider token ingestion", () => {
         cacheCreationTokens: 10,
         cacheReadTokens: 12,
         totalTokens: 330,
+        costUsd: 3.5,
         startedAt: "2026-08-08T00:00:00.000Z",
         source: "api",
       }),
@@ -275,6 +284,47 @@ describe("OpenUsagePluginProvider token ingestion", () => {
     const records = await provider.refresh();
 
     expect(records).toHaveLength(1);
+    expect(tokenRecords(records)).toEqual([]);
+  });
+
+  test("skips ccusage token rows when session recording is disabled", async () => {
+    let queries = 0;
+    const provider = new OpenUsagePluginProvider({
+      providerId: "codex:family",
+      name: "Codex Family",
+      pluginId: "codex",
+      recordCcusageTokens: false,
+      scriptText: `
+        globalThis.__openusage_plugin = {
+          id: "codex",
+          probe(ctx) {
+            ctx.host.ccusage.query({ provider: "codex" });
+            return { plan: "Plus", lines: [] };
+          },
+        };
+      `,
+      ccusageQuery: () => {
+        queries += 1;
+        return {
+          status: "ok",
+          data: {
+            daily: [
+              {
+                date: "2026-08-08",
+                totalTokens: 100,
+                models: { "gpt-5.6-sol": { totalTokens: 100 } },
+              },
+            ],
+          },
+        };
+      },
+      now: () => "2026-08-09T10:00:00.000Z",
+    });
+
+    const records = await provider.refresh();
+
+    expect(queries).toBe(1);
+    expect(records.map((record) => record.tool)).toEqual(["OpenUsage Plugin Snapshot"]);
     expect(tokenRecords(records)).toEqual([]);
   });
 

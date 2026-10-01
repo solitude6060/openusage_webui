@@ -105,7 +105,7 @@ Claude Code and Codex use the original `plugins/claude/plugin.js` and `plugins/c
 
 Claude reads `CLAUDE_CONFIG_DIR/.credentials.json` when `CLAUDE_CONFIG_DIR` is set, otherwise `~/.claude/.credentials.json`.
 
-Codex reads `CODEX_HOME/auth.json` when `CODEX_HOME` is set, otherwise `~/.config/codex/auth.json` and `~/.codex/auth.json`.
+Codex reads `CODEX_HOME/auth.json` when `CODEX_HOME` is set, otherwise `~/.config/codex/auth.json` and `~/.codex/auth.json`. When two Codex homes resolve to the same `sessions` directory, the Tokens page stores those rows once, on the account whose `sessions` path is the real directory. The Allowance page does not turn that shared session log into a per-account token allowance.
 
 The original plugins may refresh OAuth tokens and write updated credentials back to the same file source. Browser cookies are not used.
 

@@ -1046,7 +1046,10 @@
         limit: 100,
         format: { kind: "percent" },
         resetsAt: ctx.util.toIso(usage.billingCycleEnd),
-        periodDurationMs: billingPeriodMs
+        periodDurationMs: billingPeriodMs,
+        limitValue: hasPlanUsageLimit && pu.limit > 0 ? ctx.fmt.dollars(pu.limit) : undefined,
+        limitUnit: hasPlanUsageLimit && pu.limit > 0 ? "usd" : undefined,
+        usedValue: hasPlanUsageLimit && pu.limit > 0 ? ctx.fmt.dollars(planUsed) : undefined,
       }))
     }
 
