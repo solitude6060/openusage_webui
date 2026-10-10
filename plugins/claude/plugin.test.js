@@ -661,6 +661,40 @@ describe("claude plugin", () => {
     expect(fableLines[0].periodDurationMs).toBe(7 * 24 * 60 * 60 * 1000)
   })
 
+  it("skips a limits[] weekly entry whose percent is null and keeps a numeric sibling", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        limits: [
+          {
+            kind: "weekly_scoped",
+            group: "weekly",
+            percent: null,
+            resets_at: "2099-01-08T18:59:59.734Z",
+            scope: { model: { id: null, display_name: "Fable" }, surface: null },
+          },
+          {
+            kind: "weekly_scoped",
+            group: "weekly",
+            percent: 44,
+            resets_at: "2099-01-08T18:59:59.734Z",
+            scope: { model: { id: null, display_name: "Sonnet" }, surface: null },
+          },
+        ],
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Fable Weekly")).toBeUndefined()
+    const sonnetLines = result.lines.filter((line) => line.label === "Sonnet Weekly")
+    expect(sonnetLines).toHaveLength(1)
+    expect(sonnetLines[0].used).toBe(44)
+  })
+
   it("emits one Fable Weekly line when legacy seven_day_fable and limits[] both exist", async () => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () =>
