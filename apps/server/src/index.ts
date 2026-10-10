@@ -432,7 +432,23 @@ async function seedProviderStatus(
   }
 }
 
+let fullProviderRefresh: Promise<RefreshResult[]> | null = null;
+
 async function refreshProviders(
+  storage: SqliteStorage,
+  providers: UsageProvider[],
+  providerId?: ProviderId,
+): Promise<RefreshResult[]> {
+  if (providerId === undefined) {
+    fullProviderRefresh ??= runProviderRefresh(storage, providers).finally(() => {
+      fullProviderRefresh = null;
+    });
+    return fullProviderRefresh;
+  }
+  return runProviderRefresh(storage, providers, providerId);
+}
+
+async function runProviderRefresh(
   storage: SqliteStorage,
   providers: UsageProvider[],
   providerId?: ProviderId,
