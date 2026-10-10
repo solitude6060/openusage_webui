@@ -295,6 +295,7 @@ describe("OpenUsagePluginProvider original bundled plugin fixtures", () => {
     ["kimi", "Kimi", "kimi", "kimi login"],
     ["kiro", "Kiro", "kiro", "Open Kiro"],
     ["opencode-go", "OpenCode Go", "opencode-go", "OpenCode Go not detected"],
+    ["openrouter", "OpenRouter", "openrouter", "OPENROUTER_API_KEY"],
     ["perplexity", "Perplexity", "perplexity", "Perplexity app"],
     ["synthetic", "Synthetic", "synthetic", "SYNTHETIC_API_KEY"],
     ["zai", "Z.ai", "zai", "ZAI_API_KEY"],
