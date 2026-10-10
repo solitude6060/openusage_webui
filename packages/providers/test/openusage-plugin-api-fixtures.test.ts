@@ -3,9 +3,30 @@ import { join } from "node:path";
 import { OpenUsagePluginProvider } from "../src/index";
 import { readPluginScript, requestByUrl, withIsolatedHome, writeJson } from "./openusage-plugin-fixture-helpers";
 
+// Stand-in for a running Antigravity language server: the plugin's default discovery
+// matches it by argv (process name, marker, csrf and extension-port flags). `read`
+// is a bash builtin, so the process keeps this argv until stdin closes.
+async function withFakeAntigravityLanguageServer<T>(run: () => Promise<T>): Promise<T> {
+  const proc = Bun.spawn(
+    [
+      "bash", "-c", "read -r _",
+      "language_server", "antigravity",
+      "--csrf_token", "fake-csrf",
+      "--extension_server_port", "54321",
+    ],
+    { stdin: "pipe", stdout: "ignore", stderr: "ignore" },
+  );
+  try {
+    return await run();
+  } finally {
+    proc.kill();
+    await proc.exited;
+  }
+}
+
 describe("OpenUsagePluginProvider original API plugin fixtures", () => {
   test("adapts the original Antigravity plugin through Cloud Code quota", async () => {
-    await withIsolatedHome(async (home) => {
+    await withFakeAntigravityLanguageServer(() => withIsolatedHome(async (home) => {
       const pluginDataDir = join(home, ".openusage-webui/plugins/antigravity");
       writeJson(join(pluginDataDir, "keychain.json"), {
         "gemini\u0000antigravity": "agy-keychain-token",
@@ -18,6 +39,7 @@ describe("OpenUsagePluginProvider original API plugin fixtures", () => {
         pluginDataDir,
         env: {},
         scriptText: readPluginScript("antigravity"),
+        lsDiscover: () => null,
         request: requestByUrl({
           "https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist": {
             paidTier: { name: "Google AI Pro" },
@@ -53,7 +75,7 @@ describe("OpenUsagePluginProvider original API plugin fixtures", () => {
         "Gemini Flash",
         "Claude",
       ]);
-    });
+    }));
   });
 
   test("adapts the original Synthetic plugin through env key and quotas API", async () => {

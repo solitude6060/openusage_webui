@@ -148,4 +148,29 @@ process.stdout.write(JSON.stringify({ inThread, worker }));
     await expect(inThreadError.refresh()).rejects.toThrow("fixture plugin failed");
     await expect(defaultRuntimeError.refresh()).rejects.toThrow("fixture plugin failed");
   });
+
+  test("keeps an injected language-server discovery on the in-thread path", async () => {
+    const calls: string[] = [];
+    const provider = new OpenUsagePluginProvider({
+      providerId: "manual",
+      name: "Manual",
+      scriptText: `globalThis.__openusage_plugin = {
+        probe(ctx) {
+          const found = ctx.host.ls.discover({ processName: "openusage-nonexistent-ls" });
+          return { lines: [ctx.line.text({ label: "Csrf", value: String(found && found.csrf) })] };
+        },
+      };`,
+      lsDiscover: (opts) => {
+        calls.push(opts.processName ?? "");
+        return { csrf: "injected-csrf", extensionPort: 1234, ports: [1234] };
+      },
+    });
+
+    const records = await provider.refresh();
+
+    expect(calls).toEqual(["openusage-nonexistent-ls"]);
+    expect(records[0]?.raw).toMatchObject({
+      lines: [{ type: "text", label: "Csrf", value: "injected-csrf" }],
+    });
+  });
 });
