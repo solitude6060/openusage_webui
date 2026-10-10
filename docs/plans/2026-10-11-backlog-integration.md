@@ -56,3 +56,7 @@ from the unchanged lockfile after the initial Vitest invocation returned exit 12
 Step 2: OpenRouter merged without conflicts; supported-provider documentation,
 registration and redaction changes retained. Bun: 419 passed; Vitest: 1,255 passed.
 Logs: step-2-bun-test.log and step-2-vitest.log.
+
+Step 3: user guide and shared source-plan conflicts resolved by retaining both
+OpenRouter and Ollama records. Default-disabled wiring and hourly behavior retained.
+Bun: 434 passed; Vitest: 1,301 passed. Logs: step-3-bun-test.log and step-3-vitest.log.

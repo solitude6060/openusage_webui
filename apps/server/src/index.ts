@@ -459,7 +459,7 @@ async function seedProviderStatus(
     await storage.upsertProviderStatus({
       providerId: provider.id,
       name: provider.name,
-      enabled: true,
+      enabled: provider.defaultEnabled !== false,
       detected,
     });
   }
@@ -482,7 +482,7 @@ async function runProviderRefresh(
   const results: RefreshResult[] = [];
   for (const provider of refreshableProviders) {
     const existing = statusMap.get(provider.id);
-    if (existing && !existing.enabled && !providerId) {
+    if (!providerId && !(existing?.enabled ?? provider.defaultEnabled !== false)) {
       continue;
     }
     console.log(JSON.stringify({ event: "provider_refresh_started", providerId: provider.id }));
@@ -497,7 +497,7 @@ async function runProviderRefresh(
       await storage.upsertProviderStatus({
         providerId: provider.id,
         name: provider.name,
-        enabled: current?.enabled ?? true,
+        enabled: current?.enabled ?? provider.defaultEnabled !== false,
         detected,
         lastRefreshAt: new Date().toISOString(),
       });
@@ -517,7 +517,7 @@ async function runProviderRefresh(
       await storage.upsertProviderStatus({
         providerId: provider.id,
         name: provider.name,
-        enabled: current?.enabled ?? true,
+        enabled: current?.enabled ?? provider.defaultEnabled !== false,
         detected,
         lastRefreshAt: new Date().toISOString(),
         lastError: message,

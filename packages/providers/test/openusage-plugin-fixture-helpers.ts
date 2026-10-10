@@ -1,3 +1,4 @@
+import { generateKeyPairSync, createPublicKey, type KeyObject } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -49,5 +50,38 @@ export function requestByUrl(routes: Record<string, unknown>): (opts: PluginRequ
       return jsonResponse(value);
     }
     throw new Error(`Unexpected request: ${opts.method ?? "GET"} ${opts.url}`);
+  };
+}
+
+/**
+ * An unencrypted OpenSSH ed25519 private key (the file `ollama` writes to ~/.ollama/id_ed25519),
+ * generated in memory so no key material is ever committed. Layout per OpenSSH PROTOCOL.key.
+ */
+export function createOpenSshEd25519Key(): { pem: string; publicKeyBlobBase64: string; publicKey: KeyObject } {
+  const jwk = generateKeyPairSync("ed25519").privateKey.export({ format: "jwk" });
+  const seed = Buffer.from(jwk.d!, "base64url");
+  const pub = Buffer.from(jwk.x!, "base64url");
+  const u32 = (n: number) => {
+    const out = Buffer.alloc(4);
+    out.writeUInt32BE(n);
+    return out;
+  };
+  const str = (value: Buffer | string) => {
+    const bytes = typeof value === "string" ? Buffer.from(value) : value;
+    return Buffer.concat([u32(bytes.length), bytes]);
+  };
+  const publicKeyBlob = Buffer.concat([str("ssh-ed25519"), str(pub)]);
+  let priv = Buffer.concat([
+    u32(0x12345678), u32(0x12345678), str("ssh-ed25519"), str(pub), str(Buffer.concat([seed, pub])), str(""),
+  ]);
+  for (let pad = 1; priv.length % 8 !== 0; pad++) priv = Buffer.concat([priv, Buffer.from([pad])]);
+  const blob = Buffer.concat([
+    Buffer.from("openssh-key-v1\0", "latin1"), str("none"), str("none"), str(""), u32(1), str(publicKeyBlob), str(priv),
+  ]);
+  const body = blob.toString("base64").match(/.{1,64}/g)!.join("\n");
+  return {
+    pem: `-----BEGIN OPENSSH PRIVATE KEY-----\n${body}\n-----END OPENSSH PRIVATE KEY-----\n`,
+    publicKeyBlobBase64: publicKeyBlob.toString("base64"),
+    publicKey: createPublicKey({ key: { kty: "OKP", crv: "Ed25519", x: jwk.x! }, format: "jwk" }),
   };
 }

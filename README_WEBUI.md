@@ -18,6 +18,7 @@ A local-first WebUI dashboard for AI coding usage on Ubuntu/Linux.
 - JetBrains AI Assistant via the original OpenUsage plugin adapter
 - Kimi via the original OpenUsage plugin adapter
 - Kiro via the original OpenUsage plugin adapter
+- Ollama via the original OpenUsage plugin adapter — Ollama Cloud credits and limits, signed with `~/.ollama/id_ed25519`; starts disabled, so enable it on the **Providers** page (see `docs/providers/ollama.md`)
 - OpenCode Go via the original OpenUsage plugin adapter
 - OpenRouter via an OpenUsage plugin adapter ported from the upstream Swift provider — credits, balance, period spend, key limit; API key from `~/.config/openusage/openrouter.json` or `OPENROUTER_API_KEY`
 - Perplexity via the original OpenUsage plugin adapter

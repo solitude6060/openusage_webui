@@ -18,6 +18,7 @@
 - JetBrains AI Assistant
 - Kimi
 - Kiro
+- Ollama（Ollama Cloud 額度；預設停用，需在 Providers 頁啟用）
 - OpenCode Go
 - OpenRouter
 - Perplexity
@@ -150,7 +151,7 @@ Providers 頁面顯示各 provider 狀態：
 - last error
 - refresh button
 
-Amp、Antigravity、Claude Code、Codex、Cursor、Devin、Factory、Grok Build、GitHub Copilot、JetBrains AI Assistant、Kimi、Kiro、OpenCode Go、Perplexity、Synthetic、Z.ai 目前透過原本 OpenUsage provider plugin adapter refresh；OpenRouter 則由上游 Swift provider 移植成 plugin，API key 讀自 `~/.config/openusage/openrouter.json`（每次 refresh 重新讀取，不必重啟）或環境變數 `OPENROUTER_API_KEY`。Gemini CLI / Google AI Pro 仍主要透過 `ccusage` 匯入，因為原本 repo 目前沒有 Gemini provider plugin。
+Amp、Antigravity、Claude Code、Codex、Cursor、Devin、Factory、Grok Build、GitHub Copilot、JetBrains AI Assistant、Kimi、Kiro、OpenCode Go、Perplexity、Synthetic、Z.ai 目前透過原本 OpenUsage provider plugin adapter refresh；OpenRouter 則由上游 Swift provider 移植成 plugin，API key 讀自 `~/.config/openusage/openrouter.json`（每次 refresh 重新讀取，不必重啟）或環境變數 `OPENROUTER_API_KEY`。Ollama 同樣透過 plugin adapter 更新 Cloud 額度，預設為停用：本機只要跑過 Ollama 就會有 `~/.ollama/id_ed25519`，無法判斷是否使用 Cloud，所以需要自行在 Providers 頁開啟「Enabled」。Gemini CLI / Google AI Pro 仍主要透過 `ccusage` 匯入，因為原本 repo 目前沒有 Gemini provider plugin。
 
 Grok Build 的 Today／Yesterday／Last 30 Days 與 Tokens 頁共用本機完成回合紀錄。花費使用 CLI 記錄的費用；沒有費用的回合仍計入 token，費用加總為 $0。整個期間都沒有費用紀錄時，只顯示 token；沒有 token 時省略該期間。Today／Yesterday 使用伺服器本地日，Last 30 Days 涵蓋更新當下往前 30 × 24 小時；Tokens 頁的 Grok 每日用量仍維持 UTC 日。
 

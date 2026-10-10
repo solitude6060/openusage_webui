@@ -26,6 +26,7 @@ http://127.0.0.1:6736
 - JetBrains AI Assistant via 原本 OpenUsage plugin adapter
 - Kimi via 原本 OpenUsage plugin adapter
 - Kiro via 原本 OpenUsage plugin adapter
+- Ollama via 原本 OpenUsage plugin adapter — Ollama Cloud 的額度與限制，使用 `~/.ollama/id_ed25519` 簽章；預設停用，請到 **Providers** 頁自行啟用（見 `docs/providers/ollama.md`）
 - OpenCode Go via 原本 OpenUsage plugin adapter
 - OpenRouter via 由上游 Swift provider 移植的 OpenUsage plugin adapter — credits、餘額、期間花費、key 上限；API key 讀自 `~/.config/openusage/openrouter.json` 或 `OPENROUTER_API_KEY`
 - Perplexity via 原本 OpenUsage plugin adapter

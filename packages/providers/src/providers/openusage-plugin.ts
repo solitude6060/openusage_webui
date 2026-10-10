@@ -14,6 +14,7 @@ import {
 import {
   decryptAes256Gcm,
   discoverLanguageServer,
+  ed25519Sign,
   encryptAes256Gcm,
   execSqlite,
   expandHome,
@@ -75,6 +76,7 @@ export interface OpenUsagePluginProviderOptions {
   pluginDataDir?: string;
   homeDir?: string;
   recordCcusageTokens?: boolean;
+  defaultEnabled?: boolean;
 }
 
 interface LoadedPlugin {
@@ -93,6 +95,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
   readonly id: ProviderId;
   readonly name: string;
   readonly recordCcusageTokens: boolean;
+  readonly defaultEnabled?: boolean;
   private readonly pluginId?: string;
   private readonly scriptPath?: string;
   private readonly scriptText?: string;
@@ -110,6 +113,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
   constructor(options: OpenUsagePluginProviderOptions) {
     this.id = options.providerId;
     this.name = options.name;
+    this.defaultEnabled = options.defaultEnabled;
     this.pluginId = options.pluginId;
     this.scriptPath = options.scriptPath;
     this.scriptText = options.scriptText;
@@ -315,6 +319,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
           sha256Hex: (text: string) => createHash("sha256").update(String(text)).digest("hex"),
           encryptAes256Gcm: encryptAes256Gcm,
           decryptAes256Gcm: decryptAes256Gcm,
+          ed25519Sign: ed25519Sign,
         },
         http: {
           request,
