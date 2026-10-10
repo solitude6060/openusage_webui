@@ -11,6 +11,15 @@ function pointsAtDefaultHome(homePath: string, defaultHomes: string[]): boolean 
   return defaultHomes.some((candidate) => canonicalHome(candidate) === home);
 }
 
+export function disabledDefaultAccount<
+  T extends { id: string; providerId: string; homePath: string; enabled: boolean },
+>(
+  _accounts: ReadonlyArray<T>,
+  _defaultHomePath?: string | null,
+): T | null {
+  return null;
+}
+
 export function shouldShowDefaultAccountNotice(
   accounts: ReadonlyArray<{ providerId: string; homePath: string; enabled: boolean }>,
   defaultHomePath?: string | null,

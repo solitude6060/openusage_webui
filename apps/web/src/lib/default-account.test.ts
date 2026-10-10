@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  disabledDefaultAccount,
   initialAccountProviderId,
   shouldShowDefaultAccountNotice,
 } from "./default-account";
@@ -74,6 +75,61 @@ describe("default account notice", () => {
         defaultHomePath,
       ),
     ).toBe(true);
+  });
+});
+
+describe("disabled default account", () => {
+  const spare = {
+    id: "antigravity:acct1",
+    providerId: "antigravity",
+    homePath: "/home/example/.agy-homes/acct1",
+    enabled: true,
+  };
+
+  test("returns a disabled Antigravity account whose home is ~", () => {
+    const disabled = {
+      id: "antigravity:local",
+      providerId: "antigravity",
+      homePath: "~",
+      enabled: false,
+    };
+    expect(disabledDefaultAccount([spare, disabled], defaultHomePath)).toEqual(disabled);
+  });
+
+  test("returns a disabled account whose home matches defaultHomePath", () => {
+    const disabled = {
+      id: "antigravity:local",
+      providerId: "antigravity",
+      homePath: `${defaultHomePath}/`,
+      enabled: false,
+    };
+    expect(disabledDefaultAccount([disabled, spare], defaultHomePath)).toEqual(disabled);
+  });
+
+  test("returns null when the default home account is already enabled", () => {
+    expect(
+      disabledDefaultAccount(
+        [{ ...spare, id: "antigravity:local", homePath: defaultHomePath, enabled: true }],
+        defaultHomePath,
+      ),
+    ).toBeNull();
+  });
+
+  test("returns null when no disabled account points at the default home", () => {
+    expect(
+      disabledDefaultAccount(
+        [
+          spare,
+          {
+            id: "codex:local",
+            providerId: "codex",
+            homePath: "~",
+            enabled: false,
+          },
+        ],
+        defaultHomePath,
+      ),
+    ).toBeNull();
   });
 });
 
