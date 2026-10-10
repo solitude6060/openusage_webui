@@ -76,7 +76,9 @@ export function normalizeCcusageHourlyBlocks(
 
   const today = localDateKey(new Date(now));
   const records: UsageRecord[] = [];
-  for (const [key, rows] of days) {
+  // A completed day with daily tokens but no usable block compares 0 against the daily total.
+  for (const key of new Set([...dailyTotals.keys(), ...days.keys()])) {
+    const rows = days.get(key) ?? [];
     if (key !== today) {
       const blockTotal = rows.reduce((sum, record) => sum + (record.totalTokens ?? 0), 0);
       const dailyTotal = dailyTotals.get(key) ?? 0;

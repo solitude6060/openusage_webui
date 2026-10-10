@@ -116,12 +116,13 @@ describe("normalizeCcusageHourlyBlocks", () => {
     errorSpy = spyOn(console, "error").mockImplementation(() => undefined);
     const records = normalizeCcusageHourlyBlocks(
       "claude-code",
-      [block("2026-10-07T03:00:00.000Z", 100)],
+      [block("2026-10-07T03:00:00.000Z", 100), block("2026-10-09T03:00:00.000Z", 300)],
       [daily("2026-10-09", 300)],
       NOW,
     );
-    expect(records).toEqual([]);
+    expect(records.map((record) => record.startedAt)).toEqual(["2026-10-09T03:00:00.000Z"]);
     expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(String(errorSpy.mock.calls[0]?.[0])).toContain("2026-10-07");
   });
 
   test("logs a completed daily date that has no usable blocks and writes nothing for it", () => {
