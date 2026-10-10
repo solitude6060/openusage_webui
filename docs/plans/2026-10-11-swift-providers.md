@@ -69,6 +69,11 @@ refreshes (same pattern as `packages/providers/src/providers/grok-session-usage.
 | `Tests/OpenUsageTests/OllamaMonthlyUsageTests.swift` | `007224ea1b4facefc9eb345950646d60008f72cbd5dda8080044bbcf6a2f785f` |
 | `Tests/OpenUsageTests/OpenRouterProviderTests.swift` | `0395e307f8b08af4f07c1f90cf9bb9a926b0210d70ba8d975d76b6ab761c4e18` |
 | `Tests/OpenUsageTests/PiUsageScannerTests.swift` | `9b15a389d08249dac6e625b532da38ab6002cdb47ec560e5271131523bbbea85` |
+| `Sources/OpenUsage/Services/ProviderAccountAssembly+Codex.swift` | `3a16fccc66efab9d49f15ce9b5a424a00d0f85ba486f4bb0398e3960d5d6181d` |
+| `Sources/OpenUsage/Providers/IncrementalJSONLScanner.swift` | `cc236426c727007ddafe4bde56768019b1e11bc3ac5edba03b801dda9c727030` |
+| `Sources/OpenUsage/Providers/DailyUsageAccumulator.swift` | `75c97a080f60f63a7fb620b88302c79fcc4e6a5ade4855b09c733328057de867` |
+| `Sources/OpenUsage/Providers/Codex/CodexUsagePricing.swift` | `26fc91db759466cf13c0e0bd82293c9d85c57f895e358e76a601281126b83009` |
+| `Sources/OpenUsage/Support/ProviderParse.swift` | `97bd62ef886543ee5c7653617313a6b992a8143dcdec1f31d438a2f56fd1630a` |
 
   Also read for context (not ported): `ProviderCatalog.swift`, `ClaudeProvider.swift`,
   `CodexProvider.swift`, `CodexHistoryScope.swift`, `ProviderAccountAssembly+Codex.swift`,
@@ -91,6 +96,36 @@ refreshes (same pattern as `packages/providers/src/providers/grok-session-usage.
 | D3 | API key editor UI (`APIKeyManaging` save/delete) for OpenRouter | Not ported. Key read only | Scope cut (UI) |
 | D4 | Persistent incremental parse cache for pi logs (`JSONLScanCachePersistence`) | Full rescan per refresh, matching `grok-session-usage.ts`. 285 pi session files on this machine | Simplification; add a cache if refresh time is measured as a problem |
 | D5 | Ollama provider opt-in (`hasLocalCredentials() == false`) | Needs a per-provider default in our registry; see User Decision U1 | Needs user decision |
+
+### Pi implementation decisions and differences
+
+- Source files above were fetched read-only at the exact pin with `gh api`. Copies and
+  verification logs live under `../openusage_webui-artifacts/2026-10-11-backlog/pi/`.
+- Only Claude and Codex consume Pi rows. Other upstream-mapped providers and unmapped providers
+  are dropped, per decision 3. No Pi provider card or credential import is added.
+- The scan cutoff is local midnight 30 calendar days before refresh, matching
+  `JSONLScanning.sinceDate`; files are path-sorted before keep-first message-ID deduplication.
+- Pi costs join the existing usage summary. `getUsageSummary` already sums all tools; its
+  `ccusage`-only branch chooses between native structured costs and legacy CLI costs. Keep Pi
+  outside that branch so a legacy CLI price never removes independent Pi costs.
+- Codex zero/missing carried costs use the existing standard-rate table, as specified here.
+  Upstream additionally applies long-context/priority adjustments, model aliases, and dated
+  auto-review fallback models; those estimators are not available in this port. Free auto-review
+  from 2026-10-06 remains $0 even when a carried cost is positive.
+- Upstream excludes unpriceable rows and lists unknown models separately. The port retains
+  their reported tokens with undefined cost, as specified here; a daily model total containing
+  any unpriced message has undefined cost. Claude has no fallback rate table.
+- Upstream splits cache writes into 5-minute and 1-hour buckets. `UsageRecord` has one cache-write
+  field, so the port stores `max(cacheWrite - cacheWrite1h, 0) + cacheWrite1h` there.
+- Pi daily records encode the local date at UTC midnight, like ccusage. Allowance translates
+  that date back to local midnight, including daylight-saving day lengths.
+- Account ownership uses the configured Codex homes' `tokens.account_id` and Pi's base
+  `openai-codex` OAuth `accountId`; pool entries and credential sources remain out of scope.
+  Disabled configured accounts participate in ownership selection so their usage is not
+  reassigned. Only the unconfigured default Claude provider receives unattributed Pi usage.
+- Full rescan replaces the upstream persistent cache (D4). Read failures are logged without
+  file contents and preserve the successful plugin snapshot. Authentication reads are strictly
+  read-only; no keys, tokens, message bodies, or response IDs enter usage records or logs.
 
 ## Changes
 
