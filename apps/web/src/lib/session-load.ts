@@ -1,3 +1,3 @@
-export function shouldApplySessionLoad(_requestId: number, _latestRequestId: number): boolean {
-  return true;
+export function shouldApplySessionLoad(requestId: number, latestRequestId: number): boolean {
+  return requestId === latestRequestId;
 }

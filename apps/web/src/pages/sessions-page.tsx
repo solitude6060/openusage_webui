@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { ProviderStatus, UsageRecord } from "../../../../packages/core/src/types";
 import { getUsageRecords } from "../lib/api";
+import { shouldApplySessionLoad } from "../lib/session-load";
 import { listProviderCards, providerLabel } from "../provider-ui";
 import {
   clampUsageLimit,
@@ -49,6 +50,7 @@ export function SessionsPage({
   });
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
+  const loadRequestId = useRef(0);
   const [loadedFilters, setLoadedFilters] = useState(filters);
   const [error, setError] = useState<string | null>(null);
   const providerOptions = useMemo(() => listProviderCards(providers), [providers]);
@@ -61,11 +63,15 @@ export function SessionsPage({
   }, [providers]);
 
   async function load(next: SessionFilters) {
+    const requestId = ++loadRequestId.current;
     setError(null);
     setLoadedFilters(next);
     try {
-      setRecords(await getUsageRecords(usageQuery(next)));
+      const nextRecords = await getUsageRecords(usageQuery(next));
+      if (!shouldApplySessionLoad(requestId, loadRequestId.current)) return;
+      setRecords(nextRecords);
     } catch (filterError) {
+      if (!shouldApplySessionLoad(requestId, loadRequestId.current)) return;
       setError(filterError instanceof Error ? filterError.message : "Filter failed");
     }
   }
