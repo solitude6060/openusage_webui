@@ -760,7 +760,6 @@
     var pinnedCliHome = readEnvText(ctx, "OPENUSAGE_ANTIGRAVITY_CLI_HOME")
     var home = pinnedCliHome || readEnvText(ctx, "HOME")
     if (!home) return null
-    var basename = String(home).replace(/\/+$/, "").split("/").pop() || null
     var tokenPath = joinPath(home, ".gemini/antigravity-cli/antigravity-oauth-token")
     try {
       if (ctx.host.fs && typeof ctx.host.fs.exists === "function" && ctx.host.fs.exists(tokenPath)) {
@@ -768,10 +767,7 @@
         if (parsed && typeof parsed.id_token === "string") {
           return emailFromIdToken(ctx, parsed.id_token)
         }
-        ctx.host.log.info("antigravity oauth file has no id_token; using home basename for account badge")
-        return basename
       }
-      if (pinnedCliHome) return basename
       return null
     } catch (e) {
       ctx.host.log.warn("failed to read antigravity account email: " + String(e))

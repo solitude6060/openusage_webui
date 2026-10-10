@@ -17,7 +17,15 @@ import {
   type HealthResponse,
 } from "../lib/api";
 import { toDatetimeLocal, optionalNumber } from "../lib/format";
+import {
+  ANTIGRAVITY_DEFAULT_HOME,
+  ANTIGRAVITY_DEFAULT_LABEL,
+  defaultHomeCandidates,
+  initialAccountProviderId,
+  shouldShowDefaultAccountNotice,
+} from "../lib/default-account";
 import { StatusPill } from "../components/status-pill";
+import { ManualEntryForm } from "./manual-entry-form";
 
 export const WEB_AUTO_REFRESH_LABEL = "Every 20 Minutes";
 
@@ -28,7 +36,7 @@ export const MANUAL_PLACEHOLDERS: Record<
   codex: { label: "Codex · Family", homePath: "~/.codex-family" },
   "claude-code": { label: "Claude · Work", homePath: "~/.claude-work" },
   cursor: { label: "Cursor · Work", homePath: "~/.config/cursor-work" },
-  antigravity: { label: "Antigravity · Main", homePath: "~/.agy-homes/acct1" },
+  antigravity: { label: ANTIGRAVITY_DEFAULT_LABEL, homePath: ANTIGRAVITY_DEFAULT_HOME },
 };
 
 export function getManualPlaceholder(providerId: MultiAccountProviderId) {
@@ -60,6 +68,7 @@ export function SettingsPage({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [providerSelectionReady, setProviderSelectionReady] = useState(false);
 
   const selectedCapability = useMemo(
     () => capabilities.find((item) => item.providerId === selectedProviderId) ?? null,
@@ -70,6 +79,11 @@ export function SettingsPage({
     () => accounts.filter((account) => account.providerId === selectedProviderId),
     [accounts, selectedProviderId],
   );
+  const showDefaultAccountNotice = shouldShowDefaultAccountNotice(
+    selectedProviderId,
+    visibleAccounts,
+    defaultHomeCandidates(health?.databasePath),
+  );
 
   async function reloadAccounts(providerId = selectedProviderId) {
     setAccounts(await listProviderAccounts(providerId));
@@ -78,11 +92,13 @@ export function SettingsPage({
   useEffect(() => {
     void (async () => {
       try {
-        const caps = await listProviderAccountCapabilities();
+        const [caps, allAccounts] = await Promise.all([
+          listProviderAccountCapabilities(),
+          listProviderAccounts(),
+        ]);
         setCapabilities(caps);
-        if (caps.length > 0 && !caps.some((item) => item.providerId === selectedProviderId)) {
-          setSelectedProviderId(caps[0].providerId);
-        }
+        setSelectedProviderId(initialAccountProviderId(caps, allAccounts) as MultiAccountProviderId);
+        setProviderSelectionReady(true);
       } catch (loadError) {
         setError(
           loadError instanceof Error
@@ -94,11 +110,12 @@ export function SettingsPage({
   }, []);
 
   useEffect(() => {
+    if (!providerSelectionReady) return;
     setCandidates([]);
     void reloadAccounts(selectedProviderId).catch((loadError) => {
       setError(loadError instanceof Error ? loadError.message : "Failed to load provider accounts");
     });
-  }, [selectedProviderId]);
+  }, [selectedProviderId, providerSelectionReady]);
 
   async function saveManual(event: FormEvent) {
     event.preventDefault();
@@ -313,6 +330,20 @@ export function SettingsPage({
           </ul>
         )}
 
+        {showDefaultAccountNotice ? (
+          <div className="alert">
+            <strong>Default Account Not Tracked</strong>
+            <button
+              className="secondary-button"
+              disabled={busy}
+              onClick={() => void addAccount(ANTIGRAVITY_DEFAULT_LABEL, ANTIGRAVITY_DEFAULT_HOME)}
+              type="button"
+            >
+              Add Default Account
+            </button>
+          </div>
+        ) : null}
+
         {candidates.length > 0 ? (
           <div className="settings-subsection">
             <h4>Detected Homes</h4>
@@ -402,84 +433,7 @@ export function SettingsPage({
         </dl>
       </section>
 
-      <form className="panel form-panel" onSubmit={saveManual}>
-        <div className="panel-header">
-          <h3>Manual Entry</h3>
-        </div>
-        <label>
-          Provider
-          <select
-            value={manual.providerId}
-            onChange={(event) =>
-              setManual({ ...manual, providerId: event.target.value as ProviderId })
-            }
-          >
-            <option value="manual">Manual</option>
-            <option value="minimax">MiniMax</option>
-          </select>
-        </label>
-        <label>
-          Tool
-          <input
-            value={manual.tool}
-            onChange={(event) => setManual({ ...manual, tool: event.target.value })}
-          />
-        </label>
-        <label>
-          Model
-          <input
-            value={manual.model}
-            onChange={(event) => setManual({ ...manual, model: event.target.value })}
-          />
-        </label>
-        <div className="form-row">
-          <label>
-            Input Tokens
-            <input
-              min="0"
-              type="number"
-              value={manual.inputTokens}
-              onChange={(event) => setManual({ ...manual, inputTokens: event.target.value })}
-            />
-          </label>
-          <label>
-            Output Tokens
-            <input
-              min="0"
-              type="number"
-              value={manual.outputTokens}
-              onChange={(event) => setManual({ ...manual, outputTokens: event.target.value })}
-            />
-          </label>
-        </div>
-        <label>
-          Cost USD
-          <input
-            inputMode="decimal"
-            value={manual.costUsd}
-            onChange={(event) => setManual({ ...manual, costUsd: event.target.value })}
-          />
-        </label>
-        <label>
-          Date/Time
-          <input
-            type="datetime-local"
-            value={manual.startedAt}
-            onChange={(event) => setManual({ ...manual, startedAt: event.target.value })}
-          />
-        </label>
-        <label>
-          Notes
-          <textarea
-            rows={4}
-            value={manual.notes}
-            onChange={(event) => setManual({ ...manual, notes: event.target.value })}
-          />
-        </label>
-        <button className="primary-button" type="submit">
-          Submit Manual Entry
-        </button>
-      </form>
+      <ManualEntryForm manual={manual} onChange={setManual} onSubmit={saveManual} />
     </section>
   );
 }

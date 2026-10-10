@@ -81,8 +81,15 @@ describe("detectProviderAccounts", () => {
     );
 
     const agyIde = join(home, ".config", "Antigravity");
-    mkdirSync(join(agyIde, "User", "globalStorage"), { recursive: true });
-    writeFileSync(join(agyIde, "User", "globalStorage", "state.vscdb"), "db");
+    const agyDbDir = join(agyIde, "User", "globalStorage");
+    mkdirSync(agyDbDir, { recursive: true });
+    const agyDb = new Database(join(agyDbDir, "state.vscdb"));
+    agyDb.exec("CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)");
+    agyDb.query("INSERT INTO ItemTable (key, value) VALUES (?, ?)").run(
+      "antigravityUnifiedStateSync.oauthToken",
+      "fixture-oauth-value",
+    );
+    agyDb.close();
 
     expect(
       detectProviderAccounts("cursor", { homeDir: home, env: {} }).map((item) => item.homePath),
