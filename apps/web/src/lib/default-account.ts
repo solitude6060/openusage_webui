@@ -13,11 +13,19 @@ function pointsAtDefaultHome(homePath: string, defaultHomes: string[]): boolean 
 
 export function disabledDefaultAccount<
   T extends { id: string; providerId: string; homePath: string; enabled: boolean },
->(
-  _accounts: ReadonlyArray<T>,
-  _defaultHomePath?: string | null,
-): T | null {
-  return null;
+>(accounts: ReadonlyArray<T>, defaultHomePath?: string | null): T | null {
+  const defaultHomes = [ANTIGRAVITY_DEFAULT_HOME];
+  if (typeof defaultHomePath === "string" && defaultHomePath.trim()) {
+    defaultHomes.push(defaultHomePath);
+  }
+  return (
+    accounts.find(
+      (account) =>
+        account.providerId === "antigravity" &&
+        account.enabled === false &&
+        pointsAtDefaultHome(account.homePath, defaultHomes),
+    ) ?? null
+  );
 }
 
 export function shouldShowDefaultAccountNotice(

@@ -20,6 +20,7 @@ import { toDatetimeLocal, optionalNumber } from "../lib/format";
 import {
   ANTIGRAVITY_DEFAULT_HOME,
   ANTIGRAVITY_DEFAULT_LABEL,
+  disabledDefaultAccount,
   initialAccountProviderId,
   shouldShowDefaultAccountNotice,
 } from "../lib/default-account";
@@ -78,9 +79,12 @@ export function SettingsPage({
     () => accounts.filter((account) => account.providerId === selectedProviderId),
     [accounts, selectedProviderId],
   );
+  const antigravityDefaultHome = capabilities.find(
+    (item) => item.providerId === "antigravity",
+  )?.defaultHomePath;
   const showDefaultAccountNotice = shouldShowDefaultAccountNotice(
     accounts,
-    capabilities.find((item) => item.providerId === "antigravity")?.defaultHomePath,
+    antigravityDefaultHome,
   );
 
   async function reloadAccounts(providerId = selectedProviderId) {
@@ -195,6 +199,20 @@ export function SettingsPage({
     await addAccount(draft.label, draft.homePath);
   }
 
+  async function enableAccount(account: ProviderAccount) {
+    setBusy(true);
+    setError(null);
+    try {
+      await updateProviderAccount(account.id, { enabled: true });
+      await reloadAccounts(account.providerId);
+      await onCreated();
+    } catch (enableError) {
+      setError(enableError instanceof Error ? enableError.message : "Failed to update account");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function toggleAccount(account: ProviderAccount) {
     setBusy(true);
     setError(null);
@@ -271,9 +289,14 @@ export function SettingsPage({
             <button
               className="secondary-button"
               disabled={busy}
-              onClick={() =>
-                void addAccount(ANTIGRAVITY_DEFAULT_LABEL, ANTIGRAVITY_DEFAULT_HOME, "antigravity")
-              }
+              onClick={() => {
+                const existing = disabledDefaultAccount(accounts, antigravityDefaultHome);
+                if (existing) {
+                  void enableAccount(existing);
+                  return;
+                }
+                void addAccount(ANTIGRAVITY_DEFAULT_LABEL, ANTIGRAVITY_DEFAULT_HOME, "antigravity");
+              }}
               type="button"
             >
               Add Default Account
