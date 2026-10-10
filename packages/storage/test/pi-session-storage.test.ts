@@ -69,6 +69,7 @@ describe("Pi storage consumers", () => {
     };
     login("work");
     expect((await refresh(initialProviders)).filter((row) => row.tool === "Pi Session")).toHaveLength(2);
+    expect((await storage.listUsageRecords()).filter((row) => row.tool === "Pi Session")).toHaveLength(2);
     const previousOwner = family === "codex" ? "codex:work" : family;
     const preserved: UsageRecord[] = [
       ...days.map((startedAt, index) => ({ ...record("ccusage"), id: `native-${index}`, providerId: previousOwner, startedAt })),
@@ -89,7 +90,7 @@ describe("Pi storage consumers", () => {
     expect((await storage.getTokenUsageBreakdown({ from: days[1], to: days[0] })).totalTokens).toBe(500);
   });
 
-  test("a failed snapshot insertion rolls back no-owner Pi cleanup", async () => {
+  test("a failed refresh insertion rolls back no-owner Pi cleanup", async () => {
     await storage.upsertUsageRecords([record("Pi Session")]);
     await expect(storage.upsertUsageRecords([
       { ...record("OpenUsage Plugin Snapshot"), id: "no-owner", source: "api", totalTokens: undefined,

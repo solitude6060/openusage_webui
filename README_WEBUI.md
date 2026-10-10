@@ -151,6 +151,9 @@ The original plugins may refresh OAuth tokens and write updated credentials back
 
 Changing Pi owners replaces same-day Pi records across the provider family. Configuring
 Claude accounts removes default Claude Pi records. Both operations preserve ccusage.
+When no account owns a family's Pi usage, a successful refresh clears that family's
+stored Pi records only for the scanned usage days. Other days, sources, provider
+families, and ccusage records are preserved.
 Pi ownership is checked on each refresh. A Pi or Codex login change takes effect at
 the next refresh without restarting the server.
 Unreadable session files or subdirectories are skipped while other files are counted.

@@ -178,15 +178,24 @@ export class OpenUsagePluginProvider implements UsageProvider {
 
     const snapshot = normalizePluginResult(result);
     const startedAt = this.now();
-    if (this.recordPiSessionTokens && (this.pluginId === "codex" || this.pluginId === "claude")) {
+    let piSessionOwnership: { ownerId: null; days: string[] } | undefined;
+    if (this.piSessionTokensEnabled && (this.pluginId === "codex" || this.pluginId === "claude")) {
       try {
-        captureUsage(scanPiSessionUsage({
-          providerId: this.id,
-          card: this.pluginId === "codex" ? "codex" : "claude",
-          homeDir: this.homeDir,
-          env: this.env,
-          now: startedAt,
-        }));
+        const family = this.pluginId === "codex" ? "codex" : "claude-code";
+        const ownerId = this.piSessionAccounts === undefined ? this.id
+          : [...piSessionTokenOwnerIds(this.piSessionAccounts, this.homeDir, this.env)]
+            .find((id) => id === family || id.startsWith(`${family}:`));
+        if (ownerId === this.id || ownerId === undefined) {
+          const records = scanPiSessionUsage({
+            providerId: this.id,
+            card: this.pluginId === "codex" ? "codex" : "claude",
+            homeDir: this.homeDir,
+            env: this.env,
+            now: startedAt,
+          });
+          if (ownerId === this.id) captureUsage(records);
+          else piSessionOwnership = { ownerId: null, days: [...new Set(records.map((record) => record.startedAt))] };
+        }
       } catch (error) {
         console.error("Pi session token scan failed:", (error as NodeJS.ErrnoException).code ?? "UNKNOWN");
       }
@@ -210,6 +219,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
       pluginId: plugin.id ?? this.pluginId ?? this.id,
       plan: snapshot.plan,
       lines: snapshot.lines,
+      ...(piSessionOwnership === undefined ? {} : { piSessionOwnership }),
     };
 
     return [

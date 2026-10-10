@@ -111,7 +111,7 @@ refreshes (same pattern as `packages/providers/src/providers/grok-session-usage.
   for matching-to-unmatched Codex logins and configured Claude accounts, through both
   in-thread and worker refreshes. Commit the failing tests before the fix. Update
   `docs/providers/codex.md`, `docs/providers/claude.md`, `README_WEBUI.md`,
-  `README_WEBUI.zh-TW.md`, and `docs/USER_GUIDE_WEBUI.zh-TW.md`. Validation logs:
+  `README.md`, `README_WEBUI.zh-TW.md`, and `docs/USER_GUIDE_WEBUI.zh-TW.md`. Validation logs:
   `../openusage_webui-artifacts/2026-10-11-backlog/pi/r2/`. Run the focused regression,
   `bun run test -- --run`, `bun test packages/storage/test packages/providers/test apps/server/test apps/web/src`,
   and `bun run build:webui`. No push, service operation, or edits to other worktrees.
@@ -162,6 +162,11 @@ refreshes (same pattern as `packages/providers/src/providers/grok-session-usage.
   Claude/Codex family, including the default provider ID. Other days, sources, families,
   and ccusage rows are preserved. Configuring Claude accounts removes default Claude Pi
   rows because no configured Claude account receives unattributed Pi usage.
+  When a refresh scan has no owner for that family, its snapshot carries
+  `piSessionOwnership: { ownerId: null, days }`, where `days` contains the scanned daily
+  usage dates. Storage clears that family's Pi rows for those days in the same
+  replacement transaction; other days and ccusage remain. Another configured owner
+  prevents this cleanup signal. Failed insertion rolls back the cleanup.
 - Full rescan replaces the upstream persistent cache (D4). Unreadable files and subdirectories
   are skipped independently; logs contain only fixed text and an error code. A missing root
   returns empty. Read failures preserve the successful plugin snapshot. Authentication reads are strictly
@@ -175,6 +180,11 @@ refreshes (same pattern as `packages/providers/src/providers/grok-session-usage.
 
 ### Pi implementation evidence (2026-10-11)
 
+- Second-round no-owner cleanup: the storage regression first produced four assertion
+  failures from retained Pi rows with 12 passing tests (`pi/r2/pr2-1-red.log`). After
+  remediation, all 29 focused ownership/storage tests passed (`pi/r2/pr2-1-green.log`).
+  Full validation passed 1,196 Vitest tests (`pi/r2/pr2-1-vitest.log`), 430 Bun tests
+  (`pi/r2/pr2-1-bun-tests.log`), and the WebUI build (`pi/r2/pr2-1-build.log`).
 - No separate Pi plugin, card, credential source, or network call was added. The scanner,
   ownership resolver, worker options, token-record tool, and local Allowance day buckets are
   wired into existing Claude/Codex refreshes. The six Pi-relevant documentation files listed

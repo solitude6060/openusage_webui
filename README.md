@@ -187,6 +187,8 @@ scanner reads the last 30 days from `~/.pi/agent/sessions` (or the Pi directory 
 keeps Pi costs separate from ccusage, and assigns multi-account Codex usage only to the
 matching Pi login. See [Codex](docs/providers/codex.md#usage-from-pi) and
 [Claude](docs/providers/claude.md#usage-from-pi) for account rules.
+When a family has no Pi owner, a successful refresh clears its stored Pi records for
+the scanned usage days, preserving ccusage and other days.
 
 The WebUI adapter provides Linux host shims for original plugin HTTP, SQLite, local keychain, filesystem, crypto, and formatting APIs where needed. Local keychain shim data stays under `~/.openusage-webui/plugins/<provider>/keychain.json`.
 

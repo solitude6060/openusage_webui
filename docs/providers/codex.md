@@ -153,6 +153,9 @@ WebUI tracks multiple homes through the shared Provider Accounts feature (Settin
 
 When Pi usage changes owners, same-day Pi records are moved to the new owner in one
 storage transaction. Native ccusage records are preserved.
+If no configured account matches the Pi login, a successful refresh clears the Codex
+family's stored Pi records for the scanned usage days in that same transaction. Other
+days, sources, provider families, and ccusage records are preserved.
 Each refresh rereads Pi and Codex login identities, so switching logins takes effect
 on the next refresh without a server restart.
 Unreadable session files or subdirectories are skipped; other files still contribute.
@@ -177,7 +180,8 @@ whose `auth.json` `tokens.account_id` equals the base `openai-codex` OAuth `acco
 Pi's auth file receives it. The file is `PI_CODING_AGENT_DIR/auth.json`, else
 `~/.pi/agent/auth.json`; the sessions override does not change it. Duplicate matching
 homes select one owner by account ID. Disabled owners are not reassigned. No match logs
-a warning and skips Pi usage. Pool logins such as `openai-codex-2` are not used.
+a warning and adds no Pi usage rows; the scanned days identify which old Pi rows to
+clear. Pool logins such as `openai-codex-2` are not used.
 
 Scanning and ownership checks only read files. Pi credentials are not imported or
 updated, and message content is not stored or logged. A scan failure logs an error and

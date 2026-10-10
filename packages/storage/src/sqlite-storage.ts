@@ -254,7 +254,7 @@ export class SqliteStorage implements Storage {
     `);
     const deletePreviousPiOwners = db.prepare(`
       DELETE FROM usage_records
-      WHERE provider_id != ? AND (provider_id = ? OR provider_id GLOB ?)
+      WHERE (? IS NULL OR provider_id != ?) AND (provider_id = ? OR provider_id GLOB ?)
         AND tool = 'Pi Session' AND started_at = ? AND source = 'local-log'
     `);
     const clearLegacyCcusageTokens = db.prepare(`
@@ -272,13 +272,25 @@ export class SqliteStorage implements Storage {
         const scopes = new Set<string>();
         const legacyScopes = new Set<string>();
         for (const record of items) {
-          if (record.totalTokens === undefined || !record.tool) continue;
           const baseProviderId = providerIdFromAccountId(record.providerId) ?? record.providerId;
+          const piOwnership = (record.raw as {
+            piSessionOwnership?: { ownerId: null; days: string[] };
+          } | undefined)?.piSessionOwnership;
+          if (
+            record.tool === "OpenUsage Plugin Snapshot" && record.source === "api" &&
+            (baseProviderId === "claude-code" || baseProviderId === "codex") &&
+            piOwnership?.ownerId === null
+          ) {
+            for (const day of piOwnership.days) {
+              deletePreviousPiOwners.run(null, null, baseProviderId, `${baseProviderId}:*`, day);
+            }
+          }
+          if (record.totalTokens === undefined || !record.tool) continue;
           if (
             record.tool === "Pi Session" && record.source === "local-log" &&
             (baseProviderId === "claude-code" || baseProviderId === "codex")
           ) {
-            deletePreviousPiOwners.run(record.providerId, baseProviderId, `${baseProviderId}:*`, record.startedAt);
+            deletePreviousPiOwners.run(record.providerId, record.providerId, baseProviderId, `${baseProviderId}:*`, record.startedAt);
           }
           if (
             record.tool === "ccusage" &&

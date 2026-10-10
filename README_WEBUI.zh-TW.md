@@ -196,6 +196,9 @@ CODEX_HOME/auth.json
 
 Pi 歸屬切換時，同一天的 Pi 紀錄會移到新帳號。設定 Claude 帳號後，會移除原本預設
 Claude provider 的 Pi 紀錄；兩種情況都保留 ccusage 紀錄。
+若 Codex 沒有符合 Pi 登入的帳號，或已設定 Claude 帳號而無法歸屬 Pi 用量，下次成功
+更新會清除該 provider 群組在掃描日期的既有 Pi 紀錄。其他日期、來源、provider 群組
+與 ccusage 紀錄均保留。
 每次更新都會重新判斷 Pi 歸屬；Pi 或 Codex 登入切換在下次更新生效，無須重啟伺服器。
 無法讀取的 session 檔案或子目錄會個別略過，其餘檔案繼續計入。日誌只記錄錯誤代碼，
 不包含檔案內容或路徑。
