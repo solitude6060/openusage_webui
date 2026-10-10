@@ -356,12 +356,16 @@ export class SqliteStorage implements Storage {
               ORDER BY started_at DESC, id DESC
             ) AS rn
           FROM usage_records
-          WHERE tool = 'OpenUsage Plugin Snapshot'
-             OR (
-               raw_json IS NOT NULL
-               AND json_valid(raw_json)
-               AND json_type(raw_json, '$.quota') = 'object'
-             )
+          WHERE json_valid(raw_json)
+            AND json_type(raw_json) = 'object'
+            AND (
+              json_type(raw_json, '$.lines') = 'array'
+              OR json_type(raw_json, '$.quota') = 'object'
+            )
+            AND (
+              tool = 'OpenUsage Plugin Snapshot'
+              OR json_type(raw_json, '$.quota') = 'object'
+            )
         )
         WHERE rn = 1
         ORDER BY started_at DESC
