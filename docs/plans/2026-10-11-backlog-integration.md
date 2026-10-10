@@ -60,3 +60,26 @@ Logs: step-2-bun-test.log and step-2-vitest.log.
 Step 3: user guide and shared source-plan conflicts resolved by retaining both
 OpenRouter and Ollama records. Default-disabled wiring and hourly behavior retained.
 Bun: 434 passed; Vitest: 1,301 passed. Logs: step-3-bun-test.log and step-3-vitest.log.
+
+Step 4: seven conflicts resolved, preserving all three provider source records,
+Pi dynamic ownership and atomic cleanup, and hourly-only Allowance storage. Pi
+local-day rules moved into the extracted allowance-tokens.ts helper. A new regression
+checks hourly/native/Pi coexistence and no-owner cleanup. Bun: 487 passed; Vitest:
+1,301 passed. Logs: step-4-bun-test.log and step-4-vitest.log. An independent
+read-only Sol/high context inspected the source contracts with no integration defect.
+Direct source comparison confirmed the hourly sum guard and native/Pi summary method
+are unchanged from their respective branches.
+
+First-principles audit for the step-4 timeout failure:
+- Need: preserve process cleanup guarantees and validate the integration.
+- Assumption: the failure might be an integration regression.
+- Ground truth: the test and ccusage implementation are byte-identical to 49b3b38;
+  the focused suite passed 13 tests and the full rerun passed all 487. The initial
+  failure is archived in step-4-bun-test-attempt-1.log; cause not determined.
+- If source or repeated evidence contradicted this result, reproduce and fix the
+  affected behavior with a regression rather than weakening the assertion.
+- Decision: retain the assertion and implementation; the checks produce evidence
+  without expanding this task into unrelated timeout-cleanup work.
+
+Final WebUI build and ancestry checks follow the fourth merge; results are recorded
+in the persistent integration report and the local project management files.

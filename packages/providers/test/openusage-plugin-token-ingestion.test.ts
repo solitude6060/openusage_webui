@@ -18,6 +18,7 @@ describe("OpenUsagePluginProvider token ingestion", () => {
       providerId: "codex:family",
       name: "Codex Family",
       pluginId: "codex",
+      recordPiSessionTokens: false,
       scriptText: `
         globalThis.__openusage_plugin = {
           id: "codex",
@@ -97,6 +98,7 @@ describe("OpenUsagePluginProvider token ingestion", () => {
       providerId: "claude-code:work",
       name: "Claude Work",
       pluginId: "claude",
+      recordPiSessionTokens: false,
       scriptText: `
         globalThis.__openusage_plugin = {
           id: "claude",
@@ -296,6 +298,7 @@ describe("OpenUsagePluginProvider token ingestion", () => {
       name: "Codex Family",
       pluginId: "codex",
       recordCcusageTokens: false,
+      recordPiSessionTokens: false,
       scriptText: `
         globalThis.__openusage_plugin = {
           id: "codex",
@@ -335,6 +338,7 @@ describe("OpenUsagePluginProvider token ingestion", () => {
       providerId: "codex:family",
       name: "Codex Family",
       pluginId: "codex",
+      recordPiSessionTokens: false,
       scriptText: `
         globalThis.__openusage_plugin = {
           id: "codex",

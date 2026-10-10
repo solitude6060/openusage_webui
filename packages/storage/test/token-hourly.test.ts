@@ -169,6 +169,38 @@ describe("listAllowanceTokenRows", () => {
     }
   });
 
+  test("Claude hourly rows preserve same-day Pi usage and survive Pi owner cleanup", async () => {
+    const previousTz = process.env.TZ;
+    process.env.TZ = "Asia/Taipei";
+    const storage = await seeded([
+      daily({ id: "native", providerId: "claude-code", tool: "ccusage", source: "local-log", totalTokens: 300, costUsd: 2 }),
+      daily({ id: "pi", providerId: "claude-code", tool: "Pi Session", source: "local-log", model: "Pi Model", totalTokens: 40, costUsd: 3 }),
+      hourly({ id: "native-hour", providerId: "claude-code", tool: "ccusage", source: "local-log", model: "All Models", startedAt: "2026-10-09T05:00:00.000Z", totalTokens: 300, costUsd: 2 }),
+    ]);
+    try {
+      const rows = await storage.listAllowanceTokenRows(FROM);
+      expect(rows.reduce((sum, row) => sum + row.tokens, 0)).toBe(340);
+      expect(rows.find((row) => row.model === "Pi Model")).toMatchObject({
+        startedAt: "2026-10-08T16:00:00.000Z", bucketEnd: "2026-10-09T16:00:00.000Z", tokens: 40,
+      });
+      expect((await storage.listUsageRecords()).map((row) => row.id).sort()).toEqual(["native", "pi"]);
+      expect((await storage.getUsageSummary()).byProvider[0]?.costUsd).toBe(5);
+      await storage.upsertUsageRecords([{
+        id: "no-pi-owner", providerId: "claude-code", tool: "OpenUsage Plugin Snapshot",
+        startedAt: "2026-10-11T00:00:00.000Z", source: "api",
+        raw: { piSessionOwnership: { ownerId: null, days: ["2026-10-09T00:00:00.000Z"] } },
+      }], { replaceScopes: true });
+      expect(await storage.listAllowanceTokenRows(FROM)).toEqual([
+        { providerId: "claude-code", model: "All Models", tokens: 300, costUsd: 2,
+          startedAt: "2026-10-09T05:00:00.000Z", bucketEnd: "2026-10-09T06:00:00.000Z" },
+      ]);
+      expect((await storage.listUsageRecords()).some((row) => row.id === "native")).toBe(true);
+    } finally {
+      storage.close();
+      process.env.TZ = previousTz ?? "UTC";
+    }
+  });
+
   test("ignores zero-token hourly rows and hours older than the cutoff", async () => {
     const storage = await seeded([
       hourly({ id: "h-zero", providerId: "grok", tool: "Grok Session", source: "local-log", startedAt: "2026-10-09T05:00:00.000Z", totalTokens: 0 }),

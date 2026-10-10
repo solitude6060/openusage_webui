@@ -69,6 +69,13 @@ refreshes (same pattern as `packages/providers/src/providers/grok-session-usage.
 | `Tests/OpenUsageTests/OllamaMonthlyUsageTests.swift` | `007224ea1b4facefc9eb345950646d60008f72cbd5dda8080044bbcf6a2f785f` |
 | `Tests/OpenUsageTests/OpenRouterProviderTests.swift` | `0395e307f8b08af4f07c1f90cf9bb9a926b0210d70ba8d975d76b6ab761c4e18` |
 | `Tests/OpenUsageTests/PiUsageScannerTests.swift` | `9b15a389d08249dac6e625b532da38ab6002cdb47ec560e5271131523bbbea85` |
+| `Sources/OpenUsage/Services/ProviderAccountAssembly+Codex.swift` | `3a16fccc66efab9d49f15ce9b5a424a00d0f85ba486f4bb0398e3960d5d6181d` |
+| `Sources/OpenUsage/Providers/IncrementalJSONLScanner.swift` | `cc236426c727007ddafe4bde56768019b1e11bc3ac5edba03b801dda9c727030` |
+| `Sources/OpenUsage/Providers/DailyUsageAccumulator.swift` | `75c97a080f60f63a7fb620b88302c79fcc4e6a5ade4855b09c733328057de867` |
+| `Sources/OpenUsage/Providers/Codex/CodexUsagePricing.swift` | `26fc91db759466cf13c0e0bd82293c9d85c57f895e358e76a601281126b83009` |
+| `Sources/OpenUsage/Support/ProviderParse.swift` | `97bd62ef886543ee5c7653617313a6b992a8143dcdec1f31d438a2f56fd1630a` |
+| `Sources/OpenUsage/Support/OpenUsageISO8601.swift` | `326bd0e01154be921b9c8e3da240dfb647bacb563e8567b19610ce9cac43c7a9` |
+| `Sources/OpenUsage/Providers/JSONLStreamingReader.swift` | `0659314418a50815a28ef7e526817e7754d19d15ec6198f6d8c57b929c9f7f98` |
 
   Also read for context (not ported): `ProviderCatalog.swift`, `ClaudeProvider.swift`,
   `CodexProvider.swift`, `CodexHistoryScope.swift`, `ProviderAccountAssembly+Codex.swift`,
@@ -205,6 +212,123 @@ Redaction audit (`src-tauri/src/plugin_engine/host_api.rs`, `redact_url` / `reda
 | OpenSSH private key | Neither `redact_body` nor `redact_log_message` has a pattern for `-----BEGIN OPENSSH PRIVATE KEY-----` or its base64 | Same: the plugin never logs it; a tested guarantee, not a host one |
 | Seed, PEM, signature in errors | Tests: `plugins/ollama/plugin.test.js` "secret handling" (key body, seed in base64 / hex / base64url, header, signature, `/api/me` fields absent from every log call, thrown message and returned snapshot, including when the host throws an error that echoes them) and `packages/providers/test/openusage-plugin-ed25519.test.ts` (fixed host error text) | Covered |
 
+### Pi implementation decisions and differences
+
+- Second-round remediation (PR2-1, stale Pi usage after losing the matching account):
+  after a successful Claude/Codex probe, scan Pi data when that family has no owner and
+  attach an explicit null owner plus the scanned usage days to the plugin snapshot.
+  Storage clears only that family's `Pi Session` / `local-log` rows for those days in
+  the same replacement transaction as the snapshot insertion. A configured owner on
+  another account must not trigger cleanup. Preserve ccusage, other days, families,
+  and sources; an insertion failure rolls back cleanup. Add storage integration tests
+  for matching-to-unmatched Codex logins and configured Claude accounts, through both
+  in-thread and worker refreshes. Commit the failing tests before the fix. Update
+  `docs/providers/codex.md`, `docs/providers/claude.md`, `README_WEBUI.md`,
+  `README.md`, `README_WEBUI.zh-TW.md`, and `docs/USER_GUIDE_WEBUI.zh-TW.md`. Validation logs:
+  `../openusage_webui-artifacts/2026-10-11-backlog/pi/r2/`. Run the focused regression,
+  `bun run test -- --run`, `bun test packages/storage/test packages/providers/test apps/server/test apps/web/src`,
+  and `bun run build:webui`. No push, service operation, or edits to other worktrees.
+- Review remediation scope (PR1-1 through PR1-5): atomically remove same-day Pi rows
+  from previous owners within the Claude/Codex family, preserving ccusage; remove default
+  Claude Pi rows when Claude accounts are configured; resolve login ownership at each
+  refresh; skip unreadable files/directories with error-code-only logging; isolate the
+  native-only Claude API test; skip files modified before the scan cutoff. Each finding
+  gets a failing `test:` commit followed by a `fix:` commit. Validation logs are under
+  `../openusage_webui-artifacts/2026-10-11-backlog/pi/r1/`. Behavior documentation to update:
+  `docs/providers/codex.md`, `docs/providers/claude.md`, `README_WEBUI.md`,
+  `README_WEBUI.zh-TW.md`, and `docs/USER_GUIDE_WEBUI.zh-TW.md`. Summary unknown-cost
+  display is deferred by the orchestrator.
+- Source files above were fetched read-only at the exact pin with `gh api`. Copies and
+  verification logs live under `../openusage_webui-artifacts/2026-10-11-backlog/pi/`.
+- Only Claude and Codex consume Pi rows. Other upstream-mapped providers and unmapped providers
+  are dropped, per decision 3. No Pi provider card or credential import is added.
+- The scan cutoff is local midnight 30 calendar days before refresh, matching
+  `JSONLScanning.sinceDate`; files modified before the cutoff are skipped before reading.
+  Retained files are path-sorted before keep-first message-ID deduplication, followed by
+  message-date and card filtering, matching `IncrementalJSONLScanner` / `PiUsageScanner`.
+  ISO timestamps without a zone are normalized as UTC; fractional seconds and the space/UTC
+  forms use the existing plugin utility, matching `OpenUsageISO8601`.
+- Pi costs join the existing usage summary. `getUsageSummary` already sums all tools; its
+  `ccusage`-only branch chooses between native structured costs and legacy CLI costs. Keep Pi
+  outside that branch so a legacy CLI price never removes independent Pi costs.
+- Codex zero/missing carried costs use the existing standard-rate table, as specified here.
+  Upstream additionally applies long-context/priority adjustments, model aliases, and dated
+  auto-review fallback models; those estimators are not available in this port. Free auto-review
+  from 2026-10-06 remains $0 even when a carried cost is positive.
+- Upstream excludes unpriceable rows and lists unknown models separately. The port retains
+  their reported tokens with undefined cost, as specified here; a daily model total containing
+  any unpriced message has undefined cost. Claude has no fallback rate table.
+- Upstream splits cache writes into 5-minute and 1-hour buckets. `UsageRecord` has one cache-write
+  field, so the port stores `max(cacheWrite - cacheWrite1h, 0) + cacheWrite1h` there.
+  Missing model names use the existing storage label `Unknown`.
+- Pi daily records encode the local date at UTC midnight, like ccusage. Allowance translates
+  that date back to local midnight, including daylight-saving day lengths.
+- Account ownership uses the configured Codex homes' `tokens.account_id` and Pi's base
+  `openai-codex` OAuth `accountId`; pool entries and credential sources remain out of scope.
+  Each Claude/Codex refresh resolves ownership from the current login files, including
+  inside the refresh worker; reusing providers does not freeze the login identity.
+  Disabled configured accounts participate in ownership selection so their usage is not
+  reassigned. Duplicate matching homes select one owner by account ID because Swift collapses
+  identical account identities into one card. Only the unconfigured default Claude provider
+  receives unattributed Pi usage.
+- Same-day `Pi Session` / `local-log` rows move between owners atomically within their
+  Claude/Codex family, including the default provider ID. Other days, sources, families,
+  and ccusage rows are preserved. Configuring Claude accounts removes default Claude Pi
+  rows because no configured Claude account receives unattributed Pi usage.
+  When a refresh scan has no owner for that family, its snapshot carries
+  `piSessionOwnership: { ownerId: null, days }`, where `days` contains the scanned daily
+  usage dates. Storage clears that family's Pi rows for those days in the same
+  replacement transaction; other days and ccusage remain. Another configured owner
+  prevents this cleanup signal. Failed insertion rolls back the cleanup.
+- Full rescan replaces the upstream persistent cache (D4). Unreadable files and subdirectories
+  are skipped independently; logs contain only fixed text and an error code. A missing root
+  returns empty. Read failures preserve the successful plugin snapshot. Authentication reads are strictly
+  read-only; no keys, tokens, message bodies, or response IDs enter usage records or logs.
+- Redaction audit: Pi adds no HTTP request, plugin request/response fields, or Rust host API.
+  `host_api.rs:396-434` already redacts `accountId` and `account_id` but has no plain `access`
+  or `refresh` auth-key rule. Pi auth stays inside the Node ownership reader and never crosses
+  that logging boundary; all its error messages are constant strings. Pi fixtures assert that
+  private access values and message text are absent from logs and emitted records. No host
+  redaction-list change is required for this scanner.
+
+### Pi implementation evidence (2026-10-11)
+
+- Second-round no-owner cleanup: the storage regression first produced four assertion
+  failures from retained Pi rows with 12 passing tests (`pi/r2/pr2-1-red.log`). After
+  remediation, all 29 focused ownership/storage tests passed (`pi/r2/pr2-1-green.log`).
+  Full validation passed 1,196 Vitest tests (`pi/r2/pr2-1-vitest.log`), 430 Bun tests
+  (`pi/r2/pr2-1-bun-tests.log`), and the WebUI build (`pi/r2/pr2-1-build.log`).
+- No separate Pi plugin, card, credential source, or network call was added. The scanner,
+  ownership resolver, worker options, token-record tool, and local Allowance day buckets are
+  wired into existing Claude/Codex refreshes. The six Pi-relevant documentation files listed
+  below were updated; OpenRouter/Ollama documentation is left to their own implementations.
+- Red: 26 of 30 focused tests failed on absent Pi behavior (`pi/red.log`), with four existing
+  storage behaviors passing. An additional timestamp test failed on incorrect local-day
+  grouping (`pi/red-timestamp.log`) before normalization was corrected.
+- Green: 31 Pi tests passed under `TZ=Asia/Taipei` (`pi/green-timestamp.log`). The full requested
+  Bun suite passed 409 tests across 48 files (`pi/bun-tests-complete.log`); Vitest passed 1,196
+  tests across 67 files (`pi/vitest-final.log`). `bun run build:webui` passed
+  (`pi/build-final.log`). Logs are under the persistent artifact directory named above.
+- The first full Bun run exposed four fixture tests reading actual Pi sessions; native-only
+  tests now explicitly disable Pi recording, and the server test uses its isolated fixture
+  home with both Pi and native rows. The known ccusage timeout child-process test failed once
+  in that run, then passed in both subsequent full runs without a production change.
+- Read-only real-data check at `2026-10-11T00:21:34.670981+08:00`, cutoff
+  `2026-09-11T00:00:00+08:00`: 285 Pi files contain 34,428 Codex assistant usage messages and
+  4,368 other-provider usage messages. The scanner produces two daily-model records for
+  2026-09-13 through 2026-09-15, from 277 usable messages after ID deduplication and the cutoff.
+  Three additional messages have zero tokens and no known cost and emit no record.
+- Real Codex totals: 40,168,984 reported tokens; 2,019,171 input; 111,157 output; 38,038,656
+  cache-read; zero cache-write tokens. Both records have known cost. Independent Python counts
+  match every token bucket and record count (`pi/real-data-reference.json`,
+  `pi/real-data-scan-final.json`); scripts are archived beside those count-only files. The first
+  comparison counted empty model groups; its initial script, counts, and failed comparison
+  remain archived, and the corrected reference explicitly counts the three empty messages.
+- The local ownership check selects `~/.codex` once and `~/.codex-family` zero times. Across
+  all Pi Codex messages, 11,185 unique response IDs have zero overlap with response IDs in
+  4,128 native Codex rollout files (`pi/real-data-reference.json`). No response IDs or private
+  contents were printed or saved. No live database, other worktree, or service was accessed.
+
 ## Changes
 
 ### 1. OpenRouter plugin (`plugins/openrouter/`)
@@ -292,6 +416,7 @@ the ownership rule from `ProviderAccountAssembly+Codex.swift:152,170`.
 - Parse: lines containing `"usage":{`; `type == "message"`, `message.role == "assistant"`,
   `message.provider` mapped via the upstream table (`anthropic`, `claude-agent-sdk` → Claude;
   `openai-codex` → Codex; others in the table have no consumer upstream and are dropped here too).
+  Skip files modified before the cutoff before reading or deduplication.
   Tokens: input, cacheRead, cacheWrite (5 m = cacheWrite − cacheWrite1h), output; row total =
   `usage.totalTokens`. Dedup by top-level `id`, keep first. Window: last 30 days, local-day buckets.
 - Cost precedence (upstream): Codex model `codex-auto-review` at or after 2026-10-06T00:00:00Z →
@@ -324,8 +449,8 @@ the ownership rule from `ProviderAccountAssembly+Codex.swift:152,170`.
   accounts → only the account whose `<homePath>/auth.json` `tokens.account_id` equals
   `~/.pi/agent/auth.json` `openai-codex.accountId` owns it; no match → nobody, logged once. Our
   accounts are identified by `homePath` only (`registry.ts`, `account-detect.ts`), so this is a
-  file read per account, not a port of `PiCodexLoginScanner`. Pass the result into
-  `createHomedPluginProvider` the same way `recordCcusageTokens` is passed.
+  file read per account, not a port of `PiCodexLoginScanner`. Pass configured account homes
+  into `createHomedPluginProvider` and its refresh worker; resolve ownership at each refresh.
 - Not ported: pi as a Codex credential source (`piCredentialSources`); `multi-pass.json` labels;
   `openai-codex-N` pool entries (only `openai-codex` decides ownership upstream).
 - Tokens-page dedup: pi talks to the OpenAI Codex backend directly, not through the Codex CLI, so

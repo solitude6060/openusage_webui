@@ -74,6 +74,7 @@ function createHomedPluginProvider(options: {
   homePath: string | undefined;
   env: NodeJS.ProcessEnv;
   recordCcusageTokens?: boolean;
+  piSessionAccounts?: ProviderAccount[];
 }): UsageProvider {
   const providerEnv = { ...options.env };
   if (options.homePath) {
@@ -86,6 +87,7 @@ function createHomedPluginProvider(options: {
     scriptPath: resolveBundledPluginScriptPath(options.pluginId),
     env: providerEnv,
     recordCcusageTokens: options.recordCcusageTokens,
+    piSessionAccounts: options.piSessionAccounts,
   });
 }
 
@@ -132,6 +134,7 @@ export function getProviders(options: GetProvidersOptions = {}): UsageProvider[]
           homePath: account.homePath,
           env,
           recordCcusageTokens: tokenOwnerIds ? tokenOwnerIds.has(account.id) : true,
+          piSessionAccounts: provider.providerId === "codex" || provider.providerId === "claude-code" ? accounts : undefined,
         }),
       );
     }
@@ -144,6 +147,7 @@ export function getProviders(options: GetProvidersOptions = {}): UsageProvider[]
         baseProviderId: provider.providerId,
         homePath: undefined,
         env,
+        piSessionAccounts: provider.providerId === "codex" || provider.providerId === "claude-code" ? accounts : undefined,
       }),
     ];
   });

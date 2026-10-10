@@ -4,7 +4,7 @@ import type { UsageRecord } from "../../core/src/types";
 const HOUR_MS = 3600000;
 
 // Token tools whose rows are daily buckets in usage_records.
-export const DAILY_TOKEN_TOOLS = ["ccusage", "Cursor Usage Event", "Grok Session"];
+export const DAILY_TOKEN_TOOLS = ["ccusage", "Cursor Usage Event", "Grok Session", "Pi Session"];
 
 export const TOKEN_HOURLY_SCHEMA = `
   CREATE TABLE IF NOT EXISTS token_hourly (
@@ -49,7 +49,7 @@ export function prepareHourlyUpsert(db: Database): (record: UsageRecord) => void
 }
 
 export function allowanceTokenTimes(tool: string | null, startedAt: string): { startedAt: string; bucketEnd?: string } {
-  if (tool === "ccusage") {
+  if (tool === "ccusage" || tool === "Pi Session") {
     const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(startedAt);
     if (match) {
       const year = Number(match[1]);

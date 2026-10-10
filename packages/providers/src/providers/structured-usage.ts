@@ -3,7 +3,7 @@ import type { ProviderId, UsageRecord, UsageSource } from "../../../core/src/typ
 import { openAiTokenCostUsd } from "../openai-token-rates";
 
 type JsonObject = Record<string, unknown>;
-type TokenRecordKind = "ccusage" | "cursor-event" | "grok-session";
+type TokenRecordKind = "ccusage" | "cursor-event" | "grok-session" | "pi-session";
 const HOUR_MS = 3600000;
 
 export function normalizeCcusageDailyRecords(
@@ -293,7 +293,8 @@ export function createTokenRecord(
   costUsd?: number,
 ): UsageRecord {
   const tool =
-    kind === "ccusage" ? "ccusage" : kind === "grok-session" ? "Grok Session" : "Cursor Usage Event";
+    kind === "ccusage" ? "ccusage" : kind === "grok-session" ? "Grok Session"
+      : kind === "pi-session" ? "Pi Session" : "Cursor Usage Event";
   const source: UsageSource = kind === "cursor-event" ? "api" : "local-log";
   return {
     id: createHash("sha256")

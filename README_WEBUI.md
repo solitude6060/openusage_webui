@@ -32,6 +32,9 @@ A local-first WebUI dashboard for AI coding usage on Ubuntu/Linux.
   from Claude/Codex local usage, complete Cursor usage-event refreshes, and Grok Build
   CLI session transcripts
 
+Pi session usage is included under the existing Claude and Codex providers; it has no
+separate provider card.
+
 ## What It Does Not Do
 
 - No browser cookie scraping
@@ -147,6 +150,37 @@ Codex reads `CODEX_HOME/auth.json` when `CODEX_HOME` is set, otherwise `~/.confi
 The original plugins may refresh OAuth tokens and write updated credentials back to the same file source. Browser cookies are not used.
 
 Allowance measures between hour boundaries where hourly token data exists (Claude, Cursor and Grok) and between day boundaries otherwise (Codex, and older days that have no hourly data). Hourly data is stored separately and read only by Allowance; the Tokens, Sessions and Dashboard totals still use daily rows. On a Claude card, days measured hourly list one `All Models` row instead of per-model rows.
+
+### Usage From Pi
+
+Changing Pi owners replaces same-day Pi records across the provider family. Configuring
+Claude accounts removes default Claude Pi records. Both operations preserve ccusage.
+When no account owns a family's Pi usage, a successful refresh clears that family's
+stored Pi records only for the scanned usage days. Other days, sources, provider
+families, and ccusage records are preserved.
+Pi ownership is checked on each refresh. A Pi or Codex login change takes effect at
+the next refresh without restarting the server.
+Unreadable session files or subdirectories are skipped while other files are counted.
+Logs contain an error code without file contents or paths.
+Files modified before the 30-day cutoff are skipped before message-ID deduplication.
+
+After a successful Claude or Codex refresh, the WebUI reads Pi assistant usage from the
+last 30 days, starting at local midnight. Sessions come from `PI_CODING_AGENT_SESSION_DIR`,
+then `PI_CODING_AGENT_DIR/sessions`, then `~/.pi/agent/sessions`. Only `anthropic`,
+`claude-agent-sdk`, and `openai-codex` usage is included. Copied message IDs count once.
+
+`Pi Session` records add to Tokens, Allowance, and cost summaries alongside ccusage. They
+use local calendar days and Pi's positive recorded cost; Codex falls back to the existing
+standard token rates. Unpriced usage retains its tokens with unknown cost. Codex
+`codex-auto-review` is free from 2026-10-06 UTC, even if Pi records an estimated cost.
+
+A single Codex provider owns Pi Codex usage. With several configured homes, only the home
+whose `auth.json` `tokens.account_id` matches Pi's `openai-codex` OAuth `accountId` receives
+it. Pi auth uses `PI_CODING_AGENT_DIR/auth.json`, otherwise `~/.pi/agent/auth.json`.
+Disabled accounts are not reassigned. Claude usage goes only to the default provider
+when no Claude accounts are configured. An unmatched account or scan error is logged;
+the existing quota snapshot remains available. The scanner never imports or updates
+Pi credentials, and stores no message content.
 
 Refresh All and individual provider refreshes run in request order. An individual refresh
 waits for an earlier refresh to finish. Concurrent Refresh All requests share one run

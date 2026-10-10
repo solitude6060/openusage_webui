@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { ProviderId, UsageRecord } from "../../../core/src/types";
+import type { ProviderAccount, ProviderId, UsageRecord } from "../../../core/src/types";
 
 // A hung plugin blocks only this worker. 120s matches the server idle timeout,
 // which is longer than the 33s Cursor refresh measured on 2026-10-10.
@@ -16,6 +16,8 @@ export interface OpenUsagePluginWorkerOptions {
   homeDir: string;
   pluginDataDir: string;
   recordCcusageTokens: boolean;
+  recordPiSessionTokens?: boolean;
+  piSessionAccounts?: ProviderAccount[];
 }
 
 type WorkerResponse =

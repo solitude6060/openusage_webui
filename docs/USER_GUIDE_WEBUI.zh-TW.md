@@ -185,6 +185,13 @@ Tokens 頁面依時間區間加總本機 `usage_records` 的 token：
   不同 model 版本仍分開顯示
 - Claude／Codex 會使用本機 usage logs；Cursor 會使用完整取得的 usage events；Grok Build 會使用 Grok CLI session transcripts（`~/.grok/sessions/**/updates.jsonl` 裡的完成回合）
 - 多個 Codex 帳號的 `sessions` 目錄若解析後是同一個目錄，Tokens 只保留該目錄本體那個帳號的列。另一個帳號的配額卡仍分開更新，卡片上的 Today／Last 30 Days 也仍會顯示。
+- Pi 的 `anthropic`／`claude-agent-sdk`／`openai-codex` assistant 用量，在 Claude／Codex 更新成功後加入既有 provider。掃描最近 30 天的 `~/.pi/agent/sessions/**/*.jsonl`，也支援 `PI_CODING_AGENT_SESSION_DIR` 與 `PI_CODING_AGENT_DIR`。重複訊息 ID 只計一次，以 `Pi Session` 紀錄與 ccusage 分別保存。
+- 只有一個 Codex provider 時會接收 Pi Codex 用量；設定多個帳號時，只有登入帳號 ID 與 Pi `openai-codex` OAuth 登入相同者接收。沒有符合帳號就略過，停用帳號的用量不會重新分配。Claude 只在沒有設定 Claude 帳號時，由預設 provider 接收 Pi 用量。Pi 登入檔只讀取，不匯入或更新憑證。
+- Pi 歸屬切換後，同一天的 Pi 紀錄會移到新帳號。設定 Claude 帳號後會移除預設 Claude provider 的 Pi 紀錄，ccusage 紀錄保留。
+- Codex 沒有符合 Pi 登入的帳號，或已設定 Claude 帳號而無法歸屬 Pi 用量時，下次成功更新只會清除該 provider 群組在掃描日期的既有 Pi 紀錄。其他日期、來源、provider 群組與 ccusage 紀錄均保留。
+- 每次更新都會重讀 Pi 與 Codex 登入身分，登入切換在下次更新生效，無須重啟伺服器。
+- 無法讀取的 Pi session 檔案或子目錄會個別略過，其餘檔案繼續計入。日誌只記錄錯誤代碼，不包含檔案內容或路徑。
+- 修改時間早於 30 天截止日的 Pi 檔案會整份略過，其訊息 ID 不參與去重。
 
 按下 Refresh All 或等待自動 refresh 後，上述來源會更新對應日期與 model 的 token
 records。Claude／Codex plugin refresh 失敗時，本機 `ccusage` token 數值仍會保留；plugin
@@ -207,7 +214,8 @@ Allowance 頁用你這段時間的實際 token，除以同一個額度表移動�
 - 每小時用量另外存放，只給 Allowance 使用；Tokens、Sessions、Dashboard 仍用每日紀錄
 - Claude 的每小時用量來自 ccusage 的 1 小時區塊，不分模型，卡片上以每小時用量測量的日子只列一行 `All Models`。已結束的日子，每小時合計等於當天 ccusage 的每日合計，才會寫入新的每小時用量；不相符（包含當天有每日用量卻沒有可用區塊）就記錄一筆錯誤，該日不寫入新資料。該日先前已存的每小時用量會保留，Allowance 仍然使用；沒有任何已存每小時用量的日子才沿用每日紀錄。今天（尚未結束的日子）不做這項檢查，直接寫入。Claude Code 已刪除舊 log 的日子沒有每小時用量，也沿用每日紀錄
 - Codex 沒有每小時用量來源，維持每日紀錄
-- Claude 與 Codex 的 ccusage 每日用量是匯入當下的本地日，讀取時用這台電腦的當地午夜對齊。Cursor 與 Grok 的每日用量維持 UTC 日。這台電腦改了時區，既有的 ccusage 每日用量會整批跟著新時區平移
+- Claude 與 Codex 的 ccusage／Pi Session 每日用量是匯入當下的本地日，讀取時用這台電腦的當地午夜對齊。Cursor 與 Grok 的每日用量維持 UTC 日。這台電腦改了時區，既有的 ccusage／Pi Session 每日用量會整批跟著新時區平移
+- Pi Session 維持每日紀錄；同一天的 ccusage 改用每小時資料時，Pi 用量仍分別計入
 - 零時前後讀數相同，只代表用量沒有跨過下一個百分點，每一端最多可能差 1 個百分點
 - 百分比移動不到 5 個點時，數字仍會顯示，並標成 Rough Estimate
 - 百分比沒有移動、區間中途往下掉，或這段沒有 token 紀錄時，不算出配額。正向移動不到 1 個百分點仍可粗估
@@ -218,6 +226,7 @@ Allowance 頁用你這段時間的實際 token，除以同一個額度表移動�
 - Codex 優先保留 ccusage 提供的模型費用，包含明確的 0。整天總額若只剩一個模型尚未定價，可將可確認的餘額歸給該模型；其餘已知模型才依 OpenAI 標準短上下文單價估價。多個未知模型無法拆分時，保持未知。單日合計看不出哪些請求用了長上下文或 Fast mode
 - Cursor 的非數字費用保持未知，明確數字 0 則保留。API Value 為 0 時仍會顯示
 - Summary 遇到同一天舊 CLI 費用與新模型費用時，只有能辨認單一帳號的資料才套用來源優先序：模型費用完整就使用模型總額，模型費用不完整則使用已知的舊每日總額。原始紀錄保留；多帳號的舊紀錄無法確認歸屬時仍分別顯示
+- Pi 費用另外加入 Summary 與 Allowance，優先使用每筆訊息記下的大於零費用；Codex 缺少費用時使用既有標準單價，Claude 保持未知。`codex-auto-review` 自 2026-10-06 UTC 起費用為零。無法定價的紀錄保留 token；同一模型同一天含有無法定價的訊息時，該合計費用保持未知
 
 模型名稱列在估算下面，表示這些 token 怎麼組成，不是每個模型各有一份訂閱配額。
 
