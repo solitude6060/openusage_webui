@@ -97,10 +97,10 @@ describe("Dashboard line grouping", () => {
     expect(result.summaryLines.map((line) => line.label)).toEqual([
       "Credits",
       "Total usage",
-    ]);
-    expect(result.detailLines.map((line) => line.label)).toEqual([
       "Auto usage",
       "API usage",
+    ]);
+    expect(result.detailLines.map((line) => line.label)).toEqual([
       "Last 7 Days",
       "claude-4.6-opus-high-thinking",
       "Last 7 Days Cost",
