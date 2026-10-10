@@ -76,6 +76,8 @@ OpenUsage also accepts `seven_day_falbe`, `weekly_fable`, `weekly_falbe`, `fable
 
 Current responses put model weekly windows in `limits[]` instead of `seven_day_fable`. Each entry with `kind: "weekly_scoped"` and a model `display_name` becomes a `<display_name> Weekly` percent line (for example `Fable Weekly`), using `percent` as the used amount and `resets_at` as the reset time. Older `seven_day_*` keys are still read. If both shapes describe the same model, OpenUsage keeps the legacy line and does not add a second one. `Sonnet` and `Sonnet Weekly` are the same quota, and so are `Claude Design` and `Claude Design Weekly`.
 
+After each refresh, OpenUsage also runs `ccusage claude blocks --json --session-length 1` with the same `--since` date as the daily query and stores the one-hour totals in a separate `token_hourly` table that only the Allowance page reads. Blocks have no per-model split, so these rows use the model name `All Models`. For each completed local day, new hourly rows are written only when their sum equals the day's daily `totalTokens`. A day with daily tokens but no usable block counts as a mismatch. A mismatch is logged and nothing is written for that day: hourly rows already stored for it stay and Allowance keeps reading them, and a day with no stored hourly rows keeps using its daily rows. Today (the day still in progress) is written without the check. Days whose Claude logs are already deleted have no blocks and keep their daily rows. A failed blocks call is logged and does not fail the refresh.
+
 Local `ccusage` data can also include Fable model rows such as `claude-fable-5`, but OpenUsage does not infer remaining Fable weekly quota from local logs. If the live usage API does not return a separate Fable weekly quota window, the dashboard does not show a Fable weekly line.
 
 ## Authentication
@@ -123,6 +125,35 @@ Because Linux WebUI does not use the macOS keychain, the adapter relies on the f
 ### Multiple Claude Homes (WebUI)
 
 Use Settings → Provider Accounts, choose **Claude Code**, then detect or add homes. Configured accounts become `claude-code:<slug>` providers with `CLAUDE_CONFIG_DIR` set to that home. Detect looks for `~/.claude` and process `CLAUDE_CONFIG_DIR` when `.credentials.json` is present.
+
+### Usage From Pi
+
+Configuring Claude accounts removes previously stored default Claude Pi records.
+Native ccusage records are preserved.
+Each refresh checks the current Pi ownership rule using the configured accounts.
+A successful refresh with configured Claude accounts clears stored Claude-family Pi
+records for the scanned usage days in the snapshot's storage transaction. This refresh
+cleanup preserves other days, sources, provider families, and ccusage records.
+Unreadable session files or subdirectories are skipped; other files still contribute.
+Errors log only an error code, without file contents or paths.
+Files modified before the 30-day cutoff are skipped before message-ID deduplication.
+
+After a successful WebUI Claude refresh, Pi assistant messages with provider `anthropic`
+or `claude-agent-sdk` add usage to the default Claude provider when no Claude accounts
+are configured. Configured Claude homes do not receive unattributed Pi usage; a warning
+is logged once. Pi has no separate card.
+
+The scanner recursively reads `*.jsonl` from `PI_CODING_AGENT_SESSION_DIR`, else
+`PI_CODING_AGENT_DIR/sessions`, else `~/.pi/agent/sessions`. It starts at local midnight
+30 days ago, keeps the first occurrence of each message ID, and groups reported tokens
+by local day and model. Other Pi providers are excluded.
+
+`Pi Session` records add to Tokens, Allowance, and cost summaries alongside ccusage.
+Positive Pi costs are preserved. Zero/missing costs remain unknown because the WebUI
+has no Claude fallback rate table; tokens remain available. A model-day containing any
+unpriced message retains unknown cost. The scanner only reads files and stores no
+message content or credentials. Scan errors are logged without discarding the successful
+quota snapshot.
 
 The original plugin may refresh OAuth tokens and write the updated credential JSON back to the same file source. Browser cookies are not used.
 

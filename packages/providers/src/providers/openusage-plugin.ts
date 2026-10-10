@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { runInNewContext } from "node:vm";
-import type { ProviderId, UsageRecord } from "../../../core/src/types";
+import type { ProviderAccount, ProviderId, UsageRecord } from "../../../core/src/types";
+import { piSessionTokenOwnerIds } from "../pi-session-ownership";
 import {
   createBase64Api,
   createFormatApi,
@@ -14,11 +15,13 @@ import {
 import {
   decryptAes256Gcm,
   discoverLanguageServer,
+  ed25519Sign,
   encryptAes256Gcm,
   execSqlite,
   expandHome,
   normalizeHomeDir,
   querySqlite,
+  resolvePluginCcusageProvider,
   runPluginCcusageQuery,
   runPluginHttpRequest,
   type LanguageServerDiscovery,
@@ -34,10 +37,13 @@ import {
   refreshOpenUsagePluginInWorker,
   type OpenUsagePluginWorkerOptions,
 } from "./openusage-plugin-refresh-worker";
-import { scanGrokSessionUsage } from "./grok-session-usage";
+import { aggregateGrokHourlyRecords, aggregateGrokSessionRecords, grokSpendLines, scanGrokSessionEntries } from "./grok-session-usage";
+import { runPluginCcusageBlocks } from "./ccusage-blocks";
+import { scanPiSessionUsage } from "./pi-session-usage";
 import {
   CursorUsageCollector,
   normalizeCcusageDailyRecords,
+  normalizeCcusageHourlyBlocks,
 } from "./structured-usage";
 
 export {
@@ -72,6 +78,9 @@ export interface OpenUsagePluginProviderOptions {
   pluginDataDir?: string;
   homeDir?: string;
   recordCcusageTokens?: boolean;
+  defaultEnabled?: boolean;
+  recordPiSessionTokens?: boolean;
+  piSessionAccounts?: ProviderAccount[];
 }
 
 interface LoadedPlugin {
@@ -90,12 +99,16 @@ export class OpenUsagePluginProvider implements UsageProvider {
   readonly id: ProviderId;
   readonly name: string;
   readonly recordCcusageTokens: boolean;
+  readonly defaultEnabled?: boolean;
+  private readonly piSessionTokensEnabled: boolean;
+  private readonly piSessionAccounts?: ProviderAccount[];
   private readonly pluginId?: string;
   private readonly scriptPath?: string;
   private readonly scriptText?: string;
   private readonly env: Record<string, string | undefined>;
   private readonly requestImpl?: (opts: PluginRequestOptions) => PluginRequestResponse;
   private readonly ccusageQueryImpl: (opts: PluginCcusageQueryOptions) => PluginCcusageQueryResult;
+  private readonly ccusageBlocksImpl?: (opts: PluginCcusageQueryOptions) => ReturnType<typeof runPluginCcusageBlocks>;
   private readonly gitHubTokenRunner?: PluginGitHubTokenRunner;
   private readonly lsDiscover: (opts: LanguageServerDiscoveryOptions) => LanguageServerDiscovery | null;
   private readonly now: () => string;
@@ -106,6 +119,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
   constructor(options: OpenUsagePluginProviderOptions) {
     this.id = options.providerId;
     this.name = options.name;
+    this.defaultEnabled = options.defaultEnabled;
     this.pluginId = options.pluginId;
     this.scriptPath = options.scriptPath;
     this.scriptText = options.scriptText;
@@ -116,9 +130,15 @@ export class OpenUsagePluginProvider implements UsageProvider {
     this.ccusageQueryImpl =
       options.ccusageQuery ??
       ((opts) => runPluginCcusageQuery(opts, this.pluginId, this.homeDir, options.ccusageRunner, this.env));
+    // A stubbed daily query means a test double; never start a real ccusage process behind it.
+    this.ccusageBlocksImpl = options.ccusageQuery
+      ? undefined
+      : (opts) => runPluginCcusageBlocks(opts, this.homeDir, options.ccusageRunner, this.env);
     this.gitHubTokenRunner = options.gitHubTokenRunner;
     this.lsDiscover = options.lsDiscover ?? discoverLanguageServer;
     this.recordCcusageTokens = options.recordCcusageTokens ?? true;
+    this.piSessionTokensEnabled = options.recordPiSessionTokens ?? true;
+    this.piSessionAccounts = options.piSessionAccounts;
     this.pluginDataDir = options.pluginDataDir ?? join(this.homeDir, ".openusage-webui", "plugins", this.id);
     this.useDefaultRuntime = options.request === undefined
       && options.ccusageQuery === undefined
@@ -135,6 +155,11 @@ export class OpenUsagePluginProvider implements UsageProvider {
     } catch {
       return false;
     }
+  }
+
+  get recordPiSessionTokens(): boolean {
+    return this.piSessionTokensEnabled && (this.piSessionAccounts === undefined ||
+      piSessionTokenOwnerIds(this.piSessionAccounts, this.homeDir, this.env).has(this.id));
   }
 
   async refresh(): Promise<UsageRecord[]> {
@@ -164,13 +189,38 @@ export class OpenUsagePluginProvider implements UsageProvider {
     }
 
     const snapshot = normalizePluginResult(result);
+    const startedAt = this.now();
+    let piSessionOwnership: { ownerId: null; days: string[] } | undefined;
+    if (this.piSessionTokensEnabled && (this.pluginId === "codex" || this.pluginId === "claude")) {
+      try {
+        const family = this.pluginId === "codex" ? "codex" : "claude-code";
+        const ownerId = this.piSessionAccounts === undefined ? this.id
+          : [...piSessionTokenOwnerIds(this.piSessionAccounts, this.homeDir, this.env)]
+            .find((id) => id === family || id.startsWith(`${family}:`));
+        if (ownerId === this.id || ownerId === undefined) {
+          const records = scanPiSessionUsage({
+            providerId: this.id,
+            card: this.pluginId === "codex" ? "codex" : "claude",
+            homeDir: this.homeDir,
+            env: this.env,
+            now: startedAt,
+          });
+          if (ownerId === this.id) captureUsage(records);
+          else piSessionOwnership = { ownerId: null, days: [...new Set(records.map((record) => record.startedAt))] };
+        }
+      } catch (error) {
+        console.error("Pi session token scan failed:", (error as NodeJS.ErrnoException).code ?? "UNKNOWN");
+      }
+    }
     if (this.pluginId === "grok") {
       try {
-        captureUsage(scanGrokSessionUsage({
-          providerId: this.id,
+        const entries = scanGrokSessionEntries({
           homeDir: this.homeDir,
           env: this.env,
-        }));
+        });
+        captureUsage(aggregateGrokSessionRecords(this.id, entries));
+        captureUsage(aggregateGrokHourlyRecords(this.id, entries));
+        snapshot.lines.push(...grokSpendLines(entries, Date.parse(this.now())));
       } catch (error) {
         console.error(
           "Grok session token scan failed:",
@@ -179,11 +229,11 @@ export class OpenUsagePluginProvider implements UsageProvider {
       }
     }
     captureUsage(cursorUsage.records(this.id));
-    const startedAt = this.now();
     const raw = {
       pluginId: plugin.id ?? this.pluginId ?? this.id,
       plan: snapshot.plan,
       lines: snapshot.lines,
+      ...(piSessionOwnership === undefined ? {} : { piSessionOwnership }),
     };
 
     return [
@@ -213,6 +263,8 @@ export class OpenUsagePluginProvider implements UsageProvider {
       homeDir: this.homeDir,
       pluginDataDir: this.pluginDataDir,
       recordCcusageTokens: this.recordCcusageTokens,
+      recordPiSessionTokens: this.piSessionTokensEnabled,
+      piSessionAccounts: this.piSessionAccounts,
     };
   }
 
@@ -305,6 +357,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
           sha256Hex: (text: string) => createHash("sha256").update(String(text)).digest("hex"),
           encryptAes256Gcm: encryptAes256Gcm,
           decryptAes256Gcm: decryptAes256Gcm,
+          ed25519Sign: ed25519Sign,
         },
         http: {
           request,
@@ -321,6 +374,9 @@ export class OpenUsagePluginProvider implements UsageProvider {
             const result = this.ccusageQueryImpl(opts ?? {});
             if (result.status === "ok" && this.recordCcusageTokens) {
               captureUsage(normalizeCcusageDailyRecords(this.id, result.data.daily));
+              if (resolvePluginCcusageProvider(opts?.provider, this.pluginId) === "claude") {
+                captureUsage(this.claudeHourlyRecords(opts ?? {}, result.data.daily));
+              }
             }
             return result;
           },
@@ -340,6 +396,28 @@ export class OpenUsagePluginProvider implements UsageProvider {
       util: createUtilApi(request),
       __openusageFilesBase: filesBase,
     };
+  }
+
+  // Hourly blocks only feed Allowance. A failure is logged and never fails the daily refresh.
+  private claudeHourlyRecords(
+    opts: PluginCcusageQueryOptions,
+    daily: Array<Record<string, unknown>>,
+  ): UsageRecord[] {
+    if (!this.ccusageBlocksImpl) return [];
+    try {
+      const result = this.ccusageBlocksImpl(opts);
+      if (result.status !== "ok") {
+        console.error(`ccusage hourly blocks failed for ${this.id}: ${result.status}`);
+        return [];
+      }
+      return normalizeCcusageHourlyBlocks(this.id, result.data.blocks, daily, this.now());
+    } catch (error) {
+      console.error(
+        `ccusage hourly blocks failed for ${this.id}:`,
+        error instanceof Error ? error.message : String(error),
+      );
+      return [];
+    }
   }
 
   private readGitHubToken(): string | null {

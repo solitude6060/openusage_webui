@@ -11,7 +11,7 @@ Tracks Grok Build credit usage from the local Grok CLI login.
 - **Auth:** cached Grok CLI token from `~/.grok/auth.json`
 - **Refresh:** Grok CLI refresh token from the same file
 - **Usage:** weekly shared pool percent from the CLI credits response
-- **Local spend tiles:** Today / Yesterday / Last 30 Days from `~/.grok/logs/unified.jsonl`
+- **Local spend tiles (WebUI):** Today / Yesterday / Last 30 Days from Grok CLI session transcripts, using recorded cost
 - **Tokens page:** daily per-model totals from Grok CLI session transcripts under `~/.grok/sessions/**/updates.jsonl`
 - **Plan source:** `GET /settings` (`subscription_tier_display`)
 - **Reset period:** current weekly period from the credits response
@@ -78,18 +78,20 @@ Returns remote CLI settings. OpenUsage reads `subscription_tier_display` from th
 
 ## Local Spend
 
-Today, Yesterday, and Last 30 Days on the dashboard card come from the Grok CLI log at `~/.grok/logs/unified.jsonl`, or `$GROK_HOME/logs/unified.jsonl` when that environment variable is set. Each `shell.turn.inference_done` row is attributed to that process's current model, then priced at public xAI API rates. These dollars are local estimates. They are not the weekly pool and they do not include Cursor-billed Grok usage.
+Today, Yesterday, and Last 30 Days on the WebUI dashboard card come from completed turns in `~/.grok/sessions/**/updates.jsonl`, or `$GROK_HOME/sessions/**/updates.jsonl` when that environment variable is set. Costs use the CLI's recorded cost. Turns without a recorded cost contribute tokens and $0; a period with no recorded costs shows tokens only. No model price estimate is added. These totals are separate from the weekly pool and do not include Cursor-billed Grok usage.
 
-The Tokens page does not use that debug log. After a Grok refresh, it reads completed turns in `~/.grok/sessions/**/updates.jsonl` (or `$GROK_HOME/sessions/**/updates.jsonl`). Each `turn_completed` row contributes per-model `inputTokens` and `outputTokens`. `reasoningTokens` are already inside `outputTokens` and are not added again. Copied session transcripts count once per `eventId` and model. Child, resumed, and forked sessions are included. A missing or unreadable session directory does not fail the weekly refresh.
+The card and Tokens page use the same completed turns during a Grok refresh. Each `turn_completed` row contributes per-model `inputTokens` and `outputTokens`. `reasoningTokens` are already inside `outputTokens` and are not added again. Copied session transcripts count once per `eventId` and model. Child, resumed, and forked sessions are included. The same turns are also grouped by UTC hour into a separate `token_hourly` table that only the Allowance page reads, so its measured span can start and end at hour boundaries. A missing or unreadable session directory does not fail the weekly refresh.
 
-A card period with no priced token rows is omitted, rather than shown as `$0.00 · 0 tokens`. Older CLI versions that never logged token counts stay blank on the card until a Grok CLI session writes `inference_done` rows. Tokens-page totals appear once `turn_completed` rows exist in session transcripts.
+A card period with no tokens is omitted. Today and Yesterday use the server's local time zone; Last 30 Days covers the rolling 30 × 24 hours ending at refresh time. Grok rows on the Tokens page keep UTC days, so totals can differ at day boundaries. The capped `unified.jsonl` debug log is not used.
+
+These spend tiles are available in the WebUI. The Tauri desktop app shows the weekly pool and pay-as-you-go status without Grok spend tiles.
 
 ## Displayed Lines
 
 | Line | Description |
 |------|-------------|
 | Weekly | Percent of the shared weekly pool used |
-| Today / Yesterday / Last 30 Days | Local cost and tokens estimated from the Grok CLI debug log |
+| Today / Yesterday / Last 30 Days | WebUI session tokens and recorded cost; tokens only when no costs are recorded |
 | Pay as you go | Disabled, or the configured pay-as-you-go cap |
 
 The Tokens page lists this provider as **Grok Build**. Its token totals come from session transcripts, not from the weekly pool and not from Cursor.

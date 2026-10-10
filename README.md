@@ -4,9 +4,13 @@
 
 ### What's New
 
+**2026-10-11**
+
+- **Grok Build Spend:** WebUI Today, Yesterday, and Last 30 Days now use the same completed session transcripts as the Tokens page, with recorded costs. Turns without a cost still count toward tokens. Card days are local; Tokens-page Grok days remain UTC.
+
 **2026-09-20**
 
-- **Grok Build Tokens:** The Tokens page lists **Grok Build** (the Grok CLI / Grok Build login, provider id `grok`) from completed session transcripts at `~/.grok/sessions/**/updates.jsonl`, matching original OpenUsage. Dashboard spend tiles still use `~/.grok/logs/unified.jsonl`. Grok models billed through Cursor stay under Cursor.
+- **Grok Build Tokens:** The Tokens page lists **Grok Build** (the Grok CLI / Grok Build login, provider id `grok`) from completed session transcripts at `~/.grok/sessions/**/updates.jsonl`, matching original OpenUsage. Grok models billed through Cursor stay under Cursor.
 
 **2026-08-18**
 
@@ -124,8 +128,8 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 
 - [**Amp**](docs/providers/amp.md) / free tier, bonus, credits
 - [**Antigravity**](docs/providers/antigravity.md) / all models
-- [**Claude**](docs/providers/claude.md) / session, weekly, extra usage, local token usage (ccusage)
-- [**Codex**](docs/providers/codex.md) / session, weekly, reviews, credits, reset-credit expiry
+- [**Claude**](docs/providers/claude.md) / session, weekly, extra usage, local token usage (ccusage and Pi sessions in WebUI)
+- [**Codex**](docs/providers/codex.md) / session, weekly, reviews, credits, reset-credit expiry, Pi session usage in WebUI
 - [**Copilot**](docs/providers/copilot.md) / premium, chat, completions
 - [**Cursor**](docs/providers/cursor.md) / credits, total usage, auto usage, API usage, on-demand, CLI auth
 - [**Factory / Droid**](docs/providers/factory.md) / standard, premium tokens
@@ -134,7 +138,9 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 - [**Kiro**](docs/providers/kiro.md) / credits, bonus credits, overages
 - [**Kimi Code**](docs/providers/kimi.md) / session, weekly
 - [**MiniMax**](docs/providers/minimax.md) / coding plan session
+- [**Ollama**](docs/providers/ollama.md) / session, weekly, monthly credits, purchased credits (starts disabled)
 - [**OpenCode Go**](docs/providers/opencode-go.md) / 5h, weekly, monthly spend limits
+- [**OpenRouter**](docs/providers/openrouter.md) / credits, balance, period spend, key limit
 - [**Perplexity**](docs/providers/perplexity.md) / credits, requests
 - [**Synthetic**](docs/providers/synthetic.md) / API usage
 - [**Devin**](docs/providers/devin.md) / weekly quota, extra usage
@@ -162,7 +168,9 @@ Current WebUI provider support:
 - JetBrains AI Assistant via the original `plugins/jetbrains-ai-assistant/plugin.js` adapter
 - Kimi via the original `plugins/kimi/plugin.js` adapter
 - Kiro via the original `plugins/kiro/plugin.js` adapter
+- Ollama via the original `plugins/ollama/plugin.js` adapter — Ollama Cloud credits and limits, signed with `~/.ollama/id_ed25519`; WebUI only, starts disabled until you enable it on the Providers page
 - OpenCode Go via the original `plugins/opencode-go/plugin.js` adapter
+- OpenRouter via the `plugins/openrouter/plugin.js` adapter (port of the upstream Swift provider; API key from `~/.config/openusage/openrouter.json` or `OPENROUTER_API_KEY`)
 - Perplexity via the original `plugins/perplexity/plugin.js` adapter
 - Synthetic via the original `plugins/synthetic/plugin.js` adapter
 - Z.ai via the original `plugins/zai/plugin.js` adapter
@@ -171,7 +179,7 @@ Current WebUI provider support:
 - Manual usage entries
 
 The WebUI Tokens page stores Claude/Codex local usage, complete Cursor usage-event
-refreshes, and Grok Build CLI session transcripts as dated model totals, so repeated
+refreshes, Pi assistant sessions, and Grok Build CLI session transcripts as dated model totals, so repeated
 refreshes update existing totals without double counting. Codex homes that share one
 `sessions` directory contribute those totals once. The Allowance page compares tokens
 and recorded API costs with quota movement over the same measured interval. It aligns
@@ -181,6 +189,14 @@ Claude and Codex daily rows use this computer's local day. Cursor and Grok daily
 Quota history retains each percent change and any absolute limit supplied by the provider.
 Cursor-billed Grok stays
 under Cursor. Grok Build is omitted until a Grok refresh finds `turn_completed` rows.
+
+Pi usage joins the existing Claude and Codex providers after a successful refresh. The
+scanner reads the last 30 days from `~/.pi/agent/sessions` (or the Pi directory overrides),
+keeps Pi costs separate from ccusage, and assigns multi-account Codex usage only to the
+matching Pi login. See [Codex](docs/providers/codex.md#usage-from-pi) and
+[Claude](docs/providers/claude.md#usage-from-pi) for account rules.
+When a family has no Pi owner, a successful refresh clears its stored Pi records for
+the scanned usage days, preserving ccusage and other days.
 
 The WebUI adapter provides Linux host shims for original plugin HTTP, SQLite, local keychain, filesystem, crypto, and formatting APIs where needed. Local keychain shim data stays under `~/.openusage-webui/plugins/<provider>/keychain.json`.
 

@@ -3,6 +3,7 @@ import {
   isMultiAccountProviderId,
   type MultiAccountProviderId,
   type ProviderAccount,
+  type ProviderId,
 } from "../../core/src/types";
 import { applyProviderHomeEnv } from "./account-detect";
 import { codexSessionTokenOwnerIds } from "./codex-session-ownership";
@@ -12,7 +13,15 @@ import { MiniMaxProvider } from "./providers/minimax";
 import { OpenUsagePluginProvider } from "./providers/openusage-plugin";
 import type { UsageProvider } from "./types";
 
-const pluginProviders = [
+interface PluginProviderEntry {
+  providerId: ProviderId;
+  name: string;
+  pluginId: string;
+  /** false: a newly seen provider starts disabled until the user turns it on. */
+  defaultEnabled?: boolean;
+}
+
+const pluginProviders: readonly PluginProviderEntry[] = [
   { providerId: "amp", name: "Amp", pluginId: "amp" },
   { providerId: "antigravity", name: "Antigravity", pluginId: "antigravity" },
   { providerId: "claude-code", name: "Claude Code", pluginId: "claude" },
@@ -25,11 +34,14 @@ const pluginProviders = [
   { providerId: "jetbrains-ai-assistant", name: "JetBrains AI Assistant", pluginId: "jetbrains-ai-assistant" },
   { providerId: "kimi", name: "Kimi", pluginId: "kimi" },
   { providerId: "kiro", name: "Kiro", pluginId: "kiro" },
+  // Opt-in: ~/.ollama/id_ed25519 exists for anyone who has run local models, signed in or not.
+  { providerId: "ollama", name: "Ollama", pluginId: "ollama", defaultEnabled: false },
   { providerId: "opencode-go", name: "OpenCode Go", pluginId: "opencode-go" },
+  { providerId: "openrouter", name: "OpenRouter", pluginId: "openrouter" },
   { providerId: "perplexity", name: "Perplexity", pluginId: "perplexity" },
   { providerId: "synthetic", name: "Synthetic", pluginId: "synthetic" },
   { providerId: "zai", name: "Z.ai", pluginId: "zai" },
-] as const;
+];
 
 const bundledPluginsDir = resolve(import.meta.dir, "../../../plugins");
 const bundledPluginIdPattern = /^[a-z0-9-]+$/;
@@ -62,6 +74,7 @@ function createHomedPluginProvider(options: {
   homePath: string | undefined;
   env: NodeJS.ProcessEnv;
   recordCcusageTokens?: boolean;
+  piSessionAccounts?: ProviderAccount[];
 }): UsageProvider {
   const providerEnv = { ...options.env };
   if (options.homePath) {
@@ -74,6 +87,7 @@ function createHomedPluginProvider(options: {
     scriptPath: resolveBundledPluginScriptPath(options.pluginId),
     env: providerEnv,
     recordCcusageTokens: options.recordCcusageTokens,
+    piSessionAccounts: options.piSessionAccounts,
   });
 }
 
@@ -97,6 +111,7 @@ export function getProviders(options: GetProvidersOptions = {}): UsageProvider[]
           pluginId: provider.pluginId,
           scriptPath: resolveBundledPluginScriptPath(provider.pluginId),
           env,
+          defaultEnabled: provider.defaultEnabled,
         }),
       ];
     }
@@ -119,6 +134,7 @@ export function getProviders(options: GetProvidersOptions = {}): UsageProvider[]
           homePath: account.homePath,
           env,
           recordCcusageTokens: tokenOwnerIds ? tokenOwnerIds.has(account.id) : true,
+          piSessionAccounts: provider.providerId === "codex" || provider.providerId === "claude-code" ? accounts : undefined,
         }),
       );
     }
@@ -131,6 +147,7 @@ export function getProviders(options: GetProvidersOptions = {}): UsageProvider[]
         baseProviderId: provider.providerId,
         homePath: undefined,
         env,
+        piSessionAccounts: provider.providerId === "codex" || provider.providerId === "claude-code" ? accounts : undefined,
       }),
     ];
   });

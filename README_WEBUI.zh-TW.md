@@ -21,12 +21,14 @@ http://127.0.0.1:6736
 - Cursor via 原本 OpenUsage plugin adapter（可選 **Provider Accounts** 追蹤多個 Cursor 設定目錄）
 - Devin via 原本 OpenUsage plugin adapter
 - Factory / Droid via 原本 OpenUsage plugin adapter
-- Grok Build via 原本 OpenUsage plugin adapter — 週配額、方案名稱、pay-as-you-go 上限、本機 CLI log 的花費磁磚，以及 Tokens 頁從 Grok CLI 本機完成回合紀錄（`~/.grok/sessions/**/updates.jsonl`）加總的 token
+- Grok Build via 原本 OpenUsage plugin adapter — 週配額、方案名稱、pay-as-you-go 上限，以及花費磁磚與 Tokens 頁共用的 Grok CLI 本機完成回合紀錄（`~/.grok/sessions/**/updates.jsonl`）
 - GitHub Copilot via 原本 OpenUsage plugin adapter
 - JetBrains AI Assistant via 原本 OpenUsage plugin adapter
 - Kimi via 原本 OpenUsage plugin adapter
 - Kiro via 原本 OpenUsage plugin adapter
+- Ollama via 原本 OpenUsage plugin adapter — Ollama Cloud 的額度與限制，使用 `~/.ollama/id_ed25519` 簽章；預設停用，請到 **Providers** 頁自行啟用（見 `docs/providers/ollama.md`）
 - OpenCode Go via 原本 OpenUsage plugin adapter
+- OpenRouter via 由上游 Swift provider 移植的 OpenUsage plugin adapter — credits、餘額、期間花費、key 上限；API key 讀自 `~/.config/openusage/openrouter.json` 或 `OPENROUTER_API_KEY`
 - Perplexity via 原本 OpenUsage plugin adapter
 - Synthetic via 原本 OpenUsage plugin adapter
 - Z.ai via 原本 OpenUsage plugin adapter
@@ -36,6 +38,8 @@ http://127.0.0.1:6736
 - Tokens 頁可依時間區間切換 Provider → Model 與 Model → Provider，父層以 M／B 顯示，
   展開後顯示完整數值；Claude／Codex 本機用量、Cursor 完整 usage events，以及 Grok Build
   CLI 本機完成回合紀錄會在 refresh 後自動寫入。Cursor 帳單裡的 Grok 仍掛在 Cursor 底下。
+
+Pi 的本機用量會併入既有 Claude／Codex，沒有獨立的 provider 卡片。
 
 ## 目前不做
 
@@ -190,11 +194,40 @@ CODEX_HOME/auth.json
 
 原本 plugin 可能會 refresh OAuth token，並把更新後的 credential 寫回同一個檔案來源。WebUI 不使用 browser cookies。
 
+Allowance 在有每小時 token 資料時（Claude、Cursor、Grok）對齊到整點，其餘（Codex，以及沒有每小時資料的舊日期）仍對齊到日界。每小時資料另外存放，只有 Allowance 讀取；Tokens、Sessions、Dashboard 的合計仍用每日紀錄。Claude 卡片上，以每小時資料測量的日子只列一行 `All Models`，不分模型。
+
+### Pi 的用量
+
+Pi 歸屬切換時，同一天的 Pi 紀錄會移到新帳號。設定 Claude 帳號後，會移除原本預設
+Claude provider 的 Pi 紀錄；兩種情況都保留 ccusage 紀錄。
+若 Codex 沒有符合 Pi 登入的帳號，或已設定 Claude 帳號而無法歸屬 Pi 用量，下次成功
+更新會清除該 provider 群組在掃描日期的既有 Pi 紀錄。其他日期、來源、provider 群組
+與 ccusage 紀錄均保留。
+每次更新都會重新判斷 Pi 歸屬；Pi 或 Codex 登入切換在下次更新生效，無須重啟伺服器。
+無法讀取的 session 檔案或子目錄會個別略過，其餘檔案繼續計入。日誌只記錄錯誤代碼，
+不包含檔案內容或路徑。
+修改時間早於 30 天截止日的檔案會整份略過，其訊息 ID 不參與去重。
+
+Claude 或 Codex 更新成功後，WebUI 會讀取最近 30 天的 Pi assistant 用量，起點為當地午夜。
+目錄依序使用 `PI_CODING_AGENT_SESSION_DIR`、`PI_CODING_AGENT_DIR/sessions`、
+`~/.pi/agent/sessions`。只納入 `anthropic`、`claude-agent-sdk`、`openai-codex`；重複的訊息 ID 只計一次。
+
+用量以 `Pi Session` 紀錄加入 Tokens、Allowance 與費用摘要，和 ccusage 分別保存。
+每日合計使用這台電腦的本地日，優先採用 Pi 記下的大於零費用；Codex 缺少費用時使用既有標準單價。
+無法定價的紀錄保留 token，費用保持未知。`codex-auto-review` 自 2026-10-06 UTC 起費用為零。
+
+只有一個 Codex provider 時，由它接收 Pi 用量。設定多個 Codex 家目錄時，只有
+`auth.json` 的 `tokens.account_id` 與 Pi `openai-codex` OAuth 登入的 `accountId`
+相同者接收。Pi 登入檔來自 `PI_CODING_AGENT_DIR/auth.json`，預設為 `~/.pi/agent/auth.json`。
+停用帳號的用量不會移交給其他帳號。Claude 只在沒有設定 Claude 帳號時，由預設 provider 接收。
+沒有符合帳號或掃描失敗時會記錄錯誤，已取得的配額快照仍保留。掃描器只讀檔案，不匯入或更新
+Pi 憑證，也不儲存訊息內容。
+
 ## Grok Build 設定
 
-Grok Build 沿用原本 OpenUsage 的 `plugins/grok/plugin.js`。先執行 `grok login`。WebUI 會讀 `~/.grok/auth.json`（依 process `HOME` 展開）。`$GROK_HOME` 只用在 session 完成回合紀錄與本機花費 log，不會改 `auth.json` 路徑。
+Grok Build 沿用原本 OpenUsage 的 `plugins/grok/plugin.js`。先執行 `grok login`。WebUI 會讀 `~/.grok/auth.json`（依 process `HOME` 展開）。`$GROK_HOME` 只用在 session 完成回合紀錄，不會改 `auth.json` 路徑。
 
-儀表板的週配額與 pay-as-you-go 來自 Grok CLI billing API。卡片上的 Today／Yesterday／Last 30 Days 仍從 `~/.grok/logs/unified.jsonl` 估算。Tokens 頁不使用這份 debug log；Grok refresh 成功後，會加總 `~/.grok/sessions/**/updates.jsonl` 裡已完成的回合（`turn_completed`／`modelUsage`）。複製的 session 依 `eventId` 與 model 各算一次；子 session、resume、fork 都會列入。Cursor 帳單裡的 Grok 仍掛在 Cursor 底下。
+儀表板的週配額與 pay-as-you-go 來自 Grok CLI billing API。Grok refresh 成功後，卡片上的 Today／Yesterday／Last 30 Days 與 Tokens 頁共用 `~/.grok/sessions/**/updates.jsonl` 裡已完成的回合（`turn_completed`／`modelUsage`），不再使用有容量上限的 `unified.jsonl` debug log。花費使用 CLI 記錄的費用；沒有費用的回合仍計入 token，費用加總為 $0。整個期間都沒有費用紀錄時，只顯示 token；沒有 token 時省略該期間。token 為輸入加輸出，不重複加上 reasoning。Today／Yesterday 使用伺服器本地日，Last 30 Days 涵蓋更新當下往前 30 × 24 小時，Tokens 頁的 Grok 每日用量仍維持 UTC 日。複製的 session 依 `eventId` 與 model 各算一次；子 session、resume、fork 都會列入。Cursor 帳單裡的 Grok 仍掛在 Cursor 底下。
 
 ## GitHub Copilot 設定
 

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { OpenUsagePluginProvider } from "../src/index";
 import {
   aggregateGrokSessionRecords,
   parseGrokSessionFile,
@@ -71,7 +72,50 @@ function completedTurn(options: {
   return JSON.stringify(object);
 }
 
+async function spendSnapshot(now: Date, files: string[]) {
+  return withIsolatedHome(async (home) => {
+    const grokHome = join(home, "custom-grok");
+    for (const [index, text] of files.entries()) {
+      const file = join(grokHome, "sessions/work", String(index), "updates.jsonl");
+      mkdirSync(join(file, ".."), { recursive: true });
+      writeFileSync(file, text);
+    }
+    const provider = new OpenUsagePluginProvider({
+      providerId: "grok",
+      name: "Grok Build",
+      pluginId: "grok",
+      homeDir: home,
+      env: { HOME: home, GROK_HOME: grokHome },
+      now: () => now.toISOString(),
+      scriptText: 'globalThis.__openusage_plugin = { id: "grok", probe: () => ({ lines: [] }) };',
+    });
+    const records = await provider.refresh();
+    const lines = (records[0]?.raw as { lines: unknown[] }).lines;
+    return { lines, records: records.slice(1) };
+  });
+}
+
 describe("Grok session transcript parsing", () => {
+  test.each([
+    {},
+    { numericTimestamp: true },
+    { agentTimestampMs: new Date(2026, 5, 10, 0, 30).getTime() },
+    { nested: false, agentTimestampMs: new Date(2026, 5, 10, 0, 30).getTime() },
+  ])("preserves the turn timestamp alongside its UTC day: %j", (options) => {
+    const timestamp = new Date(2026, 5, 10, 0, 30);
+    const [entry] = parseGrokSessionFile(completedTurn({
+      timestamp: timestamp.toISOString(),
+      model: "grok-4.7-build",
+      input: 100,
+      ...options,
+    }));
+
+    expect(entry).toMatchObject({
+      timestampMs: timestamp.getTime(),
+      startedAt: `${timestamp.toISOString().slice(0, 10)}T00:00:00.000Z`,
+    });
+  });
+
   test("uses recorded per-model cost and does not count reasoning twice", () => {
     const [entry] = parseGrokSessionFile(completedTurn({
       timestamp: "2026-06-10T10:00:00.000Z",
@@ -183,6 +227,138 @@ describe("Grok session transcript parsing", () => {
   });
 });
 
+describe("Grok session spend tiles", () => {
+  const now = new Date(2026, 5, 10, 12);
+  const today = new Date(2026, 5, 10, 10).toISOString();
+
+  test("uses recorded cost and input plus output without adding reasoning again", async () => {
+    const { lines } = await spendSnapshot(now, [completedTurn({
+      timestamp: today,
+      model: "grok-4.7-build",
+      input: 1_000_000,
+      cached: 700_000,
+      output: 50_000,
+      reasoning: 20_000,
+      costUsdTicks: 2_357_158_800,
+    })]);
+
+    expect(lines).toEqual([
+      { type: "text", label: "Today", value: "$0.24 · 1.1M tokens" },
+      { type: "text", label: "Last 30 Days", value: "$0.24 · 1.1M tokens" },
+    ]);
+  });
+
+  test("splits local 23:30 yesterday and 00:30 today at local midnight", async () => {
+    const { lines } = await spendSnapshot(now, [[
+      completedTurn({
+        timestamp: new Date(2026, 5, 9, 23, 30).toISOString(),
+        model: "grok-4.7-build",
+        input: 100,
+        costUsdTicks: 10_000_000_000,
+      }),
+      completedTurn({
+        timestamp: new Date(2026, 5, 10, 0, 30).toISOString(),
+        model: "grok-4.7-build",
+        input: 200,
+        costUsdTicks: 20_000_000_000,
+      }),
+    ].join("\n")]);
+
+    expect(lines).toEqual([
+      { type: "text", label: "Today", value: "$2.00 · 200 tokens" },
+      { type: "text", label: "Yesterday", value: "$1.00 · 100 tokens" },
+      { type: "text", label: "Last 30 Days", value: "$3.00 · 300 tokens" },
+    ]);
+  });
+
+  test("adds uncosted tokens to mixed periods and shows uncosted periods as tokens only", async () => {
+    const { lines } = await spendSnapshot(now, [[
+      completedTurn({ timestamp: today, model: "grok-4.7-build", input: 100 }),
+      completedTurn({
+        timestamp: today,
+        model: "grok-4.7-build",
+        input: 200,
+        costUsdTicks: 10_000_000_000,
+      }),
+      completedTurn({
+        timestamp: new Date(2026, 5, 9, 12).toISOString(),
+        model: "grok-4.7-build",
+        input: 400,
+      }),
+    ].join("\n")]);
+
+    expect(lines).toEqual([
+      { type: "text", label: "Today", value: "$1.00 · 300 tokens" },
+      { type: "text", label: "Yesterday", value: "400 tokens" },
+      { type: "text", label: "Last 30 Days", value: "$1.00 · 700 tokens" },
+    ]);
+  });
+
+  test("shows tokens only when every entry has no recorded cost", async () => {
+    const { lines } = await spendSnapshot(now, [completedTurn({
+      timestamp: today, model: "grok-4.7-build", input: 2_100_000_000,
+    })]);
+    expect(lines).toEqual([
+      { type: "text", label: "Today", value: "2.1B tokens" },
+      { type: "text", label: "Last 30 Days", value: "2.1B tokens" },
+    ]);
+  });
+
+  test("keeps a recorded zero cost in the dollar label", async () => {
+    const { lines } = await spendSnapshot(now, [completedTurn({
+      timestamp: today, model: "grok-4.7-build", input: 100, costUsdTicks: 0,
+    })]);
+    expect(lines).toEqual([
+      { type: "text", label: "Today", value: "$0.00 · 100 tokens" },
+      { type: "text", label: "Last 30 Days", value: "$0.00 · 100 tokens" },
+    ]);
+  });
+
+  test("uses the exact rolling 30-day window ending at now", async () => {
+    const cutoff = now.getTime() - 30 * 24 * 60 * 60 * 1000;
+    const { lines } = await spendSnapshot(now, [[
+      completedTurn({ timestamp: new Date(cutoff).toISOString(), model: "grok-4.7-build", input: 100 }),
+      completedTurn({ timestamp: new Date(cutoff - 1).toISOString(), model: "grok-4.7-build", input: 200 }),
+      completedTurn({ timestamp: now.toISOString(), model: "grok-4.7-build", input: 300 }),
+      completedTurn({ timestamp: new Date(now.getTime() + 1).toISOString(), model: "grok-4.7-build", input: 400 }),
+    ].join("\n")]);
+    expect(lines).toEqual([
+      { type: "text", label: "Today", value: "300 tokens" },
+      { type: "text", label: "Last 30 Days", value: "400 tokens" },
+    ]);
+  });
+
+  test("omits periods with no tokens", async () => {
+    const { lines } = await spendSnapshot(now, [completedTurn({
+      timestamp: today, model: "grok-4.7-build", input: 0, costUsdTicks: 10_000_000_000,
+    })]);
+    expect(lines).toEqual([]);
+  });
+
+  test("counts copied events once per model in both tiles and token records", async () => {
+    const line = completedTurn({
+      timestamp: today,
+      model: "grok-4.7-build",
+      input: 400,
+      costUsdTicks: 10_000_000_000,
+      eventID: "copied",
+      additionalModels: {
+        "grok-4.6-build": { inputTokens: 100, costUsdTicks: 20_000_000_000 },
+      },
+    });
+    const { lines, records } = await spendSnapshot(now, [line, line]);
+    expect(lines).toEqual([
+      { type: "text", label: "Today", value: "$3.00 · 500 tokens" },
+      { type: "text", label: "Last 30 Days", value: "$3.00 · 500 tokens" },
+    ]);
+    for (const hourly of [false, true]) {
+      const rows = records.filter((record) => Boolean(record.endedAt) === hourly);
+      expect(rows.reduce((sum, record) => sum + (record.totalTokens ?? 0), 0)).toBe(500);
+      expect(rows.reduce((sum, record) => sum + (record.costUsd ?? 0), 0)).toBe(3);
+    }
+  });
+});
+
 describe("Grok session filesystem scan", () => {
   test("reads nested updates.jsonl files and respects GROK_HOME", async () => {
     await withIsolatedHome(async (home) => {
@@ -203,7 +379,7 @@ describe("Grok session filesystem scan", () => {
         providerId: "grok",
         homeDir: home,
         env: { GROK_HOME: grokHome },
-      });
+      }).filter((record) => record.endedAt === undefined);
 
       expect(records).toEqual([
         expect.objectContaining({
@@ -254,7 +430,8 @@ describe("Grok session filesystem scan", () => {
         }) + "\n",
       );
 
-      const records = scanGrokSessionUsage({ providerId: "grok", homeDir: home });
+      const records = scanGrokSessionUsage({ providerId: "grok", homeDir: home })
+        .filter((record) => record.endedAt === undefined);
       expect(records).toHaveLength(1);
       expect(records[0]?.totalTokens).toBe(600);
     });

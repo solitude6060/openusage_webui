@@ -16,6 +16,14 @@ import type {
 import { isMultiAccountProviderId, providerIdFromAccountId } from "../../core/src/types";
 import type { Storage } from "./storage";
 import type { QuotaLimitUnit, QuotaObservation } from "../../providers/src/quota-observations";
+import {
+  TOKEN_HOURLY_SCHEMA,
+  isHourlyTokenRecord,
+  listAllowanceRows,
+  listDailyTokenRows,
+  prepareHourlyUpsert,
+  type AllowanceTokenRow,
+} from "./allowance-tokens";
 
 type UsageRecordRow = {
   id: string;
@@ -175,6 +183,7 @@ export class SqliteStorage implements Storage {
         value TEXT NOT NULL
       );
     `);
+    this.db.exec(TOKEN_HOURLY_SCHEMA);
     this.migrateCodexInstancesToProviderAccounts();
   }
 
@@ -214,6 +223,7 @@ export class SqliteStorage implements Storage {
     }
 
     const db = this.requireDb();
+    const upsertHourly = prepareHourlyUpsert(db);
     const insert = db.prepare(`
       INSERT INTO usage_records (
         id,
@@ -252,6 +262,11 @@ export class SqliteStorage implements Storage {
       DELETE FROM usage_records
       WHERE provider_id = ? AND tool = ? AND started_at = ? AND source = ?
     `);
+    const deletePreviousPiOwners = db.prepare(`
+      DELETE FROM usage_records
+      WHERE (? IS NULL OR provider_id != ?) AND (provider_id = ? OR provider_id GLOB ?)
+        AND tool = 'Pi Session' AND started_at = ? AND source = 'local-log'
+    `);
     const clearLegacyCcusageTokens = db.prepare(`
       UPDATE usage_records
       SET input_tokens = NULL,
@@ -262,13 +277,37 @@ export class SqliteStorage implements Storage {
       WHERE provider_id = ? AND started_at = ? AND source = 'cli'
     `);
 
-    const transaction = db.transaction((items: UsageRecord[]) => {
+    const transaction = db.transaction((all: UsageRecord[]) => {
+      // Hourly records feed only Allowance. They never enter usage_records or its replaceScopes delete.
+      const items: UsageRecord[] = [];
+      for (const record of all) {
+        if (isHourlyTokenRecord(record)) upsertHourly(record);
+        else items.push(record);
+      }
       if (options.replaceScopes) {
         const scopes = new Set<string>();
         const legacyScopes = new Set<string>();
         for (const record of items) {
-          if (record.totalTokens === undefined || !record.tool) continue;
           const baseProviderId = providerIdFromAccountId(record.providerId) ?? record.providerId;
+          const piOwnership = (record.raw as {
+            piSessionOwnership?: { ownerId: null; days: string[] };
+          } | undefined)?.piSessionOwnership;
+          if (
+            record.tool === "OpenUsage Plugin Snapshot" && record.source === "api" &&
+            (baseProviderId === "claude-code" || baseProviderId === "codex") &&
+            piOwnership?.ownerId === null
+          ) {
+            for (const day of piOwnership.days) {
+              deletePreviousPiOwners.run(null, null, baseProviderId, `${baseProviderId}:*`, day);
+            }
+          }
+          if (record.totalTokens === undefined || !record.tool) continue;
+          if (
+            record.tool === "Pi Session" && record.source === "local-log" &&
+            (baseProviderId === "claude-code" || baseProviderId === "codex")
+          ) {
+            deletePreviousPiOwners.run(record.providerId, record.providerId, baseProviderId, `${baseProviderId}:*`, record.startedAt);
+          }
           if (
             record.tool === "ccusage" &&
             record.source === "local-log" &&
@@ -621,7 +660,9 @@ export class SqliteStorage implements Storage {
   }
 
   async deleteUsageRecordsForProvider(providerId: ProviderId): Promise<void> {
-    this.requireDb().query("DELETE FROM usage_records WHERE provider_id = ?").run(providerId);
+    const db = this.requireDb();
+    db.query("DELETE FROM usage_records WHERE provider_id = ?").run(providerId);
+    db.query("DELETE FROM token_hourly WHERE provider_id = ?").run(providerId);
   }
 
   async deleteLocalLogUsageRecords(providerIds: ProviderId[], tool: string): Promise<void> {
@@ -783,33 +824,13 @@ export class SqliteStorage implements Storage {
     return row ? rowToQuotaObservation(row) : null;
   }
 
-  async listPositiveTokenRows(from: string): Promise<Array<{
-    providerId: string;
-    model: string;
-    startedAt: string;
-    tokens: number;
-    costUsd: number | null;
-    bucketEnd?: string;
-  }>> {
-    const rows = this.requireDb().query(`
-      SELECT provider_id, model, started_at, total_tokens, cost_usd, tool
-      FROM usage_records
-      WHERE COALESCE(total_tokens, 0) > 0 AND started_at >= ?
-    `).all(from) as Array<{
-      provider_id: string;
-      model: string | null;
-      started_at: string;
-      total_tokens: number | null;
-      cost_usd: number | null;
-      tool: string | null;
-    }>;
-    return rows.map((row) => ({
-      providerId: row.provider_id,
-      model: row.model?.trim() ? row.model : "Unknown",
-      tokens: Number(row.total_tokens) || 0,
-      costUsd: row.cost_usd == null ? null : Number(row.cost_usd),
-      ...allowanceTokenTimes(row.tool, row.started_at),
-    }));
+  async listPositiveTokenRows(from: string): Promise<AllowanceTokenRow[]> {
+    return listDailyTokenRows(this.requireDb(), from).map(({ tool: _tool, day: _day, ...row }) => row);
+  }
+
+  // Allowance only: daily rows, with hourly rows replacing any provider/tool/day that has them.
+  async listAllowanceTokenRows(from: string): Promise<AllowanceTokenRow[]> {
+    return listAllowanceRows(this.requireDb(), from);
   }
 
   async insertProbeFailure(providerId: string, failedAt: string, message: string): Promise<void> {
@@ -929,31 +950,6 @@ function rowToProviderAccount(row: ProviderAccountRow): ProviderAccount | null {
 
 function roundCurrency(value: number): number {
   return Math.round(value * 10000) / 10000;
-}
-
-const DAILY_TOKEN_TOOLS = ["ccusage", "Cursor Usage Event", "Grok Session"];
-
-function allowanceTokenTimes(tool: string | null, startedAt: string): { startedAt: string; bucketEnd?: string } {
-  if (tool === "ccusage") {
-    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(startedAt);
-    if (match) {
-      const year = Number(match[1]);
-      const month = Number(match[2]);
-      const day = Number(match[3]);
-      // ponytail: this assumes the server time zone at read time equals the zone ccusage used when the row was imported; a server moved to another zone shifts every historical ccusage row.
-      return {
-        startedAt: new Date(year, month - 1, day).toISOString(),
-        bucketEnd: new Date(year, month - 1, day + 1).toISOString(),
-      };
-    }
-  }
-  if (tool != null && DAILY_TOKEN_TOOLS.includes(tool)) {
-    return {
-      startedAt,
-      bucketEnd: new Date(Date.parse(startedAt) + 86400000).toISOString(),
-    };
-  }
-  return { startedAt };
 }
 
 type QuotaObservationRow = {

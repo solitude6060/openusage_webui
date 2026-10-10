@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "ollama",
+  "name": "Ollama",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#000000",
+  "lines": [
+    { "type": "badge", "label": "Status", "scope": "detail" },
+    { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 2 },
+    { "type": "progress", "label": "Weekly", "scope": "overview", "period": "weekly" },
+    { "type": "progress", "label": "Monthly", "scope": "overview", "primaryOrder": 1 },
+    { "type": "text", "label": "Purchased Credits", "scope": "detail" }
+  ],
+  "links": [
+    { "label": "Usage", "url": "https://ollama.com/settings" },
+    { "label": "API Keys", "url": "https://ollama.com/settings/keys" }
+  ]
+}

@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "n
 import { join } from "node:path";
 import type { ProviderId, UsageRecord } from "../../../core/src/types";
 import { expandHome } from "./openusage-plugin-runtime";
-import { createTokenRecord } from "./structured-usage";
+import { createHourlyTokenRecord, createTokenRecord } from "./structured-usage";
 
 const MAXIMUM_PLAUSIBLE_TOKENS = 1_000_000_000_000;
 const COST_TICKS_DIVISOR = 10_000_000_000;
@@ -11,7 +11,9 @@ type JsonObject = Record<string, unknown>;
 
 type GrokSessionEntry = {
   eventID: string | null;
+  timestampMs: number;
   startedAt: string;
+  hourStartedAt: string;
   model: string;
   inputTokens: number;
   outputTokens: number;
@@ -51,6 +53,17 @@ export function scanGrokSessionUsage(options: {
   homeDir: string;
   env?: Record<string, string | undefined>;
 }): UsageRecord[] {
+  const entries = scanGrokSessionEntries(options);
+  return [
+    ...aggregateGrokSessionRecords(options.providerId, entries),
+    ...aggregateGrokHourlyRecords(options.providerId, entries),
+  ];
+}
+
+export function scanGrokSessionEntries(options: {
+  homeDir: string;
+  env?: Record<string, string | undefined>;
+}): GrokSessionEntry[] {
   const sessionsDir = join(grokHomePath(options.homeDir, options.env ?? {}), "sessions");
   const files = listUpdatesJsonl(sessionsDir);
   const entries: GrokSessionEntry[] = [];
@@ -63,14 +76,40 @@ export function scanGrokSessionUsage(options: {
     }
     entries.push(...parseGrokSessionFile(text));
   }
-  return aggregateGrokSessionRecords(options.providerId, entries);
+  return deduplicateGrokSessionEntries(entries);
+}
+
+function deduplicateGrokSessionEntries(entries: GrokSessionEntry[]): GrokSessionEntry[] {
+  const seen = new Set<string>();
+  return entries.filter((entry) => {
+    if (!entry.eventID) return true;
+    const key = `${entry.eventID}\0${entry.model}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export function aggregateGrokSessionRecords(
   providerId: ProviderId,
   entries: GrokSessionEntry[],
 ): UsageRecord[] {
-  const seen = new Set<string>();
+  return aggregateGrokEntries(providerId, entries, false);
+}
+
+// The same deduplicated turns as the daily records, grouped by UTC hour. Only Allowance reads them.
+export function aggregateGrokHourlyRecords(
+  providerId: ProviderId,
+  entries: GrokSessionEntry[],
+): UsageRecord[] {
+  return aggregateGrokEntries(providerId, entries, true);
+}
+
+function aggregateGrokEntries(
+  providerId: ProviderId,
+  entries: GrokSessionEntry[],
+  hourly: boolean,
+): UsageRecord[] {
   const totals = new Map<
     string,
     {
@@ -85,14 +124,10 @@ export function aggregateGrokSessionRecords(
     }
   >();
 
-  for (const entry of entries) {
-    if (entry.eventID) {
-      const key = `${entry.eventID}\0${entry.model}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-    }
+  for (const entry of deduplicateGrokSessionEntries(entries)) {
     if (entry.totalTokens <= 0) continue;
-    const key = `${entry.startedAt}|${entry.model}`;
+    const startedAt = hourly ? entry.hourStartedAt : entry.startedAt;
+    const key = `${startedAt}|${entry.model}`;
     const current = totals.get(key);
     if (current) {
       current.inputTokens += entry.inputTokens;
@@ -104,12 +139,12 @@ export function aggregateGrokSessionRecords(
         current.costUsd = (current.costUsd ?? 0) + (entry.costUsd ?? 0);
       }
     } else {
-      totals.set(key, { ...entry });
+      totals.set(key, { ...entry, startedAt });
     }
   }
 
   return [...totals.values()].map((row) => {
-    const record = createTokenRecord(
+    const record = (hourly ? createHourlyTokenRecord : createTokenRecord)(
       providerId,
       row.startedAt,
       row.model,
@@ -127,6 +162,58 @@ export function aggregateGrokSessionRecords(
   });
 }
 
+export function grokSpendLines(
+  entries: GrokSessionEntry[],
+  nowMs: number,
+): { type: "text"; label: string; value: string }[] {
+  const today = new Date(nowMs);
+  today.setHours(0, 0, 0, 0);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const sinceMs = nowMs - 30 * 24 * 60 * 60 * 1000;
+  const periods = [
+    { label: "Today", sinceMs: today.getTime(), untilMs: nowMs },
+    { label: "Yesterday", sinceMs: yesterday.getTime(), untilMs: today.getTime() - 1 },
+    { label: "Last 30 Days", sinceMs, untilMs: nowMs },
+  ].map((period) => ({ ...period, tokens: 0, costUsd: undefined as number | undefined }));
+
+  for (const entry of entries) {
+    for (const period of periods) {
+      if (entry.timestampMs < period.sinceMs || entry.timestampMs > period.untilMs) continue;
+      period.tokens += entry.totalTokens;
+      if (entry.costUsd !== undefined) period.costUsd = (period.costUsd ?? 0) + entry.costUsd;
+    }
+  }
+
+  return periods.filter((period) => period.tokens > 0).map((period) => ({
+    type: "text",
+    label: period.label,
+    value: (period.costUsd !== undefined ? `$${period.costUsd.toFixed(2)} · ` : "")
+      + `${fmtTokens(period.tokens)} tokens`,
+  }));
+}
+
+function fmtTokens(n: number): string {
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  const units = [
+    { threshold: 1e9, divisor: 1e9, suffix: "B" },
+    { threshold: 1e6, divisor: 1e6, suffix: "M" },
+    { threshold: 1e3, divisor: 1e3, suffix: "K" },
+  ];
+  for (let i = 0; i < units.length; i++) {
+    const unit = units[i];
+    if (abs >= unit.threshold) {
+      const scaled = abs / unit.divisor;
+      const formatted = scaled >= 10
+        ? Math.round(scaled).toString()
+        : scaled.toFixed(1).replace(/\.0$/, "");
+      return sign + formatted + unit.suffix;
+    }
+  }
+  return sign + Math.round(abs).toString();
+}
+
 function parseCompletedTurn(object: JsonObject): GrokSessionEntry[] {
   const params = isObject(object.params) ? object.params : undefined;
   const update = (params && isObject(params.update) ? params.update : undefined)
@@ -134,8 +221,10 @@ function parseCompletedTurn(object: JsonObject): GrokSessionEntry[] {
   if (!update || update.sessionUpdate !== "turn_completed") return [];
   const usage = isObject(update.usage) ? update.usage : undefined;
   const modelUsage = usage && isObject(usage.modelUsage) ? usage.modelUsage : undefined;
-  const startedAt = startedAtFromObject(object, params);
-  if (!usage || !modelUsage || !startedAt) return [];
+  const timestampMs = timestampMsFromObject(object, params);
+  const startedAt = timestampMs === null ? null : utcDay(timestampMs);
+  const hourStartedAt = timestampMs === null ? null : utcHour(timestampMs);
+  if (!usage || !modelUsage || !startedAt || !hourStartedAt || timestampMs === null) return [];
 
   const topLevelTicks = parseNumber(usage.costUsdTicks);
   const models = Object.entries(modelUsage).sort(([left], [right]) => left.localeCompare(right));
@@ -158,7 +247,9 @@ function parseCompletedTurn(object: JsonObject): GrokSessionEntry[] {
 
     entries.push({
       eventID: readEventId(params, object),
+      timestampMs,
       startedAt,
+      hourStartedAt,
       model,
       inputTokens: input - cacheRead - cacheWrite,
       outputTokens: output,
@@ -171,23 +262,22 @@ function parseCompletedTurn(object: JsonObject): GrokSessionEntry[] {
   return entries;
 }
 
-function startedAtFromObject(object: JsonObject, params: JsonObject | undefined): string | null {
+function timestampMsFromObject(object: JsonObject, params: JsonObject | undefined): number | null {
   for (const meta of [params && params._meta, object._meta]) {
     if (!isObject(meta)) continue;
     const milliseconds = parseNumber(meta.agentTimestampMs);
     if (milliseconds !== undefined && milliseconds > 0) {
-      return utcDay(milliseconds);
+      return milliseconds;
     }
   }
 
   const timestamp = object.timestamp;
   if (typeof timestamp === "number" && Number.isFinite(timestamp) && timestamp > 0) {
-    const milliseconds = Math.abs(timestamp) < 1e11 ? timestamp * 1000 : timestamp;
-    return utcDay(milliseconds);
+    return Math.abs(timestamp) < 1e11 ? timestamp * 1000 : timestamp;
   }
   if (typeof timestamp === "string" && timestamp.trim()) {
     const parsed = Date.parse(timestamp);
-    return Number.isFinite(parsed) ? utcDay(parsed) : null;
+    return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
 }
@@ -196,6 +286,12 @@ function utcDay(milliseconds: number): string | null {
   const date = new Date(milliseconds);
   if (!Number.isFinite(date.getTime())) return null;
   return `${date.toISOString().slice(0, 10)}T00:00:00.000Z`;
+}
+
+function utcHour(milliseconds: number): string | null {
+  const date = new Date(milliseconds);
+  if (!Number.isFinite(date.getTime())) return null;
+  return `${date.toISOString().slice(0, 13)}:00:00.000Z`;
 }
 
 function readEventId(params: JsonObject | undefined, object: JsonObject): string | null {

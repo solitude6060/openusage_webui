@@ -13,12 +13,14 @@ A local-first WebUI dashboard for AI coding usage on Ubuntu/Linux.
 - Cursor via the original OpenUsage plugin adapter — optional **Provider Accounts** for multiple Cursor config homes
 - Devin via the original OpenUsage plugin adapter
 - Factory / Droid via the original OpenUsage plugin adapter
-- Grok Build via the original OpenUsage plugin adapter — weekly shared pool, plan, pay-as-you-go cap, local spend from the Grok CLI log, and Tokens-page totals from Grok CLI session transcripts
+- Grok Build via the original OpenUsage plugin adapter — weekly shared pool, plan, pay-as-you-go cap, and card spend and Tokens-page totals from Grok CLI session transcripts
 - GitHub Copilot via the original OpenUsage plugin adapter
 - JetBrains AI Assistant via the original OpenUsage plugin adapter
 - Kimi via the original OpenUsage plugin adapter
 - Kiro via the original OpenUsage plugin adapter
+- Ollama via the original OpenUsage plugin adapter — Ollama Cloud credits and limits, signed with `~/.ollama/id_ed25519`; starts disabled, so enable it on the **Providers** page (see `docs/providers/ollama.md`)
 - OpenCode Go via the original OpenUsage plugin adapter
+- OpenRouter via an OpenUsage plugin adapter ported from the upstream Swift provider — credits, balance, period spend, key limit; API key from `~/.config/openusage/openrouter.json` or `OPENROUTER_API_KEY`
 - Perplexity via the original OpenUsage plugin adapter
 - Synthetic via the original OpenUsage plugin adapter
 - Z.ai via the original OpenUsage plugin adapter
@@ -29,6 +31,9 @@ A local-first WebUI dashboard for AI coding usage on Ubuntu/Linux.
   compact M/B totals, deterministic model-family grouping, and exact expanded values; populated
   from Claude/Codex local usage, complete Cursor usage-event refreshes, and Grok Build
   CLI session transcripts
+
+Pi session usage is included under the existing Claude and Codex providers; it has no
+separate provider card.
 
 ## What It Does Not Do
 
@@ -144,6 +149,39 @@ Codex reads `CODEX_HOME/auth.json` when `CODEX_HOME` is set, otherwise `~/.confi
 
 The original plugins may refresh OAuth tokens and write updated credentials back to the same file source. Browser cookies are not used.
 
+Allowance measures between hour boundaries where hourly token data exists (Claude, Cursor and Grok) and between day boundaries otherwise (Codex, and older days that have no hourly data). Hourly data is stored separately and read only by Allowance; the Tokens, Sessions and Dashboard totals still use daily rows. On a Claude card, days measured hourly list one `All Models` row instead of per-model rows.
+
+### Usage From Pi
+
+Changing Pi owners replaces same-day Pi records across the provider family. Configuring
+Claude accounts removes default Claude Pi records. Both operations preserve ccusage.
+When no account owns a family's Pi usage, a successful refresh clears that family's
+stored Pi records only for the scanned usage days. Other days, sources, provider
+families, and ccusage records are preserved.
+Pi ownership is checked on each refresh. A Pi or Codex login change takes effect at
+the next refresh without restarting the server.
+Unreadable session files or subdirectories are skipped while other files are counted.
+Logs contain an error code without file contents or paths.
+Files modified before the 30-day cutoff are skipped before message-ID deduplication.
+
+After a successful Claude or Codex refresh, the WebUI reads Pi assistant usage from the
+last 30 days, starting at local midnight. Sessions come from `PI_CODING_AGENT_SESSION_DIR`,
+then `PI_CODING_AGENT_DIR/sessions`, then `~/.pi/agent/sessions`. Only `anthropic`,
+`claude-agent-sdk`, and `openai-codex` usage is included. Copied message IDs count once.
+
+`Pi Session` records add to Tokens, Allowance, and cost summaries alongside ccusage. They
+use local calendar days and Pi's positive recorded cost; Codex falls back to the existing
+standard token rates. Unpriced usage retains its tokens with unknown cost. Codex
+`codex-auto-review` is free from 2026-10-06 UTC, even if Pi records an estimated cost.
+
+A single Codex provider owns Pi Codex usage. With several configured homes, only the home
+whose `auth.json` `tokens.account_id` matches Pi's `openai-codex` OAuth `accountId` receives
+it. Pi auth uses `PI_CODING_AGENT_DIR/auth.json`, otherwise `~/.pi/agent/auth.json`.
+Disabled accounts are not reassigned. Claude usage goes only to the default provider
+when no Claude accounts are configured. An unmatched account or scan error is logged;
+the existing quota snapshot remains available. The scanner never imports or updates
+Pi credentials, and stores no message content.
+
 Refresh All and individual provider refreshes run in request order. An individual refresh
 waits for an earlier refresh to finish. Concurrent Refresh All requests share one run
 while the account list remains unchanged. Changing accounts starts a fresh queued run.
@@ -155,9 +193,9 @@ worker still has a 120-second limit; other requests keep the 120-second idle tim
 
 ## Grok Build Notes
 
-Grok Build uses the original `plugins/grok/plugin.js` adapter. Sign in with `grok login`. The plugin reads `~/.grok/auth.json` (expanded from the process `HOME`). `$GROK_HOME` is used for session transcripts and the local spend log, not for `auth.json`.
+Grok Build uses the original `plugins/grok/plugin.js` adapter. Sign in with `grok login`. The plugin reads `~/.grok/auth.json` (expanded from the process `HOME`). `$GROK_HOME` is used for session transcripts, not for `auth.json`.
 
-Dashboard weekly pool and pay-as-you-go come from the Grok CLI billing API. Card spend tiles (Today / Yesterday / Last 30 Days) are estimated from `~/.grok/logs/unified.jsonl`. The Tokens page does not use that log. After a successful Grok refresh it sums completed turns in `~/.grok/sessions/**/updates.jsonl` (`turn_completed` / `modelUsage`). Copied events count once per `eventId` and model. Child, resumed, and forked sessions are included. Cursor-billed Grok stays under Cursor.
+Dashboard weekly pool and pay-as-you-go come from the Grok CLI billing API. Card spend tiles (Today / Yesterday / Last 30 Days) and the Tokens page share completed turns in `~/.grok/sessions/**/updates.jsonl` (`turn_completed` / `modelUsage`) after a successful Grok refresh. The capped `unified.jsonl` debug log is not used. Costs come from the CLI's recorded cost; turns without a cost contribute tokens and $0. A period with no recorded costs shows tokens only, and a period with no tokens is omitted. Tokens are input plus output, without adding reasoning again. Today and Yesterday use the server's local days, Last 30 Days covers the rolling 30 × 24 hours ending at refresh time, and Tokens-page Grok days remain UTC. Copied events count once per `eventId` and model. Child, resumed, and forked sessions are included. Cursor-billed Grok stays under Cursor.
 
 ## GitHub Copilot Notes
 

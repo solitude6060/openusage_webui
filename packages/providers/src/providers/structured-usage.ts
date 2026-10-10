@@ -3,7 +3,8 @@ import type { ProviderId, UsageRecord, UsageSource } from "../../../core/src/typ
 import { openAiTokenCostUsd } from "../openai-token-rates";
 
 type JsonObject = Record<string, unknown>;
-type TokenRecordKind = "ccusage" | "cursor-event" | "grok-session";
+type TokenRecordKind = "ccusage" | "cursor-event" | "grok-session" | "pi-session";
+const HOUR_MS = 3600000;
 
 export function normalizeCcusageDailyRecords(
   providerId: ProviderId,
@@ -37,6 +38,59 @@ export function normalizeCcusageDailyRecords(
     records.push(...dayRecords);
   }
 
+  return records;
+}
+
+// ccusage blocks have no per-model split, so one record per hour carries the "All Models" label.
+// A completed local day is written only when its blocks add up to the daily total; today is
+// written unchecked because the daily and blocks queries run a moment apart.
+export function normalizeCcusageHourlyBlocks(
+  providerId: ProviderId,
+  blocks: Array<Record<string, unknown>>,
+  daily: Array<Record<string, unknown>>,
+  now: string,
+): UsageRecord[] {
+  const dailyTotals = new Map<string, number>();
+  for (const day of daily) {
+    const key = usageDate(day.date)?.slice(0, 10);
+    if (!key) continue;
+    // The day's own total. Only a day without one falls back to its model rows.
+    const total = finiteNumber(day.totalTokens)
+      ?? normalizeCcusageDailyRecords(providerId, [day])
+        .reduce((sum, record) => sum + (record.totalTokens ?? 0), 0);
+    dailyTotals.set(key, (dailyTotals.get(key) ?? 0) + total);
+  }
+
+  const days = new Map<string, UsageRecord[]>();
+  for (const block of blocks) {
+    const start = typeof block.startTime === "string" ? Date.parse(block.startTime) : NaN;
+    const tokens = finiteNumber(block.totalTokens);
+    if (block.isGap === true || !Number.isFinite(start) || start % HOUR_MS !== 0 || !tokens) continue;
+    const startedAt = new Date(start).toISOString();
+    const record = createHourlyTokenRecord(providerId, startedAt, "All Models", { totalTokens: tokens }, "ccusage", finiteNumber(block.costUSD));
+    const key = localDateKey(new Date(start));
+    const rows = days.get(key) ?? [];
+    rows.push(record);
+    days.set(key, rows);
+  }
+
+  const today = localDateKey(new Date(now));
+  const records: UsageRecord[] = [];
+  // A completed day with daily tokens but no usable block compares 0 against the daily total.
+  for (const key of new Set([...dailyTotals.keys(), ...days.keys()])) {
+    const rows = days.get(key) ?? [];
+    if (key !== today) {
+      const blockTotal = rows.reduce((sum, record) => sum + (record.totalTokens ?? 0), 0);
+      const dailyTotal = dailyTotals.get(key) ?? 0;
+      if (blockTotal !== dailyTotal) {
+        console.error(
+          `ccusage hourly blocks for ${key} add up to ${blockTotal} tokens but daily reports ${dailyTotal}; no hourly rows written for that day.`,
+        );
+        continue;
+      }
+    }
+    records.push(...rows);
+  }
   return records;
 }
 
@@ -75,38 +129,50 @@ export class CursorUsageCollector {
   records(providerId: ProviderId): UsageRecord[] {
     if (this.failed || !this.complete) return [];
 
-    const totals = new Map<
-      string,
-      { startedAt: string; model: string; tokens: TokenValues; costUsd: number; costKnown: boolean }
-    >();
+    const daily: TokenTotals = new Map();
+    const hourly: TokenTotals = new Map();
     for (const event of this.events) {
       if (!isObject(event.tokenUsage)) continue;
       const timestamp = eventTimestamp(event.timestamp);
       if (!timestamp) continue;
-      const startedAt = `${timestamp.slice(0, 10)}T00:00:00.000Z`;
       const model = text(event.model) ?? "Unknown";
       const tokens = tokenValues(event.tokenUsage);
       if (!tokens) continue;
       const costUsd = eventCostUsd(event);
-      const key = `${startedAt}|${model}`;
-      const current = totals.get(key);
-      if (current) {
-        addTokenValues(current.tokens, tokens);
-        if (costUsd === undefined) current.costKnown = false;
-        else current.costUsd += costUsd;
-      } else {
-        totals.set(key, {
-          startedAt,
-          model,
-          tokens,
-          costUsd: costUsd ?? 0,
-          costKnown: costUsd !== undefined,
-        });
-      }
+      addTokenTotal(daily, `${timestamp.slice(0, 10)}T00:00:00.000Z`, model, tokens, costUsd);
+      addTokenTotal(hourly, `${timestamp.slice(0, 13)}:00:00.000Z`, model, tokens, costUsd);
     }
 
-    return [...totals.values()].map(({ startedAt, model, tokens, costUsd, costKnown }) =>
-      createTokenRecord(providerId, startedAt, model, tokens, "cursor-event", costKnown ? costUsd : undefined));
+    return [
+      ...[...daily.values()].map(({ startedAt, model, tokens, costUsd, costKnown }) =>
+        createTokenRecord(providerId, startedAt, model, tokens, "cursor-event", costKnown ? costUsd : undefined)),
+      ...[...hourly.values()].map(({ startedAt, model, tokens, costUsd, costKnown }) =>
+        createHourlyTokenRecord(providerId, startedAt, model, tokens, "cursor-event", costKnown ? costUsd : undefined)),
+    ];
+  }
+}
+
+type TokenTotals = Map<
+  string,
+  { startedAt: string; model: string; tokens: TokenValues; costUsd: number; costKnown: boolean }
+>;
+
+function addTokenTotal(
+  totals: TokenTotals,
+  startedAt: string,
+  model: string,
+  tokens: TokenValues,
+  costUsd: number | undefined,
+): void {
+  const key = `${startedAt}|${model}`;
+  const current = totals.get(key);
+  if (current) {
+    addTokenValues(current.tokens, tokens);
+    if (costUsd === undefined) current.costKnown = false;
+    else current.costUsd += costUsd;
+  } else {
+    // Copy: the same event feeds the daily and the hourly totals, and addTokenValues mutates.
+    totals.set(key, { startedAt, model, tokens: { ...tokens }, costUsd: costUsd ?? 0, costKnown: costUsd !== undefined });
   }
 }
 
@@ -227,7 +293,8 @@ export function createTokenRecord(
   costUsd?: number,
 ): UsageRecord {
   const tool =
-    kind === "ccusage" ? "ccusage" : kind === "grok-session" ? "Grok Session" : "Cursor Usage Event";
+    kind === "ccusage" ? "ccusage" : kind === "grok-session" ? "Grok Session"
+      : kind === "pi-session" ? "Pi Session" : "Cursor Usage Event";
   const source: UsageSource = kind === "cursor-event" ? "api" : "local-log";
   return {
     id: createHash("sha256")
@@ -241,6 +308,30 @@ export function createTokenRecord(
     startedAt,
     source,
   };
+}
+
+// An hourly record spans one hour and has its own id, so it never collides with a daily record.
+export function createHourlyTokenRecord(
+  providerId: ProviderId,
+  hourStart: string,
+  model: string,
+  tokens: TokenValues,
+  kind: TokenRecordKind,
+  costUsd?: number,
+): UsageRecord {
+  const record = createTokenRecord(providerId, hourStart, model, tokens, kind, costUsd);
+  return {
+    ...record,
+    id: createHash("sha256")
+      .update([providerId, kind, "hour", hourStart, model].join("|"))
+      .digest("hex"),
+    endedAt: new Date(Date.parse(hourStart) + HOUR_MS).toISOString(),
+  };
+}
+
+function localDateKey(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 function addTokenValues(target: TokenValues, value: TokenValues): void {

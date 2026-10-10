@@ -69,6 +69,21 @@ export const makeCtx = () => {
           return `${iv.toString("base64")}:${tag.toString("base64")}:${ciphertext.toString("base64")}`
         }),
         sha256Hex: vi.fn((text) => crypto.createHash("sha256").update(String(text)).digest("hex")),
+        // Mirrors the WebUI host primitive: PKCS#8 header + raw 32-byte seed, UTF-8 message bytes.
+        ed25519Sign: vi.fn((seedB64, message) => {
+          const seed = Buffer.from(String(seedB64 || "").trim(), "base64")
+          if (seed.length !== 32) throw new Error("Invalid Ed25519 seed.")
+          const key = crypto.createPrivateKey({
+            key: Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), seed]),
+            format: "der",
+            type: "pkcs8",
+          })
+          const spki = crypto.createPublicKey(key).export({ format: "der", type: "spki" })
+          return {
+            signatureBase64: crypto.sign(null, Buffer.from(String(message), "utf8"), key).toString("base64"),
+            publicKeyBase64: spki.subarray(-32).toString("base64"),
+          }
+        }),
       },
       sqlite: {
         query: vi.fn(() => "[]"),

@@ -16,7 +16,9 @@ describe("provider registry", () => {
     ["jetbrains-ai-assistant", "JetBrains AI Assistant"],
     ["kimi", "Kimi"],
     ["kiro", "Kiro"],
+    ["ollama", "Ollama"],
     ["opencode-go", "OpenCode Go"],
+    ["openrouter", "OpenRouter"],
     ["perplexity", "Perplexity"],
     ["synthetic", "Synthetic"],
     ["zai", "Z.ai"],
@@ -26,6 +28,12 @@ describe("provider registry", () => {
     expect(provider).toBeInstanceOf(OpenUsagePluginProvider);
     expect(provider?.name).toBe(name);
     await expect(provider?.detect()).resolves.toBe(true);
+  });
+
+  test("registers Ollama as opt-in and every other plugin provider as enabled by default", () => {
+    const optedOut = getProviders().filter((provider) => provider.defaultEnabled === false);
+
+    expect(optedOut.map((provider) => provider.id)).toEqual(["ollama"]);
   });
 
   test("rejects bundled plugin path traversal ids", () => {

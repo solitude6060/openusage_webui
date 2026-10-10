@@ -4,8 +4,10 @@ import { join } from "node:path";
 import { OpenUsagePluginProvider } from "../src/index";
 import { withIsolatedHome } from "./openusage-plugin-fixture-helpers";
 
+// Daily token records only. Hourly records (endedAt set) are covered by hourly-token-records.test.ts.
 function tokenRecords(records: Awaited<ReturnType<OpenUsagePluginProvider["refresh"]>>) {
   return records
+    .filter((record) => record.endedAt === undefined)
     .filter((record) => typeof record.totalTokens === "number" && record.totalTokens > 0)
     .sort((left, right) => (left.model ?? "").localeCompare(right.model ?? ""));
 }
@@ -16,6 +18,7 @@ describe("OpenUsagePluginProvider token ingestion", () => {
       providerId: "codex:family",
       name: "Codex Family",
       pluginId: "codex",
+      recordPiSessionTokens: false,
       scriptText: `
         globalThis.__openusage_plugin = {
           id: "codex",
@@ -95,6 +98,7 @@ describe("OpenUsagePluginProvider token ingestion", () => {
       providerId: "claude-code:work",
       name: "Claude Work",
       pluginId: "claude",
+      recordPiSessionTokens: false,
       scriptText: `
         globalThis.__openusage_plugin = {
           id: "claude",
@@ -294,6 +298,7 @@ describe("OpenUsagePluginProvider token ingestion", () => {
       name: "Codex Family",
       pluginId: "codex",
       recordCcusageTokens: false,
+      recordPiSessionTokens: false,
       scriptText: `
         globalThis.__openusage_plugin = {
           id: "codex",
@@ -333,6 +338,7 @@ describe("OpenUsagePluginProvider token ingestion", () => {
       providerId: "codex:family",
       name: "Codex Family",
       pluginId: "codex",
+      recordPiSessionTokens: false,
       scriptText: `
         globalThis.__openusage_plugin = {
           id: "codex",
