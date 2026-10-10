@@ -75,6 +75,37 @@ bun run start:webui
 
 `start:webui` serves the built frontend and API from the same local server. If the frontend build is missing, the server returns a clear local error instead of serving an empty page.
 
+### Always-On Service From A Dedicated Worktree
+
+The server serves `apps/web/dist` and loads `plugins/` from its own checkout. Running
+`bun run build:webui` in a development checkout replaces the frontend that an always-on
+server in the same checkout is serving, while the running server process keeps its old API.
+Run the always-on server from a separate worktree that tracks `main`:
+
+```bash
+git worktree add --detach ../openusage_webui-wt-live origin/main
+cd ../openusage_webui-wt-live
+bun install --frozen-lockfile
+bun run build:webui
+```
+
+Point the service at that worktree, for example in a systemd user unit:
+
+```ini
+WorkingDirectory=/path/to/openusage_webui-wt-live/apps/server
+ExecStart=/path/to/bun src/index.ts
+```
+
+The database and config stay in `~/.openusage-webui/` (or `OPENUSAGE_WEBUI_DIR`), so moving
+the service does not move data. To deploy after a merge:
+
+```bash
+cd ../openusage_webui-wt-live
+git fetch origin && git checkout --detach origin/main
+bun install --frozen-lockfile && bun run build:webui
+systemctl --user restart openusage-webui.service
+```
+
 ## Security
 
 The server binds to 127.0.0.1 by default.

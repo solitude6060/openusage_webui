@@ -90,3 +90,5 @@ Use below list to store and recall user notes when asked to do so.
 - Use this list when asked to remember things. Keep each list item concise.
 - Tauri IPC: JS must use camelCase (`{ batchId, pluginIds }`), Tauri auto-converts to Rust's snake_case. Never send snake_case from JS—params silently won't match.
 - tauri-action `latest.json`: Parallel matrix builds are safe—action fetches existing `latest.json`, merges platform entries, re-uploads. No `max-parallel: 1` needed.
+- The always-on service `openusage-webui.service` (port 6736) runs from the sibling worktree `../openusage_webui-wt-live` pinned to `origin/main`, not from this development checkout. Run `bun run build:webui` here freely; deploy only by updating that worktree, rebuilding there and restarting the service (see `README_WEBUI.md`). Restarting the service needs user approval.
+- `apps/web` page tests use the `*.vitest.tsx` suffix (vitest + jsdom); they are excluded from `bun test` and from the web `tsc` build. Run `bun run build:webui` after adding web test files.
