@@ -135,9 +135,14 @@ export function App() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div>
-          <p className="eyebrow">Local Usage</p>
-          <h1>OpenUsage WebUI</h1>
+        <div className="brand-row">
+          <div>
+            <p className="eyebrow">Local Usage</p>
+            <h1>OpenUsage WebUI</h1>
+          </div>
+          <button className="primary-button sidebar-refresh" onClick={() => void refreshAll()} type="button">
+            Refresh All
+          </button>
         </div>
         <nav className="nav-list" aria-label="Primary Navigation">
           {pages.map((item) => (
