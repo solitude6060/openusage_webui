@@ -199,6 +199,7 @@ Claude provider 的 Pi 紀錄；兩種情況都保留 ccusage 紀錄。
 每次更新都會重新判斷 Pi 歸屬；Pi 或 Codex 登入切換在下次更新生效，無須重啟伺服器。
 無法讀取的 session 檔案或子目錄會個別略過，其餘檔案繼續計入。日誌只記錄錯誤代碼，
 不包含檔案內容或路徑。
+修改時間早於 30 天截止日的檔案會整份略過，其訊息 ID 不參與去重。
 
 Claude 或 Codex 更新成功後，WebUI 會讀取最近 30 天的 Pi assistant 用量，起點為當地午夜。
 目錄依序使用 `PI_CODING_AGENT_SESSION_DIR`、`PI_CODING_AGENT_DIR/sessions`、

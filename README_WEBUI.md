@@ -155,6 +155,7 @@ Pi ownership is checked on each refresh. A Pi or Codex login change takes effect
 the next refresh without restarting the server.
 Unreadable session files or subdirectories are skipped while other files are counted.
 Logs contain an error code without file contents or paths.
+Files modified before the 30-day cutoff are skipped before message-ID deduplication.
 
 After a successful Claude or Codex refresh, the WebUI reads Pi assistant usage from the
 last 30 days, starting at local midnight. Sessions come from `PI_CODING_AGENT_SESSION_DIR`,

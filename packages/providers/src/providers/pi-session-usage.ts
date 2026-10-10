@@ -1,6 +1,6 @@
 // Ported from robinebers/openusage bb7de176def23a99bbdcaabe1ac7269f18c738be.
 // Copyright (c) 2026 Robin Ebers. MIT license: see repository LICENSE.
-import { readdirSync, readFileSync, realpathSync } from "node:fs";
+import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { ProviderId, UsageRecord } from "../../../core/src/types";
 import { openAiTokenCostUsd } from "../openai-token-rates";
@@ -50,7 +50,10 @@ export function scanPiSessionUsage(options: {
   const files = jsonlFiles(piSessionsDirectory(options.homeDir, options.env ?? {}));
   for (const file of files) {
     let contents: string;
-    try { contents = readFileSync(file, "utf8"); } catch (error) {
+    try {
+      if (statSync(file).mtime < since) continue;
+      contents = readFileSync(file, "utf8");
+    } catch (error) {
       logReadError(error);
       continue;
     }

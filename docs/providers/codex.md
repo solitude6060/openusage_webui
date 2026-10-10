@@ -157,6 +157,7 @@ Each refresh rereads Pi and Codex login identities, so switching logins takes ef
 on the next refresh without a server restart.
 Unreadable session files or subdirectories are skipped; other files still contribute.
 Errors log only an error code, without file contents or paths.
+Files modified before the 30-day cutoff are skipped before message-ID deduplication.
 
 After a successful WebUI Codex refresh, Pi's `openai-codex` assistant messages add usage
 to the existing Codex provider. There is no Pi card. The scanner recursively reads

@@ -116,7 +116,9 @@ refreshes (same pattern as `packages/providers/src/providers/grok-session-usage.
 - Only Claude and Codex consume Pi rows. Other upstream-mapped providers and unmapped providers
   are dropped, per decision 3. No Pi provider card or credential import is added.
 - The scan cutoff is local midnight 30 calendar days before refresh, matching
-  `JSONLScanning.sinceDate`; files are path-sorted before keep-first message-ID deduplication.
+  `JSONLScanning.sinceDate`; files modified before the cutoff are skipped before reading.
+  Retained files are path-sorted before keep-first message-ID deduplication, followed by
+  message-date and card filtering, matching `IncrementalJSONLScanner` / `PiUsageScanner`.
   ISO timestamps without a zone are normalized as UTC; fractional seconds and the space/UTC
   forms use the existing plugin utility, matching `OpenUsageISO8601`.
 - Pi costs join the existing usage summary. `getUsageSummary` already sums all tools; its
@@ -277,6 +279,7 @@ the ownership rule from `ProviderAccountAssembly+Codex.swift:152,170`.
 - Parse: lines containing `"usage":{`; `type == "message"`, `message.role == "assistant"`,
   `message.provider` mapped via the upstream table (`anthropic`, `claude-agent-sdk` → Claude;
   `openai-codex` → Codex; others in the table have no consumer upstream and are dropped here too).
+  Skip files modified before the cutoff before reading or deduplication.
   Tokens: input, cacheRead, cacheWrite (5 m = cacheWrite − cacheWrite1h), output; row total =
   `usage.totalTokens`. Dedup by top-level `id`, keep first. Window: last 30 days, local-day buckets.
 - Cost precedence (upstream): Codex model `codex-auto-review` at or after 2026-10-06T00:00:00Z →
