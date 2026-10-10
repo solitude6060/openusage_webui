@@ -128,7 +128,10 @@ Grape `#7624F4`, Volt `#C8FF00`, Ink `#03080A`, Cloud `#FCFCFE` (copies in the a
 color and stays legible on light and dark backgrounds; Volt (lime) would be the alternative.
 These were four unauthenticated GET requests for public static files; no OpenRouter API request was
 made. Note: the current brand glyph is a new mark, while the upstream icon (kept, as instructed) is
-the earlier arrow mark. Swapping the icon is a user decision; `brandColor` is not read by the WebUI.
+the earlier arrow mark. Swapping the icon is a user decision. `brandColor` is read only by the Tauri desktop UI
+(`src/components/side-nav.tsx` `getIconColor`: white on a dark theme when luminance < 0.15,
+`currentColor` on a light theme when luminance > 0.85, otherwise the color itself; Grape is used as
+is). The WebUI (`apps/`, `packages/`) does not read `plugin.json` (grep, 2026-10-11).
 
 Redaction audit against `src-tauri/src/plugin_engine/host_api.rs` (the Tauri host logs
 `METHOD redacted_url` and a redacted 500-byte preview of every response body, and passes plugin
