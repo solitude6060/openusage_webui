@@ -49,7 +49,50 @@ function countingProvider(refresh: () => Promise<[]>): UsageProvider[] {
   }];
 }
 
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((release) => { resolve = release; });
+  return { promise, resolve };
+}
+
 describe("provider refresh single flight", () => {
+  test("keeps full refresh state inside each handler", async () => {
+    const entered = deferred();
+    const gate = deferred();
+    let secondRefreshes = 0;
+    const firstHandler = handler(countingProvider(async () => {
+      entered.resolve();
+      await gate.promise;
+      return [];
+    }));
+    const secondStorage = new SqliteStorage(join(dataDir, "second.sqlite"));
+    await secondStorage.init();
+    const secondHandler = createRequestHandler(
+      secondStorage, { host: "127.0.0.1", port: 6736 }, undefined,
+      [{ id: "minimax", name: "MiniMax", detect: async () => true, refresh: async () => {
+        secondRefreshes += 1;
+        return [];
+      } }],
+    );
+    const first = firstHandler(refreshAllRequest());
+    await entered.promise;
+    const second = secondHandler(refreshAllRequest());
+    gate.resolve();
+    try {
+      const [firstResponse, secondResponse] = await Promise.all([first, second]);
+      expect(firstResponse.status).toBe(200);
+      expect(secondResponse.status).toBe(200);
+      expect(secondRefreshes).toBe(1);
+      expect(await secondResponse.json()).toEqual({
+        ok: true, results: [{ providerId: "minimax", ok: true, records: 0 }],
+      });
+      expect((await storage.listProviderStatus()).map((status) => status.providerId)).toEqual(["manual"]);
+      expect((await secondStorage.listProviderStatus()).map((status) => status.providerId)).toEqual(["minimax"]);
+    } finally {
+      secondStorage.close();
+    }
+  });
+
   test("runs providers once for concurrent full refresh requests", async () => {
     let refreshes = 0;
     const handleRequest = handler(countingProvider(async () => {
