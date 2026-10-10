@@ -722,6 +722,50 @@ describe("claude plugin", () => {
     expect(fableLines[0].used).toBe(11)
   })
 
+  it("emits one Sonnet weekly line when legacy seven_day_sonnet and limits[] both exist", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        seven_day_sonnet: { utilization: 5, resets_at: "2099-01-01T00:00:00.000Z" },
+        seven_day_omelette: { utilization: 7, resets_at: "2099-01-01T00:00:00.000Z" },
+        limits: [
+          {
+            kind: "weekly_scoped",
+            group: "weekly",
+            percent: 44,
+            resets_at: "2099-01-08T18:59:59.734Z",
+            scope: { model: { id: null, display_name: "Sonnet" }, surface: null },
+          },
+          {
+            kind: "weekly_scoped",
+            group: "weekly",
+            percent: 9,
+            resets_at: "2099-01-08T18:59:59.734Z",
+            scope: { model: { id: null, display_name: "Claude Design" }, surface: null },
+          },
+        ],
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const sonnetLines = result.lines.filter(
+      (line) => line.label === "Sonnet" || line.label === "Sonnet Weekly",
+    )
+    expect(sonnetLines).toHaveLength(1)
+    expect(sonnetLines[0].label).toBe("Sonnet")
+    expect(sonnetLines[0].used).toBe(5)
+    const designLines = result.lines.filter(
+      (line) => line.label === "Claude Design" || line.label === "Claude Design Weekly",
+    )
+    expect(designLines).toHaveLength(1)
+    expect(designLines[0].label).toBe("Claude Design")
+    expect(designLines[0].used).toBe(7)
+  })
+
   it("accepts the misspelled falbe usage window from the Claude API", async () => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () =>
