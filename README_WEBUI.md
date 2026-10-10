@@ -140,6 +140,9 @@ Codex reads `CODEX_HOME/auth.json` when `CODEX_HOME` is set, otherwise `~/.confi
 
 The original plugins may refresh OAuth tokens and write updated credentials back to the same file source. Browser cookies are not used.
 
+Refresh All and individual provider refreshes run in request order. An individual refresh
+waits for an earlier refresh to finish. Concurrent Refresh All requests share one run.
+
 ## Grok Build Notes
 
 Grok Build uses the original `plugins/grok/plugin.js` adapter. Sign in with `grok login`. The plugin reads `~/.grok/auth.json` (expanded from the process `HOME`). `$GROK_HOME` is used for session transcripts and the local spend log, not for `auth.json`.

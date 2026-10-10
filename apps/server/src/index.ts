@@ -104,14 +104,22 @@ export function createRequestHandler(
 ): (request: Request) => Promise<Response> {
   const providersRef = asProvidersRef(providers);
   let fullProviderRefresh: Promise<RefreshResult[]> | null = null;
+  let providerRefreshQueue: Promise<void> = Promise.resolve();
+  function queueProviderRefresh(providerId?: ProviderId): Promise<RefreshResult[]> {
+    const refresh = providerRefreshQueue.then(() =>
+      runProviderRefresh(storage, providersRef.current, providerId));
+    providerRefreshQueue = refresh.then(() => undefined, () => undefined);
+    return refresh;
+  }
+
   async function refreshProviders(providerId?: ProviderId): Promise<RefreshResult[]> {
     if (providerId === undefined) {
-      fullProviderRefresh ??= runProviderRefresh(storage, providersRef.current).finally(() => {
+      fullProviderRefresh ??= queueProviderRefresh().finally(() => {
         fullProviderRefresh = null;
       });
       return fullProviderRefresh;
     }
-    return runProviderRefresh(storage, providersRef.current, providerId);
+    return queueProviderRefresh(providerId);
   }
 
   return async (request) => {
