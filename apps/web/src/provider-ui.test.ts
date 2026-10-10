@@ -84,6 +84,7 @@ describe("provider UI metadata", () => {
     ["kimi", "Kimi"],
     ["kiro", "Kiro"],
     ["opencode-go", "OpenCode Go"],
+    ["openrouter", "OpenRouter"],
     ["perplexity", "Perplexity"],
     ["synthetic", "Synthetic"],
     ["zai", "Z.ai"],

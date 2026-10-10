@@ -52,3 +52,7 @@ Step 1: hourly conflicts resolved with one Grok scan for spend, daily and hourly
 records. Bun: 415 passed; Vitest: 1,190 passed. Logs: step-1-bun-test.log and
 step-1-vitest.log in the integration artifact directory. Dependencies installed
 from the unchanged lockfile after the initial Vitest invocation returned exit 127.
+
+Step 2: OpenRouter merged without conflicts; supported-provider documentation,
+registration and redaction changes retained. Bun: 419 passed; Vitest: 1,255 passed.
+Logs: step-2-bun-test.log and step-2-vitest.log.

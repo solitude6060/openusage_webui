@@ -26,6 +26,7 @@ const pluginProviders = [
   { providerId: "kimi", name: "Kimi", pluginId: "kimi" },
   { providerId: "kiro", name: "Kiro", pluginId: "kiro" },
   { providerId: "opencode-go", name: "OpenCode Go", pluginId: "opencode-go" },
+  { providerId: "openrouter", name: "OpenRouter", pluginId: "openrouter" },
   { providerId: "perplexity", name: "Perplexity", pluginId: "perplexity" },
   { providerId: "synthetic", name: "Synthetic", pluginId: "synthetic" },
   { providerId: "zai", name: "Z.ai", pluginId: "zai" },

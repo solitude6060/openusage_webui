@@ -27,6 +27,7 @@ http://127.0.0.1:6736
 - Kimi via 原本 OpenUsage plugin adapter
 - Kiro via 原本 OpenUsage plugin adapter
 - OpenCode Go via 原本 OpenUsage plugin adapter
+- OpenRouter via 由上游 Swift provider 移植的 OpenUsage plugin adapter — credits、餘額、期間花費、key 上限；API key 讀自 `~/.config/openusage/openrouter.json` 或 `OPENROUTER_API_KEY`
 - Perplexity via 原本 OpenUsage plugin adapter
 - Synthetic via 原本 OpenUsage plugin adapter
 - Z.ai via 原本 OpenUsage plugin adapter

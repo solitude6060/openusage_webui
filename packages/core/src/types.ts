@@ -15,6 +15,7 @@ export const PROVIDER_IDS = [
   "kimi",
   "kiro",
   "opencode-go",
+  "openrouter",
   "perplexity",
   "synthetic",
   "zai",

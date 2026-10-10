@@ -13,7 +13,7 @@ use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-const WHITELISTED_ENV_VARS: [&str; 20] = [
+const WHITELISTED_ENV_VARS: [&str; 22] = [
     "CODEX_HOME",
     "CLAUDE_CONFIG_DIR",
     "CLAUDE_CODE_OAUTH_TOKEN",
@@ -29,6 +29,8 @@ const WHITELISTED_ENV_VARS: [&str; 20] = [
     "MINIMAX_API_TOKEN",
     "MINIMAX_CN_API_KEY",
     "SYNTHETIC_API_KEY",
+    "OPENROUTER_API_KEY",
+    "OPENROUTER_KEY",
     "PI_CODING_AGENT_DIR",
     "OPENUSAGE_CURSOR_CONFIG_DIR",
     "OPENUSAGE_CURSOR_STATE_DB",
@@ -430,6 +432,7 @@ fn redact_body(body: &str) -> String {
         "email",
         "login",
         "analytics_tracking_id",
+        "label",
     ];
     for key in sensitive_keys {
         // Match "key": "value" or "key":"value"
@@ -3252,6 +3255,13 @@ mod tests {
             );
         }
 
+        for name in ["OPENROUTER_API_KEY", "OPENROUTER_KEY"] {
+            assert!(
+                WHITELISTED_ENV_VARS.contains(&name),
+                "{name} must be whitelisted for the OpenRouter plugin"
+            );
+        }
+
         let rt = Runtime::new().expect("runtime");
         let ctx = Context::full(&rt).expect("context");
         ctx.with(|ctx| {
@@ -3528,6 +3538,39 @@ mod tests {
     }
 
     #[test]
+    fn redact_body_redacts_openrouter_api_keys() {
+        let body = r#"{"note": "sk-or-v1-0123456789abcdef0123456789abcdef"}"#;
+        let redacted = redact_body(body);
+        assert!(
+            !redacted.contains("sk-or-v1-0123456789abcdef0123456789abcdef"),
+            "OpenRouter key should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("sk-o...cdef"),
+            "OpenRouter key should use first4...last4 redaction, got: {}",
+            redacted
+        );
+    }
+
+    #[test]
+    fn redact_body_redacts_openrouter_key_label() {
+        // GET /api/v1/key returns the key's `label`: a user-chosen name or a masked key.
+        let body = r#"{"data": {"label": "Production laptop key", "usage_daily": 0.5}}"#;
+        let redacted = redact_body(body);
+        assert!(
+            !redacted.contains("Production laptop key"),
+            "key label should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("\"usage_daily\": 0.5"),
+            "spend fields should stay visible, got: {}",
+            redacted
+        );
+    }
+
+    #[test]
     fn redact_body_redacts_devin_session_token() {
         let body = r#"metadata apiKey=devin-session-token$abcdefghijklmnopqrstuvwxyz123456"#;
         let redacted = redact_body(body);
@@ -3701,6 +3744,17 @@ mod tests {
         assert!(
             !redacted.contains("sk-1234567890abcdef"),
             "API key should be redacted"
+        );
+    }
+
+    #[test]
+    fn redact_log_message_redacts_openrouter_api_key() {
+        let msg = "OpenRouter request failed with sk-or-v1-0123456789abcdef0123456789abcdef";
+        let redacted = redact_log_message(msg);
+        assert!(
+            !redacted.contains("sk-or-v1-0123456789abcdef0123456789abcdef"),
+            "OpenRouter key should be redacted, got: {}",
+            redacted
         );
     }
 

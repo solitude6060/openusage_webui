@@ -19,6 +19,7 @@ A local-first WebUI dashboard for AI coding usage on Ubuntu/Linux.
 - Kimi via the original OpenUsage plugin adapter
 - Kiro via the original OpenUsage plugin adapter
 - OpenCode Go via the original OpenUsage plugin adapter
+- OpenRouter via an OpenUsage plugin adapter ported from the upstream Swift provider — credits, balance, period spend, key limit; API key from `~/.config/openusage/openrouter.json` or `OPENROUTER_API_KEY`
 - Perplexity via the original OpenUsage plugin adapter
 - Synthetic via the original OpenUsage plugin adapter
 - Z.ai via the original OpenUsage plugin adapter

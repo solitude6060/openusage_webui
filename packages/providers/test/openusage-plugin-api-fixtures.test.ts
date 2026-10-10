@@ -103,6 +103,32 @@ describe("OpenUsagePluginProvider original API plugin fixtures", () => {
     ]);
   });
 
+  test("adapts the OpenRouter plugin through env key, credits and key APIs", async () => {
+    const provider = new OpenUsagePluginProvider({
+      providerId: "openrouter",
+      name: "OpenRouter",
+      pluginId: "openrouter",
+      scriptText: readPluginScript("openrouter"),
+      env: { OPENROUTER_API_KEY: "sk-or-v1-fixture0000000000" },
+      request: requestByUrl({
+        "https://openrouter.ai/api/v1/credits": { data: { total_credits: 100, total_usage: 40 } },
+        "https://openrouter.ai/api/v1/key": () => ({
+          status: 403,
+          headers: {},
+          bodyText: JSON.stringify({ error: { message: "forbidden", label: "key-name" } }),
+        }),
+      }),
+    });
+
+    const records = await provider.refresh();
+
+    expect(records[0]?.raw).toMatchObject({ pluginId: "openrouter" });
+    expect((records[0]?.raw as any).lines).toEqual([
+      { type: "progress", label: "Credits", used: 40, limit: 100, format: { kind: "dollars" } },
+      { type: "text", label: "Balance", value: "$60.00" },
+    ]);
+  });
+
   test("adapts the original Z.ai plugin through env key and quota APIs", async () => {
     const provider = new OpenUsagePluginProvider({
       providerId: "zai",
