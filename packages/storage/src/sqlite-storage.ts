@@ -341,6 +341,35 @@ export class SqliteStorage implements Storage {
     return rows.map(rowToUsageRecord);
   }
 
+  async listLatestUsageSnapshots(): Promise<UsageRecord[]> {
+    const rows = this.requireDb()
+      .query(`
+        SELECT
+          id, provider_id, tool, model, input_tokens, output_tokens,
+          cache_creation_tokens, cache_read_tokens, total_tokens, cost_usd,
+          started_at, ended_at, source, raw_json, created_at
+        FROM (
+          SELECT
+            usage_records.*,
+            ROW_NUMBER() OVER (
+              PARTITION BY provider_id
+              ORDER BY started_at DESC, id DESC
+            ) AS rn
+          FROM usage_records
+          WHERE tool = 'OpenUsage Plugin Snapshot'
+             OR (
+               raw_json IS NOT NULL
+               AND json_valid(raw_json)
+               AND json_type(raw_json, '$.quota') = 'object'
+             )
+        )
+        WHERE rn = 1
+        ORDER BY started_at DESC
+      `)
+      .all() as UsageRecordRow[];
+    return rows.map(rowToUsageRecord);
+  }
+
   async getUsageSummary(): Promise<UsageSummary> {
     const rows = this.requireDb()
       .query("SELECT provider_id, tool, source, total_tokens, cost_usd, started_at FROM usage_records")

@@ -1,24 +1,41 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { ProviderStatus, UsageRecord } from "../../../../packages/core/src/types";
 import { getUsageRecords } from "../lib/api";
 import { listProviderCards, providerLabel } from "../provider-ui";
 import { formatDate, formatMoney, formatNumber, formatQuota } from "../lib/format";
 
+type SessionFilters = {
+  providerId: string;
+  from: string;
+  to: string;
+  limit: string;
+};
+
+function usageQuery(filters: SessionFilters) {
+  return {
+    providerId: filters.providerId,
+    from: filters.from ? new Date(filters.from).toISOString() : undefined,
+    to: filters.to ? new Date(filters.to).toISOString() : undefined,
+    limit: Number(filters.limit),
+  };
+}
+
 export function SessionsPage({
-  records,
   providers,
-  onRecords,
+  refreshToken,
 }: {
-  records: UsageRecord[];
   providers: ProviderStatus[];
-  onRecords: (records: UsageRecord[]) => void;
+  refreshToken: number;
 }) {
-  const [filters, setFilters] = useState({
+  const [records, setRecords] = useState<UsageRecord[]>([]);
+  const [filters, setFilters] = useState<SessionFilters>({
     providerId: "",
     from: "",
     to: "",
     limit: "100",
   });
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
   const [error, setError] = useState<string | null>(null);
   const providerOptions = useMemo(() => listProviderCards(providers), [providers]);
   const providerNames = useMemo(() => {
@@ -29,21 +46,22 @@ export function SessionsPage({
     return map;
   }, [providers]);
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function load(next: SessionFilters) {
     setError(null);
     try {
-      onRecords(
-        await getUsageRecords({
-          providerId: filters.providerId,
-          from: filters.from ? new Date(filters.from).toISOString() : undefined,
-          to: filters.to ? new Date(filters.to).toISOString() : undefined,
-          limit: Number(filters.limit),
-        }),
-      );
+      setRecords(await getUsageRecords(usageQuery(next)));
     } catch (filterError) {
       setError(filterError instanceof Error ? filterError.message : "Filter failed");
     }
+  }
+
+  useEffect(() => {
+    void load(filtersRef.current);
+  }, [refreshToken]);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    await load(filters);
   }
 
   return (

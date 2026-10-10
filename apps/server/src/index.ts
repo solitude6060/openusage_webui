@@ -328,6 +328,10 @@ async function handleApi(
     return json(await storage.getUsageSummary());
   }
 
+  if (request.method === "GET" && url.pathname === "/api/usage/latest-snapshots") {
+    return json(await storage.listLatestUsageSnapshots());
+  }
+
   if (request.method === "GET" && url.pathname === "/api/usage/tokens") {
     return json(
       await storage.getTokenUsageBreakdown({

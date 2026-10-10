@@ -74,6 +74,23 @@ function isSummaryLine(line: DashboardLine): boolean {
   return SUMMARY_TEXT_LABELS.has(label);
 }
 
+export function dashboardRecordsForProviders(
+  records: UsageRecord[],
+  providerMap: Map<ProviderId, ProviderStatus>,
+): UsageRecord[] {
+  const map = new Map<ProviderId, UsageRecord>();
+  for (const record of records) {
+    if (map.has(record.providerId)) continue;
+    if (!isPlainObject(record.raw)) continue;
+    const raw = record.raw as Record<string, unknown>;
+    if (!Array.isArray(raw.lines) && !isPlainObject(raw.quota)) continue;
+    const status = providerMap.get(record.providerId);
+    if (!status || status.enabled === false) continue;
+    map.set(record.providerId, record);
+  }
+  return [...map.values()];
+}
+
 export function splitDashboardLines(lines: DashboardLine[]): {
   summaryLines: DashboardLine[];
   detailLines: DashboardLine[];
@@ -165,28 +182,21 @@ export function DashboardPage({
   providerMap: Map<ProviderId, ProviderStatus>;
   records: UsageRecord[];
 }) {
-  const latestByProvider = useMemo(() => {
-    const map = new Map<ProviderId, UsageRecord>();
-    for (const record of records) {
-      if (map.has(record.providerId)) continue;
-      if (!isPlainObject(record.raw)) continue;
-      const raw = record.raw as Record<string, unknown>;
-      if (Array.isArray(raw.lines) || isPlainObject(raw.quota)) {
-        map.set(record.providerId, record);
-      }
-    }
-    return map;
-  }, [records]);
+  const latestByProvider = useMemo(
+    () => dashboardRecordsForProviders(records, providerMap),
+    [records, providerMap],
+  );
 
   const providerDataMap = useMemo(() => {
     const map = new Map<ProviderId, ProviderData>();
-    for (const [providerId, record] of latestByProvider.entries()) {
-      // Skip orphan snapshots (e.g. bare `codex` after switching to instance mode).
-      if (!providerMap.has(providerId)) continue;
+    for (const record of latestByProvider) {
+      const providerId = record.providerId;
+      const status = providerMap.get(providerId);
+      if (!status || status.enabled === false) continue;
       const raw = record.raw as Record<string, unknown>;
       const lines = linesFromRaw(raw);
       const plan = typeof raw.plan === "string" ? raw.plan : typeof raw.planName === "string" ? raw.planName : undefined;
-      map.set(providerId, { providerId, plan, lines, status: providerMap.get(providerId) });
+      map.set(providerId, { providerId, plan, lines, status });
     }
     return map;
   }, [latestByProvider, providerMap]);
