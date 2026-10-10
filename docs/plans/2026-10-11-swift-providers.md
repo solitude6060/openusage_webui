@@ -92,6 +92,60 @@ refreshes (same pattern as `packages/providers/src/providers/grok-session-usage.
 | D4 | Persistent incremental parse cache for pi logs (`JSONLScanCachePersistence`) | Full rescan per refresh, matching `grok-session-usage.ts`. 285 pi session files on this machine | Simplification; add a cache if refresh time is measured as a problem |
 | D5 | Ollama provider opt-in (`hasLocalCredentials() == false`) | Needs a per-provider default in our registry; see User Decision U1 | Needs user decision |
 
+### Ollama port record (branch `feat/port-ollama`)
+
+Source: the pinned upstream commit above. Extra upstream files read for this port (sha256 at the pin):
+`docs/providers/ollama.md` `08f5a926518d7ef009e6aeb03079ceb16897c85b96a6b71aa0f13ae75340699d`,
+`Sources/OpenUsage/Providers/ProviderUsageErrorText.swift`
+`b1972fa407228a96aad5f769bb8dbd5bea2a048b61defbfa8d3136abe95a8196`,
+`Sources/OpenUsage/Support/ProviderParse.swift`
+`97bd62ef886543ee5c7653617313a6b992a8143dcdec1f31d438a2f56fd1630a`,
+`Sources/OpenUsage/Support/OpenUsageISO8601.swift`
+`326bd0e01154be921b9c8e3da240dfb647bacb563e8567b19610ce9cac43c7a9`. Copies and hashes are under
+`openusage_webui-artifacts/2026-10-11-backlog/ollama/upstream/`. Imported files: `plugins/ollama/icon.svg` is
+`ollama.svg` byte for byte (hash above); no Swift source was copied, the logic is translated.
+Brand color `#000000`: Simple Icons `data/simple-icons.json` entry "Ollama" (`hex 000000`, source
+https://github.com/ollama/ollama/issues/2152#issuecomment-1905286922, a logo posted by the Ollama maintainers).
+
+Corrections to this plan found while implementing:
+
+- Upstream tests build their ed25519 key in memory (`TestSigningKey.make()`); there is no MIT test PEM to reuse.
+  The JS tests do the same with `crypto.generateKeyPairSync`, so no key is committed.
+- `ensureProviderStatus` does not exist. New provider rows are created in `syncProviderStatus`
+  (`apps/server/src/provider-accounts.ts`, the production startup path via `rebuildProvidersFromStorage`),
+  `seedProviderStatus` and `runProviderRefresh` (`apps/server/src/index.ts`), and `apps/server/src/cli-status.ts`.
+  All four now use `provider.defaultEnabled !== false`.
+
+| # | Upstream | Port | Type |
+| --- | --- | --- | --- |
+| O1 | Purchased Credits is an unbounded dollar row | `ctx.line.text` with `"$25.00"` (D1) | Runtime adaptation |
+| O2 | Snapshot `warning` | `Status` badge (amber `#f59e0b`, as the Claude plugin does) placed above the meters, because its text says "Usage below"; one `ctx.host.log.warn` per refresh (D2) | Runtime adaptation |
+| O3 | `hasLocalCredentials()` returns false so the card never self-enables | `UsageProvider.defaultEnabled` (registry entry `defaultEnabled: false`); new status rows start disabled. `detect()` still means "adapter loaded". An existing row and an explicit single-provider refresh are unchanged (D5, U1, authorized by the orchestrator decision) | Runtime adaptation |
+| O4 | CryptoKit `Curve25519.Signing` | `host.crypto.ed25519Sign(seedBase64, message)` in the WebUI host (Node `crypto`). The Tauri host has no such function: the plugin checks for it first and fails with a message naming the WebUI requirement (U2, authorized) | Required runtime adaptation |
+| O5 | Parser derives the public key from the seed locally | The plugin has no Ed25519 code, so it calls `ed25519Sign(seed, "")` once during parsing and keeps only the returned public key; the signature is discarded. The two public-key comparisons are unchanged | Required runtime adaptation |
+| O6 | Foundation `Data` and `Data(base64Encoded:)` | Plain number arrays and a 25 line strict base64 codec in the plugin, because `ctx.base64` is UTF-8 based in the WebUI host | Required runtime adaptation |
+| O7 | Any error thrown while signing or sending maps to `connectionFailed` (kept). Upstream logs the error category | The plugin never logs or rethrows exception text: a host error could echo request headers or the seed. It logs a fixed note naming the endpoint or HTTP status | Hardening, same user-visible result |
+| O8 | `OpenUsageISO8601.date(from:)` | `ctx.util.toIso`, the JS function that upstream's comment says it mirrors. Numeric strings and non-ISO strings that `Date.parse` accepts are also accepted | Minor, unverified against live data |
+| O9 | `String.capitalized` (Unicode word boundaries, lower-cased tail) | Whitespace-delimited words, lower-cased tail | Minor; plan values are `free`, `pro`, `max` |
+| O10 | `Double(string)` | `Number(trimmed)` with a finite check | Minor |
+| O11 | Widget descriptors, layout defaults and local-API tests (`testMetricLabelsMatchTheProvidersWidgetDescriptors`, `testMonthlyCreditsReachDashboardDataAndBothLocalAPIs`, `testDefaultPlacementOnFreshInstallAndUpgrade`) | Not ported; Swift-only infrastructure | Scope cut |
+| O12 | No `OLLAMA_API_KEY` path | Same; a test asserts the plugin never reads that variable (U4) | None |
+
+Everything else is translated one to one: endpoints, signed challenge `"<METHOD>,<path>?ts=<unix>"`, header
+`<public key blob base64>:<signature base64>`, 15 s timeout, mapper math, label order, error texts
+(`ProviderUsageErrorText` wording, not the paraphrase in the earlier plan text), both requests always made.
+
+Redaction audit (`src-tauri/src/plugin_engine/host_api.rs`, `redact_url` / `redact_body` / `redact_log_message`):
+
+| Item | Finding | Decision |
+| --- | --- | --- |
+| Request URL | Host logs method and `redact_url(url)` (line 838). The only query parameter is `ts`, not in the sensitive list | No change |
+| `Authorization` header (`<pubkey>:<signature>`) | Never logged by either host | No change |
+| WebUI host logging | `ctx.host.log.*` are no-ops (`openusage-plugin.ts`); no request or response body is logged by the WebUI runtime | Plugin tests assert no `ctx.host.log` argument contains key material anyway, so the guarantee does not depend on the host |
+| `/api/me` keys `ID`, `Email`, `Name`, `Plan` | `redact_body` matches `"email"` / `"name"` case-sensitively, so `"Email"` / `"Name"` would reach the Tauri log unredacted. `ID` is not in the list either | Not reachable: the Tauri host has no `ed25519Sign`, so the plugin never sends the request there, and the plugin never logs the body. Recorded in `docs/providers/ollama.md`; must be fixed in `host_api.rs` before Ed25519 is added to that host |
+| OpenSSH private key | Neither `redact_body` nor `redact_log_message` has a pattern for `-----BEGIN OPENSSH PRIVATE KEY-----` or its base64 | Same: the plugin never logs it; a tested guarantee, not a host one |
+| Seed, PEM, signature in errors | Tests: `plugins/ollama/plugin.test.js` "secret handling" (key body, seed in base64 / hex / base64url, header, signature, `/api/me` fields absent from every log call, thrown message and returned snapshot, including when the host throws an error that echoes them) and `packages/providers/test/openusage-plugin-ed25519.test.ts` (fixed host error text) | Covered |
+
 ## Changes
 
 ### 1. OpenRouter plugin (`plugins/openrouter/`)

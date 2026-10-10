@@ -134,6 +134,7 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 - [**Kiro**](docs/providers/kiro.md) / credits, bonus credits, overages
 - [**Kimi Code**](docs/providers/kimi.md) / session, weekly
 - [**MiniMax**](docs/providers/minimax.md) / coding plan session
+- [**Ollama**](docs/providers/ollama.md) / session, weekly, monthly credits, purchased credits (starts disabled)
 - [**OpenCode Go**](docs/providers/opencode-go.md) / 5h, weekly, monthly spend limits
 - [**Perplexity**](docs/providers/perplexity.md) / credits, requests
 - [**Synthetic**](docs/providers/synthetic.md) / API usage
@@ -162,6 +163,7 @@ Current WebUI provider support:
 - JetBrains AI Assistant via the original `plugins/jetbrains-ai-assistant/plugin.js` adapter
 - Kimi via the original `plugins/kimi/plugin.js` adapter
 - Kiro via the original `plugins/kiro/plugin.js` adapter
+- Ollama via the original `plugins/ollama/plugin.js` adapter — Ollama Cloud credits and limits, signed with `~/.ollama/id_ed25519`; WebUI only, starts disabled until you enable it on the Providers page
 - OpenCode Go via the original `plugins/opencode-go/plugin.js` adapter
 - Perplexity via the original `plugins/perplexity/plugin.js` adapter
 - Synthetic via the original `plugins/synthetic/plugin.js` adapter

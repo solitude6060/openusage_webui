@@ -18,6 +18,7 @@
 - JetBrains AI Assistant
 - Kimi
 - Kiro
+- Ollama（Ollama Cloud 額度；預設停用，需在 Providers 頁啟用）
 - OpenCode Go
 - Perplexity
 - Synthetic
@@ -149,7 +150,7 @@ Providers 頁面顯示各 provider 狀態：
 - last error
 - refresh button
 
-Amp、Antigravity、Claude Code、Codex、Cursor、Devin、Factory、Grok Build、GitHub Copilot、JetBrains AI Assistant、Kimi、Kiro、OpenCode Go、Perplexity、Synthetic、Z.ai 目前透過原本 OpenUsage provider plugin adapter refresh。Gemini CLI / Google AI Pro 仍主要透過 `ccusage` 匯入，因為原本 repo 目前沒有 Gemini provider plugin。
+Amp、Antigravity、Claude Code、Codex、Cursor、Devin、Factory、Grok Build、GitHub Copilot、JetBrains AI Assistant、Kimi、Kiro、Ollama、OpenCode Go、Perplexity、Synthetic、Z.ai 目前透過原本 OpenUsage provider plugin adapter refresh。Ollama 預設為停用：本機只要跑過 Ollama 就會有 `~/.ollama/id_ed25519`，無法判斷是否使用 Cloud，所以需要自行在 Providers 頁開啟「Enabled」。Gemini CLI / Google AI Pro 仍主要透過 `ccusage` 匯入，因為原本 repo 目前沒有 Gemini provider plugin。
 
 ### 5.3 Sessions
 
