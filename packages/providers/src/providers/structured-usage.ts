@@ -54,8 +54,10 @@ export function normalizeCcusageHourlyBlocks(
   for (const day of daily) {
     const key = usageDate(day.date)?.slice(0, 10);
     if (!key) continue;
-    const total = normalizeCcusageDailyRecords(providerId, [day])
-      .reduce((sum, record) => sum + (record.totalTokens ?? 0), 0);
+    // The day's own total. Only a day without one falls back to its model rows.
+    const total = finiteNumber(day.totalTokens)
+      ?? normalizeCcusageDailyRecords(providerId, [day])
+        .reduce((sum, record) => sum + (record.totalTokens ?? 0), 0);
     dailyTotals.set(key, (dailyTotals.get(key) ?? 0) + total);
   }
 
