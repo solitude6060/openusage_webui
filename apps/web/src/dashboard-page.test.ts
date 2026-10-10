@@ -1,5 +1,37 @@
 import { describe, expect, test } from "bun:test";
-import { splitDashboardLines } from "./pages/dashboard-page";
+import type { ProviderStatus, UsageRecord } from "../../../packages/core/src/types";
+import { dashboardRecordsForProviders, splitDashboardLines } from "./pages/dashboard-page";
+
+describe("Dashboard provider selection", () => {
+  test("skips a disabled provider", () => {
+    const records: UsageRecord[] = [
+      {
+        id: "claude",
+        providerId: "claude-code",
+        tool: "OpenUsage Plugin Snapshot",
+        startedAt: "2026-10-01T00:00:00.000Z",
+        source: "api",
+        raw: { lines: [{ type: "progress", label: "Session", used: 0, limit: 100 }] },
+      },
+      {
+        id: "cursor",
+        providerId: "cursor",
+        tool: "OpenUsage Plugin Snapshot",
+        startedAt: "2026-10-01T00:00:00.000Z",
+        source: "api",
+        raw: { lines: [{ type: "progress", label: "Total usage", used: 10, limit: 100 }] },
+      },
+    ];
+    const providerMap = new Map<string, ProviderStatus>([
+      ["claude-code", { providerId: "claude-code", name: "Claude Code", enabled: false, detected: true }],
+      ["cursor", { providerId: "cursor", name: "Cursor", enabled: true, detected: true }],
+    ]);
+
+    expect(dashboardRecordsForProviders(records, providerMap).map((record) => record.providerId)).toEqual([
+      "cursor",
+    ]);
+  });
+});
 
 describe("Dashboard line grouping", () => {
   test("keeps Fable weekly usage in the card summary", () => {
