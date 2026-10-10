@@ -4,6 +4,7 @@ import { openAiTokenCostUsd } from "../openai-token-rates";
 
 type JsonObject = Record<string, unknown>;
 type TokenRecordKind = "ccusage" | "cursor-event" | "grok-session";
+const HOUR_MS = 3600000;
 
 export function normalizeCcusageDailyRecords(
   providerId: ProviderId,
@@ -37,6 +38,55 @@ export function normalizeCcusageDailyRecords(
     records.push(...dayRecords);
   }
 
+  return records;
+}
+
+// ccusage blocks have no per-model split, so one record per hour carries the "All Models" label.
+// A completed local day is written only when its blocks add up to the daily total; today is
+// written unchecked because the daily and blocks queries run a moment apart.
+export function normalizeCcusageHourlyBlocks(
+  providerId: ProviderId,
+  blocks: Array<Record<string, unknown>>,
+  daily: Array<Record<string, unknown>>,
+  now: string,
+): UsageRecord[] {
+  const dailyTotals = new Map<string, number>();
+  for (const day of daily) {
+    const key = usageDate(day.date)?.slice(0, 10);
+    if (!key) continue;
+    const total = normalizeCcusageDailyRecords(providerId, [day])
+      .reduce((sum, record) => sum + (record.totalTokens ?? 0), 0);
+    dailyTotals.set(key, (dailyTotals.get(key) ?? 0) + total);
+  }
+
+  const days = new Map<string, UsageRecord[]>();
+  for (const block of blocks) {
+    const start = typeof block.startTime === "string" ? Date.parse(block.startTime) : NaN;
+    const tokens = finiteNumber(block.totalTokens);
+    if (block.isGap === true || !Number.isFinite(start) || start % HOUR_MS !== 0 || !tokens) continue;
+    const startedAt = new Date(start).toISOString();
+    const record = createHourlyTokenRecord(providerId, startedAt, "All Models", { totalTokens: tokens }, "ccusage", finiteNumber(block.costUSD));
+    const key = localDateKey(new Date(start));
+    const rows = days.get(key) ?? [];
+    rows.push(record);
+    days.set(key, rows);
+  }
+
+  const today = localDateKey(new Date(now));
+  const records: UsageRecord[] = [];
+  for (const [key, rows] of days) {
+    if (key !== today) {
+      const blockTotal = rows.reduce((sum, record) => sum + (record.totalTokens ?? 0), 0);
+      const dailyTotal = dailyTotals.get(key) ?? 0;
+      if (blockTotal !== dailyTotal) {
+        console.error(
+          `ccusage hourly blocks for ${key} add up to ${blockTotal} tokens but daily reports ${dailyTotal}; no hourly rows written for that day.`,
+        );
+        continue;
+      }
+    }
+    records.push(...rows);
+  }
   return records;
 }
 
@@ -241,6 +291,30 @@ export function createTokenRecord(
     startedAt,
     source,
   };
+}
+
+// An hourly record spans one hour and has its own id, so it never collides with a daily record.
+export function createHourlyTokenRecord(
+  providerId: ProviderId,
+  hourStart: string,
+  model: string,
+  tokens: TokenValues,
+  kind: TokenRecordKind,
+  costUsd?: number,
+): UsageRecord {
+  const record = createTokenRecord(providerId, hourStart, model, tokens, kind, costUsd);
+  return {
+    ...record,
+    id: createHash("sha256")
+      .update([providerId, kind, "hour", hourStart, model].join("|"))
+      .digest("hex"),
+    endedAt: new Date(Date.parse(hourStart) + HOUR_MS).toISOString(),
+  };
+}
+
+function localDateKey(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 function addTokenValues(target: TokenValues, value: TokenValues): void {
