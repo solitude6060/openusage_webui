@@ -179,3 +179,22 @@ describe("listAllowanceTokenRows", () => {
     expect(rows).toEqual([]);
   });
 });
+
+describe("deleteUsageRecordsForProvider", () => {
+  test("removes the provider's hourly rows and keeps other providers' rows", async () => {
+    const storage = new SqliteStorage(join(dataDir, "delete.sqlite"));
+    await storage.init();
+    await storage.upsertUsageRecords([
+      hourly({ id: "h-gone", providerId: "claude-code:work", tool: "ccusage", source: "local-log", startedAt: "2026-10-09T03:00:00.000Z", model: "All Models", totalTokens: 300 }),
+      hourly({ id: "h-kept", providerId: "claude-code", tool: "ccusage", source: "local-log", startedAt: "2026-10-09T03:00:00.000Z", model: "All Models", totalTokens: 50 }),
+    ]);
+
+    await storage.deleteUsageRecordsForProvider("claude-code:work");
+    storage.close();
+
+    const db = new Database(join(dataDir, "delete.sqlite"), { readonly: true });
+    const rows = db.query("SELECT provider_id FROM token_hourly").all();
+    db.close();
+    expect(rows).toEqual([{ provider_id: "claude-code" }]);
+  });
+});
