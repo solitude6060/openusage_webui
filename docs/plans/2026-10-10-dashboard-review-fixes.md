@@ -37,7 +37,7 @@
 
 Deferred (recorded, not in this PR): Tokens "Today" uses UTC day bounds (deliberate for
 ccusage; needs a labeling decision), percent display ignoring `limit != 100`, count-format
-trailing space, Tokens page date filters treat ccusage local-day rows as UTC days (same root cause as C7, page logic only), Antigravity `allowedTiers[0]` plan label, accessibility of progress bars/keyboard drag/toggles, lowercase copy in
+trailing space, Tokens page date filters treat ccusage local-day rows as UTC days (same root cause as C7, page logic only), Antigravity `allowedTiers[0]` plan label, Codex card labels the weekly window as `Session` (`Resets in 3d 21h`; window key `session` with weekly inferred from `resets_at`), accessibility of progress bars/keyboard drag/toggles, lowercase copy in
 `usage-line.tsx:44` and `allowance-page.tsx:142`.
 
 ## Changes
@@ -96,8 +96,8 @@ Google email stays out of provider/account labels and detect labels, and the
   behavior is unchanged.
 - Detect: IDE homes count as signed in only when `state.vscdb` contains the OAuth key
   (reuse the plugin's existing query), not when the file merely exists.
-- Live data step after merge (orchestrator, reversible, via the existing API): add and
-  enable `Antigravity · Local CLI` (`$HOME`); leave `acct1`/`acct2` as configured.
+- Live data: no automatic account change. After deployment the user adds the default
+  home with the new button (or explicitly asks the orchestrator to do it).
 - Tests: notice shown/hidden logic as a pure helper; badge omitted without email; detect
   rejects an IDE fixture without the OAuth key.
 
@@ -144,9 +144,19 @@ Tests (`packages/providers/test`, `packages/storage/test`):
 - ccusage row date maps to local-midnight bounds when `TZ=Asia/Taipei` (run that test
   file with `TZ=Asia/Taipei`), Cursor row stays UTC.
 
+Scope limits: C7 is read-side only. Do not change the ccusage invocation
+(`openusage-plugin-runtime.ts:310`) or any import path, and do not change `COARSE_DELTA`.
+`meter-fell` stays computed over the whole cycle (conservative). Meter points come from
+`quota_observations`, which store a row on every change plus a 6-hour heartbeat, so two
+adjacent equal observations prove no movement between them at any gap; no time-gap
+threshold is used.
+
 Acceptance: run the server on port 6738 against a copy of the live database (never the
-live file) and confirm `GET /api/usage/allowance?days=7` returns `ok` estimates for
-Claude Code, Codex and Cursor; record the numbers in the fix log.
+live file) and confirm `GET /api/usage/allowance?days=7` returns `ok` for Claude Code and
+Codex; Cursor returns `ok` (possibly flagged coarse) or a recorded reason; Grok Build's
+7-day estimate stays 878.63M tokens (regression anchor: UTC rows, unchanged endpoints).
+Record the numbers in the fix log. Routing for C7: Grok Build `grok-4.7` / xhigh (Coding
+High engineering cell; load-bearing estimate logic).
 
 ## Docs To Update
 - `docs/providers/` Claude and Antigravity pages (Fable from `limits[]`; account badge).
