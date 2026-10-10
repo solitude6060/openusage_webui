@@ -141,7 +141,10 @@ Codex reads `CODEX_HOME/auth.json` when `CODEX_HOME` is set, otherwise `~/.confi
 The original plugins may refresh OAuth tokens and write updated credentials back to the same file source. Browser cookies are not used.
 
 Refresh All and individual provider refreshes run in request order. An individual refresh
-waits for an earlier refresh to finish. Concurrent Refresh All requests share one run.
+waits for an earlier refresh to finish. Concurrent Refresh All requests share one run
+while the account list remains unchanged. Changing accounts starts a fresh queued run.
+Results from a deleted or replaced account are discarded, and a refresh preserves the
+account's current enabled setting.
 
 ## Grok Build Notes
 

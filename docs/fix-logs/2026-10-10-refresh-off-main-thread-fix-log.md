@@ -18,3 +18,11 @@ Persistent command output: `docs/fix-logs/2026-10-10-refresh-off-main-thread.loc
 - Fix: one promise queue inside each handler covers every refresh run through its storage writes. Full refreshes retain single-flight behavior; individual requests keep separate results. A queued run reads the provider list when it starts. Queue settlement preserves errors for the caller and allows subsequent runs.
 - Files: `apps/server/src/index.ts`, `apps/server/test/refresh-single-flight.test.ts`; ordering documented in the plan, `README_WEBUI.md`, and `docs/USER_GUIDE_WEBUI.zh-TW.md`.
 - Green: `rr1-1-green.log`, 4 passed, 0 failed; both overlap regressions observe at most one active provider call.
+
+## RR1-2: Account Changes During Refresh
+
+- Regressions: six successful/failed probes cover account deletion, replacement through the account endpoint, and status removal; two cover disabling through the enabled endpoint. A ninth replaces the provider during a pending full refresh and requests a new full run plus a shared request.
+- Red: `rr1-2-red.log`, 9 failed; obsolete writes occurred, disabled status reverted, and the new full request received old results.
+- Fix: success and failure branches re-read status and check provider object identity before usage, quota, probe failure, or status writes. Removed status is not recreated; injected providers without initial status retain first-refresh behavior. Both branches use the current enabled flag. Full single-flight compares provider-list identity, and an older run only clears its own promise.
+- Files: `apps/server/src/index.ts`, `apps/server/test/refresh-account-safety.test.ts`, `README_WEBUI.md`, `docs/USER_GUIDE_WEBUI.zh-TW.md`.
+- Green: `rr1-2-green.log`, 13 passed, 0 failed across the account and queue suites.
