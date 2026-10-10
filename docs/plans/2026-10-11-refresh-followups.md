@@ -18,6 +18,11 @@ default plugin refresh from the bundle fails. Repair: make the bundle carry a ru
 entry and resolve it in both layouts (source and bundle), or stop producing a server bundle if
 nothing uses it — choose the smaller correct change and record why.
 
+Implementation choice: retain the server bundle. `build:webui` already builds it; adding
+the worker as a second entry and resolving `.ts` in source / `.js` in the bundle preserves
+the existing build command and emits both files together. Removing the bundle would
+change that workflow. Document the output in `README_WEBUI.md`.
+
 Acceptance: regression tests that fail on `d8479dc`; for F2, a test or scripted check that runs a
 default plugin refresh from the built bundle. Existing suites and `bun run build:webui` pass.
 

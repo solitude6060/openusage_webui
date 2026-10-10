@@ -25,7 +25,10 @@ type WorkerResponse =
 export function refreshOpenUsagePluginInWorker(
   options: OpenUsagePluginWorkerOptions,
 ): Promise<UsageRecord[]> {
-  const entryUrl = new URL("./openusage-plugin-worker.ts", import.meta.url);
+  const entryUrl = new URL(
+    import.meta.url.endsWith(".ts") ? "./openusage-plugin-worker.ts" : "./openusage-plugin-worker.js",
+    import.meta.url,
+  );
   const entryPath = fileURLToPath(entryUrl);
   if (!existsSync(entryPath)) {
     return Promise.reject(new Error(`OpenUsage plugin worker entry is missing: ${entryPath}`));

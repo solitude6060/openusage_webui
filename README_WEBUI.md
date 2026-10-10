@@ -75,6 +75,10 @@ bun run start:webui
 
 `start:webui` serves the built frontend and API from the same local server. If the frontend build is missing, the server returns a clear local error instead of serving an empty page.
 
+The server build also produces `apps/server/dist/index.js` and its plugin worker
+`openusage-plugin-worker.js`. Keep both files together when using the bundled server.
+The source-based `start:webui` command uses the TypeScript worker beside the provider source.
+
 ### Always-On Service From A Dedicated Worktree
 
 The server serves `apps/web/dist` and loads `plugins/` from its own checkout. Running
