@@ -13,7 +13,7 @@ use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-const WHITELISTED_ENV_VARS: [&str; 20] = [
+const WHITELISTED_ENV_VARS: [&str; 22] = [
     "CODEX_HOME",
     "CLAUDE_CONFIG_DIR",
     "CLAUDE_CODE_OAUTH_TOKEN",
@@ -29,6 +29,8 @@ const WHITELISTED_ENV_VARS: [&str; 20] = [
     "MINIMAX_API_TOKEN",
     "MINIMAX_CN_API_KEY",
     "SYNTHETIC_API_KEY",
+    "OPENROUTER_API_KEY",
+    "OPENROUTER_KEY",
     "PI_CODING_AGENT_DIR",
     "OPENUSAGE_CURSOR_CONFIG_DIR",
     "OPENUSAGE_CURSOR_STATE_DB",
@@ -430,6 +432,7 @@ fn redact_body(body: &str) -> String {
         "email",
         "login",
         "analytics_tracking_id",
+        "label",
     ];
     for key in sensitive_keys {
         // Match "key": "value" or "key":"value"
