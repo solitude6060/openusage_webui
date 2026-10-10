@@ -16,6 +16,12 @@ import type {
 import { isMultiAccountProviderId, providerIdFromAccountId } from "../../core/src/types";
 import type { Storage } from "./storage";
 import type { QuotaLimitUnit, QuotaObservation } from "../../providers/src/quota-observations";
+import {
+  TOKEN_HOURLY_SCHEMA,
+  allowanceTokenTimes,
+  isHourlyTokenRecord,
+  prepareHourlyUpsert,
+} from "./allowance-tokens";
 
 type UsageRecordRow = {
   id: string;
@@ -175,6 +181,7 @@ export class SqliteStorage implements Storage {
         value TEXT NOT NULL
       );
     `);
+    this.db.exec(TOKEN_HOURLY_SCHEMA);
     this.migrateCodexInstancesToProviderAccounts();
   }
 
@@ -214,6 +221,7 @@ export class SqliteStorage implements Storage {
     }
 
     const db = this.requireDb();
+    const upsertHourly = prepareHourlyUpsert(db);
     const insert = db.prepare(`
       INSERT INTO usage_records (
         id,
@@ -262,7 +270,13 @@ export class SqliteStorage implements Storage {
       WHERE provider_id = ? AND started_at = ? AND source = 'cli'
     `);
 
-    const transaction = db.transaction((items: UsageRecord[]) => {
+    const transaction = db.transaction((all: UsageRecord[]) => {
+      // Hourly records feed only Allowance. They never enter usage_records or its replaceScopes delete.
+      const items: UsageRecord[] = [];
+      for (const record of all) {
+        if (isHourlyTokenRecord(record)) upsertHourly(record);
+        else items.push(record);
+      }
       if (options.replaceScopes) {
         const scopes = new Set<string>();
         const legacyScopes = new Set<string>();
@@ -929,31 +943,6 @@ function rowToProviderAccount(row: ProviderAccountRow): ProviderAccount | null {
 
 function roundCurrency(value: number): number {
   return Math.round(value * 10000) / 10000;
-}
-
-const DAILY_TOKEN_TOOLS = ["ccusage", "Cursor Usage Event", "Grok Session"];
-
-function allowanceTokenTimes(tool: string | null, startedAt: string): { startedAt: string; bucketEnd?: string } {
-  if (tool === "ccusage") {
-    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(startedAt);
-    if (match) {
-      const year = Number(match[1]);
-      const month = Number(match[2]);
-      const day = Number(match[3]);
-      // ponytail: this assumes the server time zone at read time equals the zone ccusage used when the row was imported; a server moved to another zone shifts every historical ccusage row.
-      return {
-        startedAt: new Date(year, month - 1, day).toISOString(),
-        bucketEnd: new Date(year, month - 1, day + 1).toISOString(),
-      };
-    }
-  }
-  if (tool != null && DAILY_TOKEN_TOOLS.includes(tool)) {
-    return {
-      startedAt,
-      bucketEnd: new Date(Date.parse(startedAt) + 86400000).toISOString(),
-    };
-  }
-  return { startedAt };
 }
 
 type QuotaObservationRow = {
