@@ -110,7 +110,7 @@ Differences from upstream (O1 = plan D1, O2 = plan D3):
 | O2 | `saveAPIKey` / `deleteAPIKey` / `keyStatus` and the API key editor | Not ported; key is read only | Scope cut (UI) |
 | O3 | Key from the login-shell environment captured at launch (`ProcessEnvironmentReader`) | `ctx.host.env.get`: server process environment in the WebUI host; whitelisted names in the Tauri host. `OPENROUTER_API_KEY` and `OPENROUTER_KEY` were added to `WHITELISTED_ENV_VARS` in `src-tauri/src/plugin_engine/host_api.rs` (the WebUI host has no whitelist) | Runtime adaptation |
 | O4 | Widget metadata: `exportingLimit(...)`, bounded widgets with `limit: 100`, `isUsagePeriod` | Not ported. Progress rows in dollars get `limitUnit: "usd"` from `quota-observations.ts:126` | Runtime adaptation |
-| O5 | Unreadable config file (`try?`) and transport errors are silent | `ctx.host.log.warn` with the path or endpoint URL and the error text; no key, header or response body is logged. The user-facing messages are unchanged | Logging addition (AGENTS.md: fail loudly) |
+| O5 | Unreadable config file (`try?`) and transport errors are silent. A non-empty 2xx body that is not valid JSON is logged (`ProviderParse.jsonObject`: byte count and parser error) | `ctx.host.log.warn` with the path or endpoint URL and the error text for config and transport failures (logging addition, AGENTS.md: fail loudly). For an invalid JSON body the warning carries the endpoint path and the character count only, aligned with upstream but without the parser error text. No key, header or response body is logged. The user-facing messages are unchanged | Logging addition and alignment |
 | O6 | `is_free_tier as? Bool` (Swift may also bridge a JSON number 0/1 to Bool) | JSON booleans only. Not verified on Swift (no Swift runtime here); `/key` returns a JSON boolean | Unverified minor difference |
 | O7 | `ProviderParse.number` uses `Double(String)` | `Number(String)` after rejecting blank strings; booleans, non-finite values and non-strings are rejected as upstream. Exotic strings such as hex floats may parse differently | Minor difference |
 
@@ -143,7 +143,7 @@ log messages through `redact_log_message`):
 | Key shape `sk-or-v1-...` | Matches the existing `sk-` pattern in `redact_body` and `redact_log_message` | Rust tests `redact_body_redacts_openrouter_api_keys`, `redact_log_message_redacts_openrouter_api_key` |
 | `/key` `label` (user-chosen name or masked key) | Not in the `redact_body` sensitive key list, so the 500-byte body preview would log it | Added `"label"` to the list; Rust test `redact_body_redacts_openrouter_key_label` (red before, green after) |
 | `/credits` and `/key` numeric fields | Spend and balance amounts only | Left visible |
-| Plugin output and logs | Plugin logs only on a failed config read or a failed request; never the key or a body | vitest "sensitive data" tests (no log call and no thrown message or line contains the key or the label) |
+| Plugin output and logs | Plugin logs only on a failed config read, a failed request, or a non-empty 2xx body that is not valid JSON (endpoint and character count only); never the key or a body | vitest "sensitive data" tests (no log call and no thrown message or line contains the key or the label) |
 | Env access | Tauri host returns `None` for non-whitelisted names | Added both names; Rust assertion in `env_api_respects_allowlist_in_host_and_js` |
 
 Verification limits: the Tauri crate cannot build on this host (`openssl-sys` needs OpenSSL dev

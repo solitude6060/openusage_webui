@@ -92,6 +92,14 @@
     if (status < 200 || status >= 300) {
       return { failure: "OpenRouter request failed (HTTP " + status + ")." };
     }
+    // Like upstream ProviderParse.jsonObject: an empty body is silent, a non-empty body that is
+    // not valid JSON leaves a diagnostic. Only the endpoint and size are logged, never the body.
+    var bodyText = result.resp.bodyText;
+    if (result.json === null && typeof bodyText === "string" && bodyText.length > 0) {
+      ctx.host.log.warn(
+        "OpenRouter response from " + url + " is not valid JSON (" + bodyText.length + " chars)"
+      );
+    }
     // OpenRouter wraps every payload in { "data": { ... } }.
     var data = result.json ? result.json.data : null;
     if (!isObject(data)) return { failure: MSG_UNAVAILABLE };
