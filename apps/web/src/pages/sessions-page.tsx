@@ -2,7 +2,14 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { ProviderStatus, UsageRecord } from "../../../../packages/core/src/types";
 import { getUsageRecords } from "../lib/api";
 import { listProviderCards, providerLabel } from "../provider-ui";
-import { formatDate, formatMoney, formatNumber, formatQuota } from "../lib/format";
+import {
+  clampUsageLimit,
+  emptySessionMessage,
+  formatDate,
+  formatOptionalMoney,
+  formatOptionalNumber,
+  formatQuota,
+} from "../lib/format";
 
 type SessionFilters = {
   providerId: string;
@@ -16,8 +23,14 @@ function usageQuery(filters: SessionFilters) {
     providerId: filters.providerId,
     from: filters.from ? new Date(filters.from).toISOString() : undefined,
     to: filters.to ? new Date(filters.to).toISOString() : undefined,
-    limit: Number(filters.limit),
+    limit: clampUsageLimit(filters.limit),
   };
+}
+
+function sessionFiltersActive(filters: SessionFilters): boolean {
+  if (filters.providerId || filters.from || filters.to) return true;
+  const limit = filters.limit.trim();
+  return limit !== "" && limit !== "100";
 }
 
 export function SessionsPage({
@@ -36,6 +49,7 @@ export function SessionsPage({
   });
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
+  const [loadedFilters, setLoadedFilters] = useState(filters);
   const [error, setError] = useState<string | null>(null);
   const providerOptions = useMemo(() => listProviderCards(providers), [providers]);
   const providerNames = useMemo(() => {
@@ -48,6 +62,7 @@ export function SessionsPage({
 
   async function load(next: SessionFilters) {
     setError(null);
+    setLoadedFilters(next);
     try {
       setRecords(await getUsageRecords(usageQuery(next)));
     } catch (filterError) {
@@ -137,7 +152,7 @@ export function SessionsPage({
               {records.length === 0 ? (
                 <tr>
                   <td className="table-empty-cell" colSpan={10}>
-                    No Usage Records Yet
+                    {emptySessionMessage(sessionFiltersActive(loadedFilters))}
                   </td>
                 </tr>
               ) : (
@@ -147,11 +162,11 @@ export function SessionsPage({
                     <td>{providerLabel(record.providerId, providerNames.get(record.providerId))}</td>
                     <td>{record.tool ?? "-"}</td>
                     <td>{record.model ?? "-"}</td>
-                    <td>{formatNumber(record.inputTokens ?? 0)}</td>
-                    <td>{formatNumber(record.outputTokens ?? 0)}</td>
-                    <td>{formatNumber(record.totalTokens ?? 0)}</td>
+                    <td>{formatOptionalNumber(record.inputTokens)}</td>
+                    <td>{formatOptionalNumber(record.outputTokens)}</td>
+                    <td>{formatOptionalNumber(record.totalTokens)}</td>
                     <td>{formatQuota(record)}</td>
-                    <td>{formatMoney(record.costUsd ?? 0)}</td>
+                    <td>{formatOptionalMoney(record.costUsd)}</td>
                     <td>{record.source}</td>
                   </tr>
                 ))

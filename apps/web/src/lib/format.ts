@@ -13,6 +13,10 @@ export function formatNumber(value: number): string {
   return new Intl.NumberFormat().format(value);
 }
 
+export function formatOptionalNumber(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? formatNumber(value) : "-";
+}
+
 export function formatMoney(value: number): string {
   return new Intl.NumberFormat(undefined, {
     style: "currency",
@@ -21,12 +25,30 @@ export function formatMoney(value: number): string {
   }).format(value);
 }
 
+export function formatOptionalMoney(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? formatMoney(value) : "-";
+}
+
+export function clampUsageLimit(value: string): number {
+  const trimmed = value.trim();
+  if (!trimmed) return 100;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed)) return 100;
+  return Math.min(1000, Math.max(1, Math.trunc(parsed)));
+}
+
+export function emptySessionMessage(filtersActive: boolean): string {
+  return filtersActive ? "No Records Match These Filters" : "No Usage Records Yet";
+}
+
 export function formatDate(value?: string): string {
   if (!value) return "Never";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Invalid Date";
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
-  }).format(new Date(value));
+  }).format(date);
 }
 
 export function formatQuota(record: UsageRecord): string {
