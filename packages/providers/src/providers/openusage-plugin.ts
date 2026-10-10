@@ -19,6 +19,7 @@ import {
   expandHome,
   normalizeHomeDir,
   querySqlite,
+  resolvePluginCcusageProvider,
   runPluginCcusageQuery,
   runPluginHttpRequest,
   type LanguageServerDiscovery,
@@ -35,9 +36,11 @@ import {
   type OpenUsagePluginWorkerOptions,
 } from "./openusage-plugin-refresh-worker";
 import { scanGrokSessionUsage } from "./grok-session-usage";
+import { runPluginCcusageBlocks } from "./ccusage-blocks";
 import {
   CursorUsageCollector,
   normalizeCcusageDailyRecords,
+  normalizeCcusageHourlyBlocks,
 } from "./structured-usage";
 
 export {
@@ -96,6 +99,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
   private readonly env: Record<string, string | undefined>;
   private readonly requestImpl?: (opts: PluginRequestOptions) => PluginRequestResponse;
   private readonly ccusageQueryImpl: (opts: PluginCcusageQueryOptions) => PluginCcusageQueryResult;
+  private readonly ccusageBlocksImpl?: (opts: PluginCcusageQueryOptions) => ReturnType<typeof runPluginCcusageBlocks>;
   private readonly gitHubTokenRunner?: PluginGitHubTokenRunner;
   private readonly lsDiscover: (opts: LanguageServerDiscoveryOptions) => LanguageServerDiscovery | null;
   private readonly now: () => string;
@@ -116,6 +120,10 @@ export class OpenUsagePluginProvider implements UsageProvider {
     this.ccusageQueryImpl =
       options.ccusageQuery ??
       ((opts) => runPluginCcusageQuery(opts, this.pluginId, this.homeDir, options.ccusageRunner, this.env));
+    // A stubbed daily query means a test double; never start a real ccusage process behind it.
+    this.ccusageBlocksImpl = options.ccusageQuery
+      ? undefined
+      : (opts) => runPluginCcusageBlocks(opts, this.homeDir, options.ccusageRunner, this.env);
     this.gitHubTokenRunner = options.gitHubTokenRunner;
     this.lsDiscover = options.lsDiscover ?? discoverLanguageServer;
     this.recordCcusageTokens = options.recordCcusageTokens ?? true;
@@ -321,6 +329,9 @@ export class OpenUsagePluginProvider implements UsageProvider {
             const result = this.ccusageQueryImpl(opts ?? {});
             if (result.status === "ok" && this.recordCcusageTokens) {
               captureUsage(normalizeCcusageDailyRecords(this.id, result.data.daily));
+              if (resolvePluginCcusageProvider(opts?.provider, this.pluginId) === "claude") {
+                captureUsage(this.claudeHourlyRecords(opts ?? {}, result.data.daily));
+              }
             }
             return result;
           },
@@ -340,6 +351,28 @@ export class OpenUsagePluginProvider implements UsageProvider {
       util: createUtilApi(request),
       __openusageFilesBase: filesBase,
     };
+  }
+
+  // Hourly blocks only feed Allowance. A failure is logged and never fails the daily refresh.
+  private claudeHourlyRecords(
+    opts: PluginCcusageQueryOptions,
+    daily: Array<Record<string, unknown>>,
+  ): UsageRecord[] {
+    if (!this.ccusageBlocksImpl) return [];
+    try {
+      const result = this.ccusageBlocksImpl(opts);
+      if (result.status !== "ok") {
+        console.error(`ccusage hourly blocks failed for ${this.id}: ${result.status}`);
+        return [];
+      }
+      return normalizeCcusageHourlyBlocks(this.id, result.data.blocks, daily, this.now());
+    } catch (error) {
+      console.error(
+        `ccusage hourly blocks failed for ${this.id}:`,
+        error instanceof Error ? error.message : String(error),
+      );
+      return [];
+    }
   }
 
   private readGitHubToken(): string | null {

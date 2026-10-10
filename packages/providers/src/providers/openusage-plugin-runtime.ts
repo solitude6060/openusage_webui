@@ -310,7 +310,19 @@ export function runPluginCcusageQuery(
   const args = [provider, "daily", "--json"];
   if (opts.since) args.push("--since", opts.since);
   if (opts.until) args.push("--until", opts.until);
+  const result = runCcusageJson(provider, args, opts, homeDir, commandRunner, providerEnv, dailyRowsFromCcusagePayload);
+  return result.status === "ok" ? { status: "ok", data: { daily: result.data } } : result;
+}
 
+export function runCcusageJson(
+  provider: "claude" | "codex",
+  args: string[],
+  opts: PluginCcusageQueryOptions,
+  homeDir: string,
+  commandRunner: PluginCcusageRunner | undefined,
+  providerEnv: Record<string, string | undefined>,
+  rowsFromPayload: (value: unknown) => Array<Record<string, unknown>> | null,
+): { status: "ok"; data: Array<Record<string, unknown>> } | { status: "no_runner" | "runner_failed"; data: null } {
   let sawRunnableCommand = false;
   for (const runner of ["bunx", "npx"] as const) {
     const env = ccusageEnvForProvider(provider, opts.homePath ?? opts.claudePath, homeDir, providerEnv);
@@ -331,18 +343,16 @@ export function runPluginCcusageQuery(
     if (proc.exitCode !== 0) {
       continue;
     }
-    const daily = dailyRowsFromCcusagePayload(
-      parseCcusageJsonPayload(outputToString(proc.stdout)),
-    );
-    if (daily) {
-      return { status: "ok", data: { daily } };
+    const rows = rowsFromPayload(parseCcusageJsonPayload(outputToString(proc.stdout)));
+    if (rows) {
+      return { status: "ok", data: rows };
     }
   }
 
   return { status: sawRunnableCommand ? "runner_failed" : "no_runner", data: null };
 }
 
-function resolvePluginCcusageProvider(
+export function resolvePluginCcusageProvider(
   provider: PluginCcusageQueryOptions["provider"],
   pluginId?: string,
 ): "claude" | "codex" {
