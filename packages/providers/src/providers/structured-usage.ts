@@ -125,38 +125,50 @@ export class CursorUsageCollector {
   records(providerId: ProviderId): UsageRecord[] {
     if (this.failed || !this.complete) return [];
 
-    const totals = new Map<
-      string,
-      { startedAt: string; model: string; tokens: TokenValues; costUsd: number; costKnown: boolean }
-    >();
+    const daily: TokenTotals = new Map();
+    const hourly: TokenTotals = new Map();
     for (const event of this.events) {
       if (!isObject(event.tokenUsage)) continue;
       const timestamp = eventTimestamp(event.timestamp);
       if (!timestamp) continue;
-      const startedAt = `${timestamp.slice(0, 10)}T00:00:00.000Z`;
       const model = text(event.model) ?? "Unknown";
       const tokens = tokenValues(event.tokenUsage);
       if (!tokens) continue;
       const costUsd = eventCostUsd(event);
-      const key = `${startedAt}|${model}`;
-      const current = totals.get(key);
-      if (current) {
-        addTokenValues(current.tokens, tokens);
-        if (costUsd === undefined) current.costKnown = false;
-        else current.costUsd += costUsd;
-      } else {
-        totals.set(key, {
-          startedAt,
-          model,
-          tokens,
-          costUsd: costUsd ?? 0,
-          costKnown: costUsd !== undefined,
-        });
-      }
+      addTokenTotal(daily, `${timestamp.slice(0, 10)}T00:00:00.000Z`, model, tokens, costUsd);
+      addTokenTotal(hourly, `${timestamp.slice(0, 13)}:00:00.000Z`, model, tokens, costUsd);
     }
 
-    return [...totals.values()].map(({ startedAt, model, tokens, costUsd, costKnown }) =>
-      createTokenRecord(providerId, startedAt, model, tokens, "cursor-event", costKnown ? costUsd : undefined));
+    return [
+      ...[...daily.values()].map(({ startedAt, model, tokens, costUsd, costKnown }) =>
+        createTokenRecord(providerId, startedAt, model, tokens, "cursor-event", costKnown ? costUsd : undefined)),
+      ...[...hourly.values()].map(({ startedAt, model, tokens, costUsd, costKnown }) =>
+        createHourlyTokenRecord(providerId, startedAt, model, tokens, "cursor-event", costKnown ? costUsd : undefined)),
+    ];
+  }
+}
+
+type TokenTotals = Map<
+  string,
+  { startedAt: string; model: string; tokens: TokenValues; costUsd: number; costKnown: boolean }
+>;
+
+function addTokenTotal(
+  totals: TokenTotals,
+  startedAt: string,
+  model: string,
+  tokens: TokenValues,
+  costUsd: number | undefined,
+): void {
+  const key = `${startedAt}|${model}`;
+  const current = totals.get(key);
+  if (current) {
+    addTokenValues(current.tokens, tokens);
+    if (costUsd === undefined) current.costKnown = false;
+    else current.costUsd += costUsd;
+  } else {
+    // Copy: the same event feeds the daily and the hourly totals, and addTokenValues mutates.
+    totals.set(key, { startedAt, model, tokens: { ...tokens }, costUsd: costUsd ?? 0, costKnown: costUsd !== undefined });
   }
 }
 

@@ -4,8 +4,10 @@ import { join } from "node:path";
 import { OpenUsagePluginProvider } from "../src/index";
 import { withIsolatedHome } from "./openusage-plugin-fixture-helpers";
 
+// Daily token records only. Hourly records (endedAt set) are covered by hourly-token-records.test.ts.
 function tokenRecords(records: Awaited<ReturnType<OpenUsagePluginProvider["refresh"]>>) {
   return records
+    .filter((record) => record.endedAt === undefined)
     .filter((record) => typeof record.totalTokens === "number" && record.totalTokens > 0)
     .sort((left, right) => (left.model ?? "").localeCompare(right.model ?? ""));
 }

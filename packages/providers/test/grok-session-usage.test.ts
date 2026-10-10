@@ -203,7 +203,7 @@ describe("Grok session filesystem scan", () => {
         providerId: "grok",
         homeDir: home,
         env: { GROK_HOME: grokHome },
-      });
+      }).filter((record) => record.endedAt === undefined);
 
       expect(records).toEqual([
         expect.objectContaining({
@@ -254,7 +254,8 @@ describe("Grok session filesystem scan", () => {
         }) + "\n",
       );
 
-      const records = scanGrokSessionUsage({ providerId: "grok", homeDir: home });
+      const records = scanGrokSessionUsage({ providerId: "grok", homeDir: home })
+        .filter((record) => record.endedAt === undefined);
       expect(records).toHaveLength(1);
       expect(records[0]?.totalTokens).toBe(600);
     });
