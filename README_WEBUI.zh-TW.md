@@ -86,6 +86,37 @@ bun run start:webui
 
 `start:webui` 會用同一個本機 server 服務已 build 的 frontend 和 API。如果 frontend build 產物不存在，server 會回傳明確錯誤，而不是空白頁。
 
+### 常駐服務改用獨立 worktree
+
+server 會服務自己 checkout 內的 `apps/web/dist`，也從同一個 checkout 載入 `plugins/`。如果常駐
+server 和開發共用同一個 checkout，在開發分支跑 `bun run build:webui` 會直接換掉正在服務的
+frontend，但執行中的 server 程序仍是舊的 API，畫面可能因此讀不到資料。常駐 server 請改從一個
+追蹤 `main` 的獨立 worktree 執行：
+
+```bash
+git worktree add --detach ../openusage_webui-wt-live origin/main
+cd ../openusage_webui-wt-live
+bun install --frozen-lockfile
+bun run build:webui
+```
+
+服務指向該 worktree，例如 systemd user unit：
+
+```ini
+WorkingDirectory=/path/to/openusage_webui-wt-live/apps/server
+ExecStart=/path/to/bun src/index.ts
+```
+
+資料庫與設定仍在 `~/.openusage-webui/`（或 `OPENUSAGE_WEBUI_DIR`），搬移服務不會搬移資料。
+merge 之後部署：
+
+```bash
+cd ../openusage_webui-wt-live
+git fetch origin && git checkout --detach origin/main
+bun install --frozen-lockfile && bun run build:webui
+systemctl --user restart openusage-webui.service
+```
+
 ## Tailscale 連線
 
 預設只開本機。若要讓 Tailscale 裝置連進來，需要同時設定綁定位址與 `Host` header 允許清單：
