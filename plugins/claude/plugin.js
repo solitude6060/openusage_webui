@@ -858,7 +858,7 @@
       const displayName = scopedWeeklyDisplayName(entry)
       if (!displayName) continue
       const label = displayName + " Weekly"
-      if (seen[label]) continue
+      if (seen[label] || seen[displayName]) continue
       if (typeof entry.percent !== "number" || !Number.isFinite(entry.percent)) continue
       const percent = entry.percent
       const pushed = pushPercentUsageLine(
@@ -868,7 +868,10 @@
         { utilization: percent, resets_at: entry.resets_at },
         SEVEN_DAY_MS
       )
-      if (pushed) seen[label] = true
+      if (pushed) {
+        seen[label] = true
+        seen[displayName] = true
+      }
     }
   }
 

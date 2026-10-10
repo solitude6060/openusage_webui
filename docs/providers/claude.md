@@ -74,7 +74,7 @@ All windows are enforced simultaneously — hitting any limit throttles the user
 
 OpenUsage also accepts `seven_day_falbe`, `weekly_fable`, `weekly_falbe`, `fable`, and `falbe` as aliases for the Fable weekly window because the API is undocumented and field names can vary. If Claude returns the Fable weekly window nested under another object, OpenUsage looks for Fable/Falbe usage windows recursively.
 
-Current responses put model weekly windows in `limits[]` instead of `seven_day_fable`. Each entry with `kind: "weekly_scoped"` and a model `display_name` becomes a `<display_name> Weekly` percent line (for example `Fable Weekly`), using `percent` as the used amount and `resets_at` as the reset time. Older `seven_day_*` keys are still read. If both shapes name the same weekly line, OpenUsage keeps the legacy line and does not add a second one.
+Current responses put model weekly windows in `limits[]` instead of `seven_day_fable`. Each entry with `kind: "weekly_scoped"` and a model `display_name` becomes a `<display_name> Weekly` percent line (for example `Fable Weekly`), using `percent` as the used amount and `resets_at` as the reset time. Older `seven_day_*` keys are still read. If both shapes describe the same model, OpenUsage keeps the legacy line and does not add a second one. `Sonnet` and `Sonnet Weekly` are the same quota, and so are `Claude Design` and `Claude Design Weekly`.
 
 Local `ccusage` data can also include Fable model rows such as `claude-fable-5`, but OpenUsage does not infer remaining Fable weekly quota from local logs. If the live usage API does not return a separate Fable weekly quota window, the dashboard does not show a Fable weekly line.
 
