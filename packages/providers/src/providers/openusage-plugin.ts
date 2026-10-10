@@ -21,6 +21,7 @@ import {
   querySqlite,
   runPluginCcusageQuery,
   runPluginHttpRequest,
+  type LanguageServerDiscovery,
   type LanguageServerDiscoveryOptions,
   type PluginCcusageQueryOptions,
   type PluginCcusageQueryResult,
@@ -66,6 +67,7 @@ export interface OpenUsagePluginProviderOptions {
   ccusageQuery?: (opts: PluginCcusageQueryOptions) => PluginCcusageQueryResult;
   ccusageRunner?: PluginCcusageRunner;
   gitHubTokenRunner?: PluginGitHubTokenRunner;
+  lsDiscover?: (opts: LanguageServerDiscoveryOptions) => LanguageServerDiscovery | null;
   now?: () => string;
   pluginDataDir?: string;
   homeDir?: string;
@@ -95,6 +97,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
   private readonly requestImpl?: (opts: PluginRequestOptions) => PluginRequestResponse;
   private readonly ccusageQueryImpl: (opts: PluginCcusageQueryOptions) => PluginCcusageQueryResult;
   private readonly gitHubTokenRunner?: PluginGitHubTokenRunner;
+  private readonly lsDiscover: (opts: LanguageServerDiscoveryOptions) => LanguageServerDiscovery | null;
   private readonly now: () => string;
   private readonly pluginDataDir: string;
   private readonly homeDir: string;
@@ -114,12 +117,14 @@ export class OpenUsagePluginProvider implements UsageProvider {
       options.ccusageQuery ??
       ((opts) => runPluginCcusageQuery(opts, this.pluginId, this.homeDir, options.ccusageRunner, this.env));
     this.gitHubTokenRunner = options.gitHubTokenRunner;
+    this.lsDiscover = options.lsDiscover ?? discoverLanguageServer;
     this.recordCcusageTokens = options.recordCcusageTokens ?? true;
     this.pluginDataDir = options.pluginDataDir ?? join(this.homeDir, ".openusage-webui", "plugins", this.id);
     this.useDefaultRuntime = options.request === undefined
       && options.ccusageQuery === undefined
       && options.ccusageRunner === undefined
       && options.gitHubTokenRunner === undefined
+      && options.lsDiscover === undefined
       && options.now === undefined;
   }
 
@@ -309,7 +314,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
           exec: (databasePath: string, sql: string) => execSqlite(databasePath, sql, this.homeDir),
         },
         ls: {
-          discover: (opts: LanguageServerDiscoveryOptions) => discoverLanguageServer(opts ?? {}),
+          discover: (opts: LanguageServerDiscoveryOptions) => this.lsDiscover(opts ?? {}),
         },
         ccusage: {
           query: (opts: PluginCcusageQueryOptions) => {
