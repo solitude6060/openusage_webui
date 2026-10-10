@@ -174,8 +174,10 @@ The WebUI Tokens page stores Claude/Codex local usage, complete Cursor usage-eve
 refreshes, and Grok Build CLI session transcripts as dated model totals, so repeated
 refreshes update existing totals without double counting. Codex homes that share one
 `sessions` directory contribute those totals once. The Allowance page compares tokens
-and recorded API costs with quota movement over the same measured interval. It shows
-an alignment warning when daily totals cannot be split at meter readings or resets.
+and recorded API costs with quota movement over the same measured interval. It aligns
+that interval to a day boundary when the meter is unchanged across it, and shows
+an alignment warning when a daily total still cannot be placed inside the interval.
+Claude and Codex daily rows use this computer's local day. Cursor and Grok daily rows use UTC days.
 Quota history retains each percent change and any absolute limit supplied by the provider.
 Cursor-billed Grok stays
 under Cursor. Grok Build is omitted until a Grok refresh finds `turn_completed` rows.

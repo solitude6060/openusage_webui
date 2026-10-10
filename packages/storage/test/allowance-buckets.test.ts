@@ -5,6 +5,9 @@ import { join } from "node:path";
 import { SqliteStorage } from "../src/index";
 import type { UsageRecord } from "../../core/src/types";
 
+const TAIPEI_MIDNIGHT = "2026-10-08T16:00:00.000Z";
+const repoRoot = join(import.meta.dir, "../../..");
+
 let dataDir: string;
 let previousDataDir: string | undefined;
 
@@ -31,8 +34,27 @@ function record(overrides: Partial<UsageRecord> & Pick<UsageRecord, "id" | "prov
 
 describe("allowance token buckets", () => {
   test("maps a ccusage day to Asia/Taipei midnight and leaves a Cursor day on UTC", async () => {
-    // Run with TZ=Asia/Taipei. Local midnight of 2026-10-09 is 2026-10-08T16:00:00.000Z.
-    expect(new Date(2026, 9, 9).toISOString()).toBe("2026-10-08T16:00:00.000Z");
+    // bun test defaults to UTC. The +08 offset is only visible when TZ=Asia/Taipei.
+    if (new Date(2026, 9, 9).toISOString() !== TAIPEI_MIDNIGHT) {
+      if (process.env.ALLOWANCE_BUCKET_TZ_CHILD === "1") {
+        throw new Error(`TZ=Asia/Taipei did not select local midnight. Got ${new Date(2026, 9, 9).toISOString()}.`);
+      }
+      const child = Bun.spawn([process.execPath, "test", "packages/storage/test/allowance-buckets.test.ts"], {
+        cwd: repoRoot,
+        env: { ...process.env, TZ: "Asia/Taipei", ALLOWANCE_BUCKET_TZ_CHILD: "1" },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, code] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ]);
+      if (code !== 0) throw new Error(`Taipei bucket test failed (${code})\n${stdout}\n${stderr}`);
+      return;
+    }
+
+    expect(new Date(2026, 9, 9).toISOString()).toBe(TAIPEI_MIDNIGHT);
 
     const storage = new SqliteStorage();
     await storage.init();

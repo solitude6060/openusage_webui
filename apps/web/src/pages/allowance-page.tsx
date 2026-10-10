@@ -89,7 +89,7 @@ export function AllowancePage({
             Estimated allowance divides the tokens used while the meter moved by how far that meter moved. API Value applies that same ratio to the API price recorded on those tokens. This Period is the current reset cycle, and Previous Period is the cycle before it. This Month uses this computer's calendar.
           </p>
           <p className="settings-help muted">
-            Daily totals cannot be split at a meter reading or reset within the day. Those spans show Daily Usage Cannot Align and have no allowance estimate. Token totals below include only fully covered records.
+            Daily totals cannot be split inside a day. A day boundary counts when the meter readings on both sides are equal, and each end can then be off by one percentage point. Spans that cannot find two such times show Daily Usage Cannot Align and have no allowance estimate. Token totals below include only fully covered records.
           </p>
           {error ? <div className="alert error">{error}</div> : null}
           {loading ? <div className="loading-indicator">Loading...</div> : null}

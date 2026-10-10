@@ -802,12 +802,9 @@ export class SqliteStorage implements Storage {
     return rows.map((row) => ({
       providerId: row.provider_id,
       model: row.model?.trim() ? row.model : "Unknown",
-      startedAt: row.started_at,
       tokens: Number(row.total_tokens) || 0,
       costUsd: row.cost_usd == null ? null : Number(row.cost_usd),
-      ...(["ccusage", "Cursor Usage Event", "Grok Session"].includes(row.tool ?? "")
-        ? { bucketEnd: new Date(Date.parse(row.started_at) + 86400000).toISOString() }
-        : {}),
+      ...allowanceTokenTimes(row.tool, row.started_at),
     }));
   }
 
@@ -928,6 +925,31 @@ function rowToProviderAccount(row: ProviderAccountRow): ProviderAccount | null {
 
 function roundCurrency(value: number): number {
   return Math.round(value * 10000) / 10000;
+}
+
+const DAILY_TOKEN_TOOLS = ["ccusage", "Cursor Usage Event", "Grok Session"];
+
+function allowanceTokenTimes(tool: string | null, startedAt: string): { startedAt: string; bucketEnd?: string } {
+  if (tool === "ccusage") {
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(startedAt);
+    if (match) {
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+      // ponytail: this assumes the server time zone at read time equals the zone ccusage used when the row was imported; a server moved to another zone shifts every historical ccusage row.
+      return {
+        startedAt: new Date(year, month - 1, day).toISOString(),
+        bucketEnd: new Date(year, month - 1, day + 1).toISOString(),
+      };
+    }
+  }
+  if (tool != null && DAILY_TOKEN_TOOLS.includes(tool)) {
+    return {
+      startedAt,
+      bucketEnd: new Date(Date.parse(startedAt) + 86400000).toISOString(),
+    };
+  }
+  return { startedAt };
 }
 
 type QuotaObservationRow = {
