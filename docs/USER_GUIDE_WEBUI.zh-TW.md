@@ -185,6 +185,7 @@ Tokens 頁面依時間區間加總本機 `usage_records` 的 token：
 - 只有一個 Codex provider 時會接收 Pi Codex 用量；設定多個帳號時，只有登入帳號 ID 與 Pi `openai-codex` OAuth 登入相同者接收。沒有符合帳號就略過，停用帳號的用量不會重新分配。Claude 只在沒有設定 Claude 帳號時，由預設 provider 接收 Pi 用量。Pi 登入檔只讀取，不匯入或更新憑證。
 - Pi 歸屬切換後，同一天的 Pi 紀錄會移到新帳號。設定 Claude 帳號後會移除預設 Claude provider 的 Pi 紀錄，ccusage 紀錄保留。
 - 每次更新都會重讀 Pi 與 Codex 登入身分，登入切換在下次更新生效，無須重啟伺服器。
+- 無法讀取的 Pi session 檔案或子目錄會個別略過，其餘檔案繼續計入。日誌只記錄錯誤代碼，不包含檔案內容或路徑。
 
 按下 Refresh All 或等待自動 refresh 後，上述來源會更新對應日期與 model 的 token
 records。Claude／Codex plugin refresh 失敗時，本機 `ccusage` token 數值仍會保留；plugin

@@ -146,8 +146,9 @@ refreshes (same pattern as `packages/providers/src/providers/grok-session-usage.
   Claude/Codex family, including the default provider ID. Other days, sources, families,
   and ccusage rows are preserved. Configuring Claude accounts removes default Claude Pi
   rows because no configured Claude account receives unattributed Pi usage.
-- Full rescan replaces the upstream persistent cache (D4). Read failures are logged without
-  file contents and preserve the successful plugin snapshot. Authentication reads are strictly
+- Full rescan replaces the upstream persistent cache (D4). Unreadable files and subdirectories
+  are skipped independently; logs contain only fixed text and an error code. A missing root
+  returns empty. Read failures preserve the successful plugin snapshot. Authentication reads are strictly
   read-only; no keys, tokens, message bodies, or response IDs enter usage records or logs.
 - Redaction audit: Pi adds no HTTP request, plugin request/response fields, or Rust host API.
   `host_api.rs:396-434` already redacts `accountId` and `account_id` but has no plain `access`

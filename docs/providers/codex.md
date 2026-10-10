@@ -155,6 +155,8 @@ When Pi usage changes owners, same-day Pi records are moved to the new owner in 
 storage transaction. Native ccusage records are preserved.
 Each refresh rereads Pi and Codex login identities, so switching logins takes effect
 on the next refresh without a server restart.
+Unreadable session files or subdirectories are skipped; other files still contribute.
+Errors log only an error code, without file contents or paths.
 
 After a successful WebUI Codex refresh, Pi's `openai-codex` assistant messages add usage
 to the existing Codex provider. There is no Pi card. The scanner recursively reads

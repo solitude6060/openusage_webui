@@ -187,8 +187,8 @@ export class OpenUsagePluginProvider implements UsageProvider {
           env: this.env,
           now: startedAt,
         }));
-      } catch {
-        console.error("Pi session token scan failed.");
+      } catch (error) {
+        console.error("Pi session token scan failed:", (error as NodeJS.ErrnoException).code ?? "UNKNOWN");
       }
     }
     if (this.pluginId === "grok") {

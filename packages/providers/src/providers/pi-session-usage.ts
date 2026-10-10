@@ -49,7 +49,12 @@ export function scanPiSessionUsage(options: {
   // shortcut: full rescan instead of upstream's persistent cache; add caching if refresh timing requires it.
   const files = jsonlFiles(piSessionsDirectory(options.homeDir, options.env ?? {}));
   for (const file of files) {
-    for (const line of readFileSync(file, "utf8").split("\n")) {
+    let contents: string;
+    try { contents = readFileSync(file, "utf8"); } catch (error) {
+      logReadError(error);
+      continue;
+    }
+    for (const line of contents.split("\n")) {
       if (!line.includes('"usage":{')) continue;
       const entry = parseLine(line);
       if (!entry) continue;
@@ -134,12 +139,17 @@ function localDay(timestamp: Date): string {
 function jsonlFiles(root: string): string[] {
   let directory: string;
   try { directory = realpathSync(root); } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw error;
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") logReadError(error);
+    return [];
   }
   const files: string[] = [];
   const walk = (path: string) => {
-    for (const entry of readdirSync(path, { withFileTypes: true })) {
+    let entries;
+    try { entries = readdirSync(path, { withFileTypes: true }); } catch (error) {
+      logReadError(error);
+      return;
+    }
+    for (const entry of entries) {
       const child = join(path, entry.name);
       if (entry.isDirectory()) walk(child);
       else if (entry.isFile() && entry.name.endsWith(".jsonl")) files.push(child);
@@ -147,6 +157,10 @@ function jsonlFiles(root: string): string[] {
   };
   walk(directory);
   return files.sort();
+}
+
+function logReadError(error: unknown): void {
+  console.error("Pi session token scan failed:", (error as NodeJS.ErrnoException).code ?? "UNKNOWN");
 }
 
 function number(value: unknown): number | undefined {

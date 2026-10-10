@@ -129,6 +129,8 @@ Use Settings → Provider Accounts, choose **Claude Code**, then detect or add h
 Configuring Claude accounts removes previously stored default Claude Pi records.
 Native ccusage records are preserved.
 Each refresh checks the current Pi ownership rule using the configured accounts.
+Unreadable session files or subdirectories are skipped; other files still contribute.
+Errors log only an error code, without file contents or paths.
 
 After a successful WebUI Claude refresh, Pi assistant messages with provider `anthropic`
 or `claude-agent-sdk` add usage to the default Claude provider when no Claude accounts
