@@ -212,7 +212,7 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
     });
   });
 
-  test("adapts Grok local spend tiles from the CLI unified log", async () => {
+  test("adapts Grok spend tiles from sessions and ignores the CLI unified log", async () => {
     await withIsolatedHome(async (home) => {
       writeJson(join(home, ".grok/auth.json"), {
         "https://auth.x.ai::client": {
@@ -221,11 +221,32 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
           expires_at: "2099-01-01T00:00:00Z",
         },
       });
-      const now = new Date();
-      const ts = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0).toISOString();
-      mkdirSync(join(home, ".grok/logs"), { recursive: true });
+      const now = new Date(2026, 5, 10, 12);
+      const ts = new Date(2026, 5, 10, 10).toISOString();
+      const grokHome = join(home, "custom-grok");
+      mkdirSync(join(grokHome, "sessions/a/b"), { recursive: true });
+      writeJson(join(grokHome, "sessions/a/b/updates.jsonl"), {
+        timestamp: ts,
+        params: {
+          _meta: { eventId: "turn-1" },
+          update: {
+            sessionUpdate: "turn_completed",
+            usage: {
+              modelUsage: {
+                "grok-4.7-build": {
+                  inputTokens: 100_000,
+                  outputTokens: 10_000,
+                  reasoningTokens: 5_000,
+                  costUsdTicks: 1_234_000_000,
+                },
+              },
+            },
+          },
+        },
+      });
+      mkdirSync(join(grokHome, "logs"), { recursive: true });
       writeFileSync(
-        join(home, ".grok/logs/unified.jsonl"),
+        join(grokHome, "logs/unified.jsonl"),
         [
           JSON.stringify({
             ts,
@@ -249,7 +270,8 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
         name: "Grok Build",
         pluginId: "grok",
         homeDir: home,
-        env: { HOME: home },
+        env: { HOME: home, GROK_HOME: grokHome },
+        now: () => now.toISOString(),
         scriptText: readPluginScript("grok"),
         request: requestByUrl({
           "https://cli-chat-proxy.grok.com/v1/billing?format=credits": {
@@ -274,7 +296,9 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
       const today = (records[0]?.raw as any).lines.find((line: any) => line.label === "Today");
 
       expect(labels).toEqual(["Weekly", "Pay as you go", "Today", "Last 30 Days"]);
-      expect(today?.value).toBe("$0.26 · 110K tokens");
+      expect(today).toEqual({ type: "text", label: "Today", value: "$0.12 · 110K tokens" });
+      expect((records[0]?.raw as any).lines.find((line: any) => line.label === "Last 30 Days"))
+        .toEqual({ type: "text", label: "Last 30 Days", value: "$0.12 · 110K tokens" });
     });
   });
 
