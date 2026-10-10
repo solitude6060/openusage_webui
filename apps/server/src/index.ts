@@ -80,7 +80,17 @@ export async function startServer(options: {
     hostname: host,
     port,
     idleTimeout: 120,
-    fetch: handleRequest,
+    fetch(request, server) {
+      const pathname = new URL(request.url).pathname;
+      if (request.method === "POST" && (
+        pathname === "/api/providers/refresh"
+        || /^\/api\/providers\/[^/]+\/refresh$/.test(pathname)
+      )) {
+        // Queue wait plus provider work can exceed the normal request idle timeout.
+        server.timeout(request, 0);
+      }
+      return handleRequest(request);
+    },
   });
 
   console.log(

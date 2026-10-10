@@ -10,6 +10,8 @@ its result. Repair: refresh endpoints (`POST /api/providers/refresh`,
 (e.g. Bun `server.timeout(request, 0)` for those requests), keeping the 120 s worker timeout per
 provider. Other endpoints keep 120 s.
 
+Behavior documentation: `README_WEBUI.md` and `docs/USER_GUIDE_WEBUI.zh-TW.md`.
+
 F2. Bundled server worker path. `bun run --cwd apps/server build` produces `apps/server/dist`,
 where `import.meta.url` points at the bundle and `openusage-plugin-worker.ts` is absent, so every
 default plugin refresh from the bundle fails. Repair: make the bundle carry a runnable worker

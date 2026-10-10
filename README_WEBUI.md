@@ -146,6 +146,9 @@ while the account list remains unchanged. Changing accounts starts a fresh queue
 Results from a deleted or replaced account are discarded, and a refresh preserves the
 account's current enabled setting.
 
+Refresh requests stay connected while waiting in the queue and running. Each plugin
+worker still has a 120-second limit; other requests keep the 120-second idle timeout.
+
 ## Grok Build Notes
 
 Grok Build uses the original `plugins/grok/plugin.js` adapter. Sign in with `grok login`. The plugin reads `~/.grok/auth.json` (expanded from the process `HOME`). `$GROK_HOME` is used for session transcripts and the local spend log, not for `auth.json`.
