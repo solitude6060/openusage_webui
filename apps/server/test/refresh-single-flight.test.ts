@@ -95,16 +95,20 @@ describe("provider refresh single flight", () => {
 
   test("runs providers once for concurrent full refresh requests", async () => {
     let refreshes = 0;
+    const entered = deferred();
+    const gate = deferred();
     const handleRequest = handler(countingProvider(async () => {
       refreshes += 1;
-      await Bun.sleep(50);
+      entered.resolve();
+      await gate.promise;
       return [];
     }));
 
-    const [first, second] = await Promise.all([
-      handleRequest(refreshAllRequest()),
-      handleRequest(refreshAllRequest()),
-    ]);
+    const firstRequest = handleRequest(refreshAllRequest());
+    await entered.promise;
+    const secondRequest = handleRequest(refreshAllRequest());
+    gate.resolve();
+    const [first, second] = await Promise.all([firstRequest, secondRequest]);
     const firstBody = await first.json();
     const secondBody = await second.json();
 
@@ -123,52 +127,68 @@ describe("provider refresh single flight", () => {
     expect(refreshes).toBe(2);
   });
 
-  test("keeps concurrent single-provider refreshes independent", async () => {
+  test("queues concurrent single-provider refreshes as separate runs", async () => {
     let refreshes = 0;
+    let active = 0;
+    let maximumActive = 0;
+    const entered = deferred();
+    const gate = deferred();
     const handleRequest = handler(countingProvider(async () => {
       refreshes += 1;
-      await Bun.sleep(40);
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      entered.resolve();
+      await gate.promise;
+      active -= 1;
       return [];
     }));
 
-    const [first, second] = await Promise.all([
-      handleRequest(refreshManualRequest()),
-      handleRequest(refreshManualRequest()),
-    ]);
+    const firstRequest = handleRequest(refreshManualRequest());
+    await entered.promise;
+    const secondRequest = handleRequest(refreshManualRequest());
+    // Drain runnable request continuations while the first provider stays gated.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const refreshesBeforeRelease = refreshes;
+    gate.resolve();
+    const [first, second] = await Promise.all([firstRequest, secondRequest]);
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
     expect(await first.json()).toEqual(await second.json());
     expect(refreshes).toBe(2);
+    expect(maximumActive).toBe(1);
+    expect(refreshesBeforeRelease).toBe(1);
   });
 
-  test("does not fold a single-provider refresh into an in-flight full refresh", async () => {
+  test("waits for an in-flight full refresh before a separate single-provider refresh", async () => {
     let refreshes = 0;
-    let releaseFull: () => void = () => undefined;
-    const fullGate = new Promise<void>((resolve) => {
-      releaseFull = resolve;
-    });
-    let enteredFull: () => void = () => undefined;
-    const fullEntered = new Promise<void>((resolve) => {
-      enteredFull = resolve;
-    });
+    let active = 0;
+    let maximumActive = 0;
+    const fullGate = deferred();
+    const fullEntered = deferred();
     const handleRequest = handler(countingProvider(async () => {
       refreshes += 1;
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
       if (refreshes === 1) {
-        enteredFull();
-        await fullGate;
+        fullEntered.resolve();
+        await fullGate.promise;
       }
+      active -= 1;
       return [];
     }));
 
     const full = handleRequest(refreshAllRequest());
-    await fullEntered;
+    await fullEntered.promise;
     const single = handleRequest(refreshManualRequest());
-    await Bun.sleep(30);
-    expect(refreshes).toBe(2);
-    releaseFull();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const refreshesBeforeRelease = refreshes;
+    fullGate.resolve();
     const [fullResponse, singleResponse] = await Promise.all([full, single]);
     expect(fullResponse.status).toBe(200);
     expect(singleResponse.status).toBe(200);
+    expect(maximumActive).toBe(1);
+    expect(refreshesBeforeRelease).toBe(1);
+    expect(refreshes).toBe(2);
   });
 });
