@@ -29,6 +29,12 @@ export async function rebuildProvidersFromStorage(
   providersRef: ProvidersRef,
 ): Promise<void> {
   const accounts = await storage.listProviderAccounts();
+  const claudeAccounts = accounts.filter((account) => account.providerId === "claude-code");
+  if (claudeAccounts.length > 0) {
+    await storage.deleteLocalLogUsageRecords(
+      ["claude-code", ...claudeAccounts.map((account) => account.id)], "Pi Session",
+    );
+  }
   await storage.deleteLocalLogUsageRecords(
     codexSessionTokenDuplicateIds(
       accounts

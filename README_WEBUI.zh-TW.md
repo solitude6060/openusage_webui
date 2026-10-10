@@ -194,6 +194,9 @@ CODEX_HOME/auth.json
 
 ### Pi 的用量
 
+Pi 歸屬切換時，同一天的 Pi 紀錄會移到新帳號。設定 Claude 帳號後，會移除原本預設
+Claude provider 的 Pi 紀錄；兩種情況都保留 ccusage 紀錄。
+
 Claude 或 Codex 更新成功後，WebUI 會讀取最近 30 天的 Pi assistant 用量，起點為當地午夜。
 目錄依序使用 `PI_CODING_AGENT_SESSION_DIR`、`PI_CODING_AGENT_DIR/sessions`、
 `~/.pi/agent/sessions`。只納入 `anthropic`、`claude-agent-sdk`、`openai-codex`；重複的訊息 ID 只計一次。

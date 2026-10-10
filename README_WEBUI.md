@@ -149,6 +149,9 @@ The original plugins may refresh OAuth tokens and write updated credentials back
 
 ### Usage From Pi
 
+Changing Pi owners replaces same-day Pi records across the provider family. Configuring
+Claude accounts removes default Claude Pi records. Both operations preserve ccusage.
+
 After a successful Claude or Codex refresh, the WebUI reads Pi assistant usage from the
 last 30 days, starting at local midnight. Sessions come from `PI_CODING_AGENT_SESSION_DIR`,
 then `PI_CODING_AGENT_DIR/sessions`, then `~/.pi/agent/sessions`. Only `anthropic`,

@@ -140,6 +140,10 @@ refreshes (same pattern as `packages/providers/src/providers/grok-session-usage.
   reassigned. Duplicate matching homes select one owner by account ID because Swift collapses
   identical account identities into one card. Only the unconfigured default Claude provider
   receives unattributed Pi usage.
+- Same-day `Pi Session` / `local-log` rows move between owners atomically within their
+  Claude/Codex family, including the default provider ID. Other days, sources, families,
+  and ccusage rows are preserved. Configuring Claude accounts removes default Claude Pi
+  rows because no configured Claude account receives unattributed Pi usage.
 - Full rescan replaces the upstream persistent cache (D4). Read failures are logged without
   file contents and preserve the successful plugin snapshot. Authentication reads are strictly
   read-only; no keys, tokens, message bodies, or response IDs enter usage records or logs.

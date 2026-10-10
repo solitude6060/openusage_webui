@@ -126,6 +126,9 @@ Use Settings → Provider Accounts, choose **Claude Code**, then detect or add h
 
 ### Usage From Pi
 
+Configuring Claude accounts removes previously stored default Claude Pi records.
+Native ccusage records are preserved.
+
 After a successful WebUI Claude refresh, Pi assistant messages with provider `anthropic`
 or `claude-agent-sdk` add usage to the default Claude provider when no Claude accounts
 are configured. Configured Claude homes do not receive unattributed Pi usage; a warning

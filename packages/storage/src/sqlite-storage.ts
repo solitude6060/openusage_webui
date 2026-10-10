@@ -252,6 +252,11 @@ export class SqliteStorage implements Storage {
       DELETE FROM usage_records
       WHERE provider_id = ? AND tool = ? AND started_at = ? AND source = ?
     `);
+    const deletePreviousPiOwners = db.prepare(`
+      DELETE FROM usage_records
+      WHERE provider_id != ? AND (provider_id = ? OR provider_id GLOB ?)
+        AND tool = 'Pi Session' AND started_at = ? AND source = 'local-log'
+    `);
     const clearLegacyCcusageTokens = db.prepare(`
       UPDATE usage_records
       SET input_tokens = NULL,
@@ -269,6 +274,12 @@ export class SqliteStorage implements Storage {
         for (const record of items) {
           if (record.totalTokens === undefined || !record.tool) continue;
           const baseProviderId = providerIdFromAccountId(record.providerId) ?? record.providerId;
+          if (
+            record.tool === "Pi Session" && record.source === "local-log" &&
+            (baseProviderId === "claude-code" || baseProviderId === "codex")
+          ) {
+            deletePreviousPiOwners.run(record.providerId, baseProviderId, `${baseProviderId}:*`, record.startedAt);
+          }
           if (
             record.tool === "ccusage" &&
             record.source === "local-log" &&

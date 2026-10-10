@@ -183,6 +183,7 @@ Tokens 頁面依時間區間加總本機 `usage_records` 的 token：
 - 多個 Codex 帳號的 `sessions` 目錄若解析後是同一個目錄，Tokens 只保留該目錄本體那個帳號的列。另一個帳號的配額卡仍分開更新，卡片上的 Today／Last 30 Days 也仍會顯示。
 - Pi 的 `anthropic`／`claude-agent-sdk`／`openai-codex` assistant 用量，在 Claude／Codex 更新成功後加入既有 provider。掃描最近 30 天的 `~/.pi/agent/sessions/**/*.jsonl`，也支援 `PI_CODING_AGENT_SESSION_DIR` 與 `PI_CODING_AGENT_DIR`。重複訊息 ID 只計一次，以 `Pi Session` 紀錄與 ccusage 分別保存。
 - 只有一個 Codex provider 時會接收 Pi Codex 用量；設定多個帳號時，只有登入帳號 ID 與 Pi `openai-codex` OAuth 登入相同者接收。沒有符合帳號就略過，停用帳號的用量不會重新分配。Claude 只在沒有設定 Claude 帳號時，由預設 provider 接收 Pi 用量。Pi 登入檔只讀取，不匯入或更新憑證。
+- Pi 歸屬切換後，同一天的 Pi 紀錄會移到新帳號。設定 Claude 帳號後會移除預設 Claude provider 的 Pi 紀錄，ccusage 紀錄保留。
 
 按下 Refresh All 或等待自動 refresh 後，上述來源會更新對應日期與 model 的 token
 records。Claude／Codex plugin refresh 失敗時，本機 `ccusage` token 數值仍會保留；plugin
