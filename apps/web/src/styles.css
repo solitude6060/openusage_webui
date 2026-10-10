@@ -1549,9 +1549,15 @@ textarea {
   }
 
   .provider-grid > .provider-card:not(.usage-card) .detail-list div {
-    grid-template-columns: minmax(0, 1fr) auto;
+    /* Keep the label at its own width. `auto` on the value let a long error
+       take the row and shrink the label track to 0, so the two overlapped. */
+    grid-template-columns: max-content minmax(0, 1fr);
     align-items: center;
     gap: 8px;
+  }
+
+  .provider-grid > .provider-card:not(.usage-card) .detail-list dd {
+    text-align: right;
   }
 
   .provider-grid > .provider-card:not(.usage-card) .detail-list div:nth-child(1) {
