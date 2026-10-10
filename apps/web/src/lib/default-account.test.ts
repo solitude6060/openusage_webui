@@ -1,78 +1,79 @@
 import { describe, expect, test } from "bun:test";
 import {
-  defaultHomeCandidates,
   initialAccountProviderId,
   shouldShowDefaultAccountNotice,
 } from "./default-account";
 
-const homes = ["~", "/home/example"];
+const defaultHomePath = "/home/real-user";
 
 describe("default account notice", () => {
-  test("shows when an enabled Antigravity account is not the default home", () => {
-    expect(
-      shouldShowDefaultAccountNotice(
-        "antigravity",
-        [{ homePath: "/home/example/.agy-homes/acct1", enabled: true }],
-        homes,
-      ),
-    ).toBe(true);
-  });
-
-  test("hides when an enabled account is the default home", () => {
-    expect(
-      shouldShowDefaultAccountNotice(
-        "antigravity",
-        [
-          { homePath: "/home/example/.agy-homes/acct1", enabled: true },
-          { homePath: "/home/example/", enabled: true },
-        ],
-        homes,
-      ),
-    ).toBe(false);
-    expect(
-      shouldShowDefaultAccountNotice(
-        "antigravity",
-        [{ homePath: "~", enabled: true }],
-        homes,
-      ),
-    ).toBe(false);
-  });
-
-  test("hides when the default home is only disabled or no account is enabled", () => {
-    expect(
-      shouldShowDefaultAccountNotice(
-        "antigravity",
-        [
-          { homePath: "/home/example", enabled: false },
-          { homePath: "/home/example/.agy-homes/acct1", enabled: true },
-        ],
-        homes,
-      ),
-    ).toBe(true);
-    expect(
-      shouldShowDefaultAccountNotice(
-        "antigravity",
-        [{ homePath: "/home/example/.agy-homes/acct1", enabled: false }],
-        homes,
-      ),
-    ).toBe(false);
-  });
-
-  test("does not apply the Antigravity home rule to other providers", () => {
-    expect(
-      shouldShowDefaultAccountNotice(
-        "codex",
-        [{ homePath: "/home/example/.codex-family", enabled: true }],
-        homes,
-      ),
-    ).toBe(false);
-  });
-
-  test("reads the default home from the standard database path", () => {
-    expect(defaultHomeCandidates("/home/example/.openusage-webui/openusage.sqlite")).toEqual([
-      "~",
-      "/home/example",
+  test("shows when Antigravity has an enabled non-default account and the selected provider is Codex", () => {
+    const selectedProviderId = "codex";
+    const accounts = [
+      { providerId: "codex", homePath: "/tmp/codex", enabled: true },
+      { providerId: "antigravity", homePath: "/home/example/.agy-homes/acct1", enabled: true },
+    ];
+    const selectedAccounts = accounts.filter((account) => account.providerId === selectedProviderId);
+    expect(selectedAccounts).toEqual([
+      { providerId: "codex", homePath: "/tmp/codex", enabled: true },
     ]);
+    expect(shouldShowDefaultAccountNotice(accounts, defaultHomePath)).toBe(true);
+  });
+
+  test("hides when an enabled account home equals defaultHomePath", () => {
+    expect(
+      shouldShowDefaultAccountNotice(
+        [
+          { providerId: "codex", homePath: "/tmp/codex", enabled: true },
+          { providerId: "antigravity", homePath: `${defaultHomePath}/`, enabled: true },
+          { providerId: "antigravity", homePath: "/home/example/.agy-homes/acct1", enabled: true },
+        ],
+        defaultHomePath,
+      ),
+    ).toBe(false);
+  });
+
+  test("hides when an enabled account home is ~", () => {
+    expect(
+      shouldShowDefaultAccountNotice(
+        [{ providerId: "antigravity", homePath: "~", enabled: true }],
+        defaultHomePath,
+      ),
+    ).toBe(false);
+  });
+
+  test("shows when the matching home is disabled and another Antigravity account is enabled", () => {
+    expect(
+      shouldShowDefaultAccountNotice(
+        [
+          { providerId: "antigravity", homePath: defaultHomePath, enabled: false },
+          { providerId: "antigravity", homePath: "/home/example/.agy-homes/acct1", enabled: true },
+        ],
+        defaultHomePath,
+      ),
+    ).toBe(true);
+  });
+
+  test("hides when no Antigravity account is enabled", () => {
+    expect(
+      shouldShowDefaultAccountNotice(
+        [
+          { providerId: "codex", homePath: "/tmp/codex", enabled: true },
+          { providerId: "antigravity", homePath: "/home/example/.agy-homes/acct1", enabled: false },
+        ],
+        defaultHomePath,
+      ),
+    ).toBe(false);
+    expect(shouldShowDefaultAccountNotice([], defaultHomePath)).toBe(false);
+  });
+
+  test("does not treat a database directory as the default home", () => {
+    expect(
+      shouldShowDefaultAccountNotice(
+        [{ providerId: "antigravity", homePath: "/home/example", enabled: true }],
+        defaultHomePath,
+      ),
+    ).toBe(true);
   });
 });
 

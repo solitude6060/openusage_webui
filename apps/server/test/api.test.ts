@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequestHandler } from "../src/index";
 import { SqliteStorage } from "../../../packages/storage/src/index";
@@ -677,6 +677,22 @@ describe("WebUI API", () => {
       "claude-code",
       "gemini-cli",
     ]);
+  });
+
+  test("includes the resolved default home on the Antigravity capability", async () => {
+    const response = await handleRequest(
+      new Request("http://127.0.0.1:6736/api/provider-accounts/capabilities"),
+    );
+    expect(response.status).toBe(200);
+    const capabilities = (await response.json()) as Array<{
+      providerId: string;
+      defaultHomePath?: string;
+    }>;
+    const antigravity = capabilities.find((item) => item.providerId === "antigravity");
+    const codex = capabilities.find((item) => item.providerId === "codex");
+    expect(antigravity?.defaultHomePath).toBe(homedir());
+    expect(antigravity?.defaultHomePath?.startsWith(dataDir)).toBe(false);
+    expect(codex?.defaultHomePath).toBeUndefined();
   });
 
   test("creates and lists provider accounts for selected providers", async () => {
