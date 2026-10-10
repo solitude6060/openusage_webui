@@ -48,4 +48,7 @@ branches' archived multi-model reviews.
 
 ## Outcomes
 
-Pending.
+Step 1: hourly conflicts resolved with one Grok scan for spend, daily and hourly
+records. Bun: 415 passed; Vitest: 1,190 passed. Logs: step-1-bun-test.log and
+step-1-vitest.log in the integration artifact directory. Dependencies installed
+from the unchanged lockfile after the initial Vitest invocation returned exit 127.

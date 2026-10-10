@@ -190,6 +190,8 @@ CODEX_HOME/auth.json
 
 原本 plugin 可能會 refresh OAuth token，並把更新後的 credential 寫回同一個檔案來源。WebUI 不使用 browser cookies。
 
+Allowance 在有每小時 token 資料時（Claude、Cursor、Grok）對齊到整點，其餘（Codex，以及沒有每小時資料的舊日期）仍對齊到日界。每小時資料另外存放，只有 Allowance 讀取；Tokens、Sessions、Dashboard 的合計仍用每日紀錄。Claude 卡片上，以每小時資料測量的日子只列一行 `All Models`，不分模型。
+
 ## Grok Build 設定
 
 Grok Build 沿用原本 OpenUsage 的 `plugins/grok/plugin.js`。先執行 `grok login`。WebUI 會讀 `~/.grok/auth.json`（依 process `HOME` 展開）。`$GROK_HOME` 只用在 session 完成回合紀錄，不會改 `auth.json` 路徑。

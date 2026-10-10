@@ -132,7 +132,7 @@ export async function loadAllowanceEstimates(
   const sharedProviderIds = new Set(codexSessionTokenDuplicateIds(codexHomes));
   const observations = await storage.listQuotaObservationsSince(new Date(historyStart).toISOString());
   // A UTC-midnight daily bucket starts before a window that opens later that same day.
-  const tokenRows = await storage.listPositiveTokenRows(
+  const tokenRows = await storage.listAllowanceTokenRows(
     new Date(historyStart - 24 * 60 * 60 * 1000).toISOString(),
   );
   return {

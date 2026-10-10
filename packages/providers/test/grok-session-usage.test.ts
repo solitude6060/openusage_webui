@@ -351,8 +351,11 @@ describe("Grok session spend tiles", () => {
       { type: "text", label: "Today", value: "$3.00 · 500 tokens" },
       { type: "text", label: "Last 30 Days", value: "$3.00 · 500 tokens" },
     ]);
-    expect(records.reduce((sum, record) => sum + (record.totalTokens ?? 0), 0)).toBe(500);
-    expect(records.reduce((sum, record) => sum + (record.costUsd ?? 0), 0)).toBe(3);
+    for (const hourly of [false, true]) {
+      const rows = records.filter((record) => Boolean(record.endedAt) === hourly);
+      expect(rows.reduce((sum, record) => sum + (record.totalTokens ?? 0), 0)).toBe(500);
+      expect(rows.reduce((sum, record) => sum + (record.costUsd ?? 0), 0)).toBe(3);
+    }
   });
 });
 
@@ -376,7 +379,7 @@ describe("Grok session filesystem scan", () => {
         providerId: "grok",
         homeDir: home,
         env: { GROK_HOME: grokHome },
-      });
+      }).filter((record) => record.endedAt === undefined);
 
       expect(records).toEqual([
         expect.objectContaining({
@@ -427,7 +430,8 @@ describe("Grok session filesystem scan", () => {
         }) + "\n",
       );
 
-      const records = scanGrokSessionUsage({ providerId: "grok", homeDir: home });
+      const records = scanGrokSessionUsage({ providerId: "grok", homeDir: home })
+        .filter((record) => record.endedAt === undefined);
       expect(records).toHaveLength(1);
       expect(records[0]?.totalTokens).toBe(600);
     });

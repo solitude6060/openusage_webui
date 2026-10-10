@@ -214,6 +214,51 @@ test("allowance reports unaligned daily totals instead of borrowing boundary usa
   storage.close();
 });
 
+test("allowance aligns mid-hour readings to the hour boundaries that sit between equal readings", async () => {
+  const storage = new SqliteStorage();
+  await storage.init();
+  const week = 7 * 24 * 60 * 60 * 1000;
+  const resetsAt = "2026-10-14T00:00:00.000Z";
+  await storage.insertQuotaObservations([
+    observation("2026-10-09T10:50:00.000Z", 10, week, resetsAt),
+    observation("2026-10-09T11:30:00.000Z", 10, week, resetsAt),
+    observation("2026-10-09T12:30:00.000Z", 15, week, resetsAt),
+    observation("2026-10-09T13:40:00.000Z", 20, week, resetsAt),
+    observation("2026-10-09T14:20:00.000Z", 20, week, resetsAt),
+  ]);
+  const hourRow = (hour: number, totalTokens: number) => {
+    const startedAt = `2026-10-09T${String(hour).padStart(2, "0")}:00:00.000Z`;
+    return {
+      ...tokenRow(startedAt, totalTokens),
+      id: `allowance-hour-${hour}`,
+      endedAt: new Date(Date.parse(startedAt) + 3600000).toISOString(),
+    };
+  };
+  await storage.upsertUsageRecords([
+    // The same day as one daily row: its only boundaries are midnights, so daily rows cannot align.
+    tokenRow("2026-10-09T00:00:00.000Z", 710),
+    hourRow(10, 50),
+    hourRow(11, 100),
+    hourRow(12, 200),
+    hourRow(13, 300),
+    hourRow(14, 60),
+  ]);
+
+  const body = await loadAllowanceEstimates(storage, 7, new Date("2026-10-10T12:00:00.000Z"));
+  expect(body.estimates).toEqual([
+    expect.objectContaining({
+      from: "2026-10-09T11:00:00.000Z",
+      to: "2026-10-09T14:00:00.000Z",
+      percentStart: 10,
+      percentEnd: 20,
+      tokens: 600,
+      estimatedAllowance: 6000,
+      reason: "ok",
+    }),
+  ]);
+  storage.close();
+});
+
 function observation(observedAt: string, usedPercent: number, periodMs: number, resetsAt: string) {
   return {
     providerId: "grok",

@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "n
 import { join } from "node:path";
 import type { ProviderId, UsageRecord } from "../../../core/src/types";
 import { expandHome } from "./openusage-plugin-runtime";
-import { createTokenRecord } from "./structured-usage";
+import { createHourlyTokenRecord, createTokenRecord } from "./structured-usage";
 
 const MAXIMUM_PLAUSIBLE_TOKENS = 1_000_000_000_000;
 const COST_TICKS_DIVISOR = 10_000_000_000;
@@ -13,6 +13,7 @@ type GrokSessionEntry = {
   eventID: string | null;
   timestampMs: number;
   startedAt: string;
+  hourStartedAt: string;
   model: string;
   inputTokens: number;
   outputTokens: number;
@@ -52,7 +53,11 @@ export function scanGrokSessionUsage(options: {
   homeDir: string;
   env?: Record<string, string | undefined>;
 }): UsageRecord[] {
-  return aggregateGrokSessionRecords(options.providerId, scanGrokSessionEntries(options));
+  const entries = scanGrokSessionEntries(options);
+  return [
+    ...aggregateGrokSessionRecords(options.providerId, entries),
+    ...aggregateGrokHourlyRecords(options.providerId, entries),
+  ];
 }
 
 export function scanGrokSessionEntries(options: {
@@ -89,6 +94,22 @@ export function aggregateGrokSessionRecords(
   providerId: ProviderId,
   entries: GrokSessionEntry[],
 ): UsageRecord[] {
+  return aggregateGrokEntries(providerId, entries, false);
+}
+
+// The same deduplicated turns as the daily records, grouped by UTC hour. Only Allowance reads them.
+export function aggregateGrokHourlyRecords(
+  providerId: ProviderId,
+  entries: GrokSessionEntry[],
+): UsageRecord[] {
+  return aggregateGrokEntries(providerId, entries, true);
+}
+
+function aggregateGrokEntries(
+  providerId: ProviderId,
+  entries: GrokSessionEntry[],
+  hourly: boolean,
+): UsageRecord[] {
   const totals = new Map<
     string,
     {
@@ -105,7 +126,8 @@ export function aggregateGrokSessionRecords(
 
   for (const entry of deduplicateGrokSessionEntries(entries)) {
     if (entry.totalTokens <= 0) continue;
-    const key = `${entry.startedAt}|${entry.model}`;
+    const startedAt = hourly ? entry.hourStartedAt : entry.startedAt;
+    const key = `${startedAt}|${entry.model}`;
     const current = totals.get(key);
     if (current) {
       current.inputTokens += entry.inputTokens;
@@ -117,12 +139,12 @@ export function aggregateGrokSessionRecords(
         current.costUsd = (current.costUsd ?? 0) + (entry.costUsd ?? 0);
       }
     } else {
-      totals.set(key, { ...entry });
+      totals.set(key, { ...entry, startedAt });
     }
   }
 
   return [...totals.values()].map((row) => {
-    const record = createTokenRecord(
+    const record = (hourly ? createHourlyTokenRecord : createTokenRecord)(
       providerId,
       row.startedAt,
       row.model,
@@ -200,8 +222,9 @@ function parseCompletedTurn(object: JsonObject): GrokSessionEntry[] {
   const usage = isObject(update.usage) ? update.usage : undefined;
   const modelUsage = usage && isObject(usage.modelUsage) ? usage.modelUsage : undefined;
   const timestampMs = timestampMsFromObject(object, params);
-  const startedAt = timestampMs !== null ? utcDay(timestampMs) : null;
-  if (!usage || !modelUsage || !startedAt || timestampMs === null) return [];
+  const startedAt = timestampMs === null ? null : utcDay(timestampMs);
+  const hourStartedAt = timestampMs === null ? null : utcHour(timestampMs);
+  if (!usage || !modelUsage || !startedAt || !hourStartedAt || timestampMs === null) return [];
 
   const topLevelTicks = parseNumber(usage.costUsdTicks);
   const models = Object.entries(modelUsage).sort(([left], [right]) => left.localeCompare(right));
@@ -226,6 +249,7 @@ function parseCompletedTurn(object: JsonObject): GrokSessionEntry[] {
       eventID: readEventId(params, object),
       timestampMs,
       startedAt,
+      hourStartedAt,
       model,
       inputTokens: input - cacheRead - cacheWrite,
       outputTokens: output,
@@ -249,8 +273,7 @@ function timestampMsFromObject(object: JsonObject, params: JsonObject | undefine
 
   const timestamp = object.timestamp;
   if (typeof timestamp === "number" && Number.isFinite(timestamp) && timestamp > 0) {
-    const milliseconds = Math.abs(timestamp) < 1e11 ? timestamp * 1000 : timestamp;
-    return milliseconds;
+    return Math.abs(timestamp) < 1e11 ? timestamp * 1000 : timestamp;
   }
   if (typeof timestamp === "string" && timestamp.trim()) {
     const parsed = Date.parse(timestamp);
@@ -263,6 +286,12 @@ function utcDay(milliseconds: number): string | null {
   const date = new Date(milliseconds);
   if (!Number.isFinite(date.getTime())) return null;
   return `${date.toISOString().slice(0, 10)}T00:00:00.000Z`;
+}
+
+function utcHour(milliseconds: number): string | null {
+  const date = new Date(milliseconds);
+  if (!Number.isFinite(date.getTime())) return null;
+  return `${date.toISOString().slice(0, 13)}:00:00.000Z`;
 }
 
 function readEventId(params: JsonObject | undefined, object: JsonObject): string | null {

@@ -144,6 +144,8 @@ Codex reads `CODEX_HOME/auth.json` when `CODEX_HOME` is set, otherwise `~/.confi
 
 The original plugins may refresh OAuth tokens and write updated credentials back to the same file source. Browser cookies are not used.
 
+Allowance measures between hour boundaries where hourly token data exists (Claude, Cursor and Grok) and between day boundaries otherwise (Codex, and older days that have no hourly data). Hourly data is stored separately and read only by Allowance; the Tokens, Sessions and Dashboard totals still use daily rows. On a Claude card, days measured hourly list one `All Models` row instead of per-model rows.
+
 Refresh All and individual provider refreshes run in request order. An individual refresh
 waits for an earlier refresh to finish. Concurrent Refresh All requests share one run
 while the account list remains unchanged. Changing accounts starts a fresh queued run.
