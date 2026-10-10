@@ -92,6 +92,62 @@ refreshes (same pattern as `packages/providers/src/providers/grok-session-usage.
 | D4 | Persistent incremental parse cache for pi logs (`JSONLScanCachePersistence`) | Full rescan per refresh, matching `grok-session-usage.ts`. 285 pi session files on this machine | Simplification; add a cache if refresh time is measured as a problem |
 | D5 | Ollama provider opt-in (`hasLocalCredentials() == false`) | Needs a per-provider default in our registry; see User Decision U1 | Needs user decision |
 
+### OpenRouter port record (branch `feat/port-openrouter`)
+
+Actual imported files: the seven OpenRouter files in the table above (hashes re-verified against
+the pin on 2026-10-11) plus `Sources/OpenUsage/Support/ProviderParse.swift` (`number`, `jsonObject`),
+sha256 `97bd62ef886543ee5c7653617313a6b992a8143dcdec1f31d438a2f56fd1630a`, which the plan's file table
+omitted. Read-only copies are kept in
+`/home/ma/Research/side_project/openusage_webui-artifacts/2026-10-11-backlog/openrouter/upstream/`.
+`plugins/openrouter/icon.svg` is byte-identical to upstream `openrouter.svg` (sha256
+`0d3983f2545afd7f7b51d94f97cc30196cca6e7020c19632b01e2e1e41d9e75e`, `fill="currentColor"`).
+
+Differences from upstream (O1 = plan D1, O2 = plan D3):
+
+| # | Upstream | Port | Type |
+| --- | --- | --- | --- |
+| O1 | Dollar rows are `MetricLine.values(kind: .dollars)` | `ctx.line.text` with `"$" + toFixed(2)`; progress rows use `format: { kind: "dollars" }` | Runtime adaptation |
+| O2 | `saveAPIKey` / `deleteAPIKey` / `keyStatus` and the API key editor | Not ported; key is read only | Scope cut (UI) |
+| O3 | Key from the login-shell environment captured at launch (`ProcessEnvironmentReader`) | `ctx.host.env.get`: server process environment in the WebUI host; whitelisted names in the Tauri host. `OPENROUTER_API_KEY` and `OPENROUTER_KEY` were added to `WHITELISTED_ENV_VARS` in `src-tauri/src/plugin_engine/host_api.rs` (the WebUI host has no whitelist) | Runtime adaptation |
+| O4 | Widget metadata: `exportingLimit(...)`, bounded widgets with `limit: 100`, `isUsagePeriod` | Not ported. Progress rows in dollars get `limitUnit: "usd"` from `quota-observations.ts:126` | Runtime adaptation |
+| O5 | Unreadable config file (`try?`) and transport errors are silent | `ctx.host.log.warn` with the path or endpoint URL and the error text; no key, header or response body is logged. The user-facing messages are unchanged | Logging addition (AGENTS.md: fail loudly) |
+| O6 | `is_free_tier as? Bool` (Swift may also bridge a JSON number 0/1 to Bool) | JSON booleans only. Not verified on Swift (no Swift runtime here); `/key` returns a JSON boolean | Unverified minor difference |
+| O7 | `ProviderParse.number` uses `Double(String)` | `Number(String)` after rejecting blank strings; booleans, non-finite values and non-strings are rejected as upstream. Exotic strings such as hex floats may parse differently | Minor difference |
+
+No difference changes endpoints, key sources and precedence, line labels, error messages,
+error classification or the Credits / Balance / Key Limit math.
+
+Host changes outside upstream (needed by the plugin): the two env names above, and `"label"` added
+to the `redact_body` sensitive key list.
+
+Brand color: `plugin.json` `brandColor` is `#7624F4` ("Grape"). Source: https://openrouter.ai/brand
+lists four logo colors (Grape, Volt, Ink, Cloud); the page text has no hex codes, so the fills were
+read from the glyph SVGs `https://openrouter.ai/brand/logos/transparent/glyph/svg/glyph-{grape,volt,ink,cloud}.svg`:
+Grape `#7624F4`, Volt `#C8FF00`, Ink `#03080A`, Cloud `#FCFCFE` (copies in the artifacts directory
+`brand/`). The page designates no primary color. Grape was chosen because it is the first-listed
+color and stays legible on light and dark backgrounds; Volt (lime) would be the alternative.
+These were four unauthenticated GET requests for public static files; no OpenRouter API request was
+made. Note: the current brand glyph is a new mark, while the upstream icon (kept, as instructed) is
+the earlier arrow mark. Swapping the icon is a user decision; `brandColor` is not read by the WebUI.
+
+Redaction audit against `src-tauri/src/plugin_engine/host_api.rs` (the Tauri host logs
+`METHOD redacted_url` and a redacted 500-byte preview of every response body, and passes plugin
+log messages through `redact_log_message`):
+
+| Item | Finding | Resolution |
+| --- | --- | --- |
+| Request URLs `/api/v1/credits`, `/api/v1/key` | No query string, so `redact_url` has nothing to redact; `Authorization` is never logged by the host | None needed |
+| Key shape `sk-or-v1-...` | Matches the existing `sk-` pattern in `redact_body` and `redact_log_message` | Rust tests `redact_body_redacts_openrouter_api_keys`, `redact_log_message_redacts_openrouter_api_key` |
+| `/key` `label` (user-chosen name or masked key) | Not in the `redact_body` sensitive key list, so the 500-byte body preview would log it | Added `"label"` to the list; Rust test `redact_body_redacts_openrouter_key_label` (red before, green after) |
+| `/credits` and `/key` numeric fields | Spend and balance amounts only | Left visible |
+| Plugin output and logs | Plugin logs only on a failed config read or a failed request; never the key or a body | vitest "sensitive data" tests (no log call and no thrown message or line contains the key or the label) |
+| Env access | Tauri host returns `None` for non-whitelisted names | Added both names; Rust assertion in `env_api_respects_allowlist_in_host_and_js` |
+
+Verification limits: the Tauri crate cannot build on this host (`openssl-sys` needs OpenSSL dev
+files; log `cargo-baseline-build.log` in the artifacts directory). The Rust redaction tests were run
+against the verbatim `redact_*` functions in a standalone crate (`redact-check/`); the array-length
+change to `[&str; 22]` and the whitelist assertion were not compiled.
+
 ## Changes
 
 ### 1. OpenRouter plugin (`plugins/openrouter/`)
