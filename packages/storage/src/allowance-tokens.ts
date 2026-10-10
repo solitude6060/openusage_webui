@@ -70,3 +70,83 @@ export function allowanceTokenTimes(tool: string | null, startedAt: string): { s
   }
   return { startedAt };
 }
+
+export type AllowanceTokenRow = {
+  providerId: string;
+  model: string;
+  startedAt: string;
+  tokens: number;
+  costUsd: number | null;
+  bucketEnd?: string;
+};
+
+type DailyTokenRow = AllowanceTokenRow & { tool: string | null; day: string };
+
+export function listDailyTokenRows(db: Database, from: string): DailyTokenRow[] {
+  const rows = db.query(`
+    SELECT provider_id, model, started_at, total_tokens, cost_usd, tool
+    FROM usage_records
+    WHERE COALESCE(total_tokens, 0) > 0 AND started_at >= ?
+  `).all(from) as Array<{
+    provider_id: string;
+    model: string | null;
+    started_at: string;
+    total_tokens: number | null;
+    cost_usd: number | null;
+    tool: string | null;
+  }>;
+  return rows.map((row) => ({
+    providerId: row.provider_id,
+    model: row.model?.trim() ? row.model : "Unknown",
+    tokens: Number(row.total_tokens) || 0,
+    costUsd: row.cost_usd == null ? null : Number(row.cost_usd),
+    tool: row.tool,
+    day: row.started_at.slice(0, 10),
+    ...allowanceTokenTimes(row.tool, row.started_at),
+  }));
+}
+
+// The calendar day an hour belongs to: a local day for ccusage, a UTC day for Cursor and Grok.
+function hourDay(tool: string, hourStart: string): string {
+  if (tool !== "ccusage") return hourStart.slice(0, 10);
+  const date = new Date(hourStart);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+const dayKey = (providerId: string, tool: string | null, day: string) => JSON.stringify([providerId, tool, day]);
+
+// Daily rows, except that a provider/tool/day with hourly rows is read from those rows instead.
+export function listAllowanceRows(db: Database, from: string): AllowanceTokenRow[] {
+  // A day label is a UTC midnight, but a local day can start up to 14 hours earlier.
+  const hourlyFrom = new Date(Date.parse(from) - 24 * HOUR_MS).toISOString();
+  const hours = db.query(`
+    SELECT provider_id, tool, hour_start, model, total_tokens, cost_usd
+    FROM token_hourly
+    WHERE total_tokens > 0 AND hour_start >= ?
+  `).all(hourlyFrom) as Array<{
+    provider_id: string;
+    tool: string;
+    hour_start: string;
+    model: string;
+    total_tokens: number;
+    cost_usd: number | null;
+  }>;
+  const rows: AllowanceTokenRow[] = [];
+  const covered = new Set<string>();
+  for (const hour of hours) {
+    covered.add(dayKey(hour.provider_id, hour.tool, hourDay(hour.tool, hour.hour_start)));
+    rows.push({
+      providerId: hour.provider_id,
+      model: hour.model,
+      tokens: Number(hour.total_tokens),
+      costUsd: hour.cost_usd == null ? null : Number(hour.cost_usd),
+      startedAt: hour.hour_start,
+      bucketEnd: new Date(Date.parse(hour.hour_start) + HOUR_MS).toISOString(),
+    });
+  }
+  for (const { tool, day, ...row } of listDailyTokenRows(db, from)) {
+    if (!covered.has(dayKey(row.providerId, tool, day))) rows.push(row);
+  }
+  return rows;
+}

@@ -18,9 +18,11 @@ import type { Storage } from "./storage";
 import type { QuotaLimitUnit, QuotaObservation } from "../../providers/src/quota-observations";
 import {
   TOKEN_HOURLY_SCHEMA,
-  allowanceTokenTimes,
   isHourlyTokenRecord,
+  listAllowanceRows,
+  listDailyTokenRows,
   prepareHourlyUpsert,
+  type AllowanceTokenRow,
 } from "./allowance-tokens";
 
 type UsageRecordRow = {
@@ -797,33 +799,13 @@ export class SqliteStorage implements Storage {
     return row ? rowToQuotaObservation(row) : null;
   }
 
-  async listPositiveTokenRows(from: string): Promise<Array<{
-    providerId: string;
-    model: string;
-    startedAt: string;
-    tokens: number;
-    costUsd: number | null;
-    bucketEnd?: string;
-  }>> {
-    const rows = this.requireDb().query(`
-      SELECT provider_id, model, started_at, total_tokens, cost_usd, tool
-      FROM usage_records
-      WHERE COALESCE(total_tokens, 0) > 0 AND started_at >= ?
-    `).all(from) as Array<{
-      provider_id: string;
-      model: string | null;
-      started_at: string;
-      total_tokens: number | null;
-      cost_usd: number | null;
-      tool: string | null;
-    }>;
-    return rows.map((row) => ({
-      providerId: row.provider_id,
-      model: row.model?.trim() ? row.model : "Unknown",
-      tokens: Number(row.total_tokens) || 0,
-      costUsd: row.cost_usd == null ? null : Number(row.cost_usd),
-      ...allowanceTokenTimes(row.tool, row.started_at),
-    }));
+  async listPositiveTokenRows(from: string): Promise<AllowanceTokenRow[]> {
+    return listDailyTokenRows(this.requireDb(), from).map(({ tool: _tool, day: _day, ...row }) => row);
+  }
+
+  // Allowance only: daily rows, with hourly rows replacing any provider/tool/day that has them.
+  async listAllowanceTokenRows(from: string): Promise<AllowanceTokenRow[]> {
+    return listAllowanceRows(this.requireDb(), from);
   }
 
   async insertProbeFailure(providerId: string, failedAt: string, message: string): Promise<void> {
