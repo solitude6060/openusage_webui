@@ -97,6 +97,21 @@ describe("normalizeCcusageHourlyBlocks", () => {
     expect(String(errorSpy.mock.calls[0]?.[0])).toContain("2026-10-08");
   });
 
+  test("compares blocks with the daily totalTokens, not with the sum of the model rows", () => {
+    errorSpy = spyOn(console, "error").mockImplementation(() => undefined);
+    const records = normalizeCcusageHourlyBlocks(
+      "claude-code",
+      [block("2026-10-09T03:00:00.000Z", 300)],
+      // The model rows add up to 300, but the day reports 200 in total.
+      [{ date: "2026-10-09", totalTokens: 200, models: { "claude-opus-5-5": { totalTokens: 300 } } }],
+      NOW,
+    );
+
+    expect(records).toEqual([]);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(String(errorSpy.mock.calls[0]?.[0])).toContain("2026-10-09");
+  });
+
   test("treats a block day that daily does not list as a mismatch", () => {
     errorSpy = spyOn(console, "error").mockImplementation(() => undefined);
     const records = normalizeCcusageHourlyBlocks(
