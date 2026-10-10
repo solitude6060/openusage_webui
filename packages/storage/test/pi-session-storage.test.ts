@@ -23,6 +23,39 @@ function record(tool: string, costUsd: number | undefined = 2): UsageRecord {
 }
 
 describe("Pi storage consumers", () => {
+  test.each([["codex", "codex:work"], ["codex:work", "codex:family"],
+    ["codex:family", "codex"], ["claude-code", "claude-code:work"]])(
+    "moving Pi usage from %s to %s keeps one row and 100 tokens", async (previous, owner) => {
+      await storage.upsertUsageRecords([{ ...record("Pi Session"), providerId: previous }], { replaceScopes: true });
+      await storage.upsertUsageRecords([{ ...record("Pi Session"), id: "new-owner", providerId: owner }], { replaceScopes: true });
+      const rows = await storage.listUsageRecords();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.providerId).toBe(owner);
+      expect((await storage.getTokenUsageBreakdown()).totalTokens).toBe(100);
+    });
+
+  test("Pi owner replacement preserves ccusage, other days, families, and sources", async () => {
+    const preserved = [
+      record("ccusage"),
+      { ...record("Pi Session"), id: "previous-day", startedAt: "2026-10-09T00:00:00.000Z" },
+      { ...record("Pi Session"), id: "claude", providerId: "claude-code" },
+      { ...record("Pi Session"), id: "manual-pi", source: "manual" as const },
+      { ...record("Pi Session"), id: "similar-prefix", providerId: "codex-extra" },
+    ];
+    await storage.upsertUsageRecords([...preserved, record("Pi Session"),
+      { ...record("Pi Session"), id: "old-account", providerId: "codex:old" }]);
+    await storage.upsertUsageRecords([{ ...record("Pi Session"), id: "new-owner", providerId: "codex:work" }], { replaceScopes: true });
+    expect((await storage.listUsageRecords()).map((row) => row.id).sort())
+      .toEqual([...preserved.map((row) => row.id), "new-owner"].sort());
+  });
+
+  test("a failed Pi insertion rolls back removal of the previous owner", async () => {
+    await storage.upsertUsageRecords([record("Pi Session")]);
+    await expect(storage.upsertUsageRecords([{ ...record("Pi Session"), id: "new-owner",
+      providerId: "codex:work", raw: { invalid: BigInt(1) } }], { replaceScopes: true })).rejects.toThrow();
+    expect((await storage.listUsageRecords()).map((row) => row.id)).toEqual(["Pi Session"]);
+  });
+
   test("Pi and ccusage survive alternating scope replacements on the same provider and day", async () => {
     await storage.upsertUsageRecords([record("ccusage")], { replaceScopes: true });
     await storage.upsertUsageRecords([record("Pi Session")], { replaceScopes: true });

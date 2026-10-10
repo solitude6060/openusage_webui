@@ -101,6 +101,16 @@ refreshes (same pattern as `packages/providers/src/providers/grok-session-usage.
 
 ### Pi implementation decisions and differences
 
+- Review remediation scope (PR1-1 through PR1-5): atomically remove same-day Pi rows
+  from previous owners within the Claude/Codex family, preserving ccusage; remove default
+  Claude Pi rows when Claude accounts are configured; resolve login ownership at each
+  refresh; skip unreadable files/directories with error-code-only logging; isolate the
+  native-only Claude API test; skip files modified before the scan cutoff. Each finding
+  gets a failing `test:` commit followed by a `fix:` commit. Validation logs are under
+  `../openusage_webui-artifacts/2026-10-11-backlog/pi/r1/`. Behavior documentation to update:
+  `docs/providers/codex.md`, `docs/providers/claude.md`, `README_WEBUI.md`,
+  `README_WEBUI.zh-TW.md`, and `docs/USER_GUIDE_WEBUI.zh-TW.md`. Summary unknown-cost
+  display is deferred by the orchestrator.
 - Source files above were fetched read-only at the exact pin with `gh api`. Copies and
   verification logs live under `../openusage_webui-artifacts/2026-10-11-backlog/pi/`.
 - Only Claude and Codex consume Pi rows. Other upstream-mapped providers and unmapped providers
