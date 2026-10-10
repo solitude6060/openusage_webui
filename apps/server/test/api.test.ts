@@ -117,7 +117,7 @@ describe("WebUI API", () => {
   });
 
   test("allows configured Tailscale Host headers without disabling localhost", async () => {
-    process.env.OPENUSAGE_WEBUI_ALLOWED_HOSTS = "100.64.0.1,ma.tailnet.example";
+    process.env.OPENUSAGE_WEBUI_ALLOWED_HOSTS = "100.64.0.1,node.tailnet.example";
 
     const tailscaleResponse = await handleRequest(new Request("http://100.64.0.1:6736/api/health", {
       headers: {

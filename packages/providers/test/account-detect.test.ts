@@ -193,7 +193,7 @@ describe("looksLikeAntigravityCliHome", () => {
   test("returns true for .agy-homes profiles including windows separators", () => {
     expect(looksLikeAntigravityCliHome("/home/user/.agy-homes/acct1")).toBe(true);
     expect(looksLikeAntigravityCliHome("/home/user/.agy-homes")).toBe(true);
-    expect(looksLikeAntigravityCliHome("C:\\Users\\ma\\.agy-homes\\acct1")).toBe(true);
+    expect(looksLikeAntigravityCliHome("C:\\Users\\user\\.agy-homes\\acct1")).toBe(true);
   });
 
   test("returns false for VS Code-family IDE homes with globalStorage", () => {
