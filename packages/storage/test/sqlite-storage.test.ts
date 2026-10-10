@@ -519,4 +519,32 @@ describe("SqliteStorage", () => {
 
     storage.close();
   });
+
+  test("returns an older usable snapshot when a newer plugin snapshot has no lines or quota", async () => {
+    const storage = new SqliteStorage();
+    await storage.init();
+    await storage.upsertUsageRecords([
+      {
+        id: "cursor-usable",
+        providerId: "cursor",
+        tool: "OpenUsage Plugin Snapshot",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        source: "api",
+        raw: { lines: [{ type: "progress", label: "Total usage", used: 10, limit: 100 }] },
+      },
+      {
+        id: "cursor-unusable",
+        providerId: "cursor",
+        tool: "OpenUsage Plugin Snapshot",
+        startedAt: "2026-10-01T00:00:00.000Z",
+        source: "api",
+        raw: { plan: "Pro" },
+      },
+    ]);
+
+    const latest = await storage.listLatestUsageSnapshots();
+    expect(latest.map((row) => row.id)).toEqual(["cursor-usable"]);
+
+    storage.close();
+  });
 });
