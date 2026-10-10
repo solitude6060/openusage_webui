@@ -1,0 +1,309 @@
+/* Panels: grids, metrics, tables, provider cards, chips and status pills. */
+
+.page-grid,
+.settings-grid {
+  display: grid;
+  gap: 20px;
+}
+
+.metric-band {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metric,
+.panel,
+.provider-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.metric {
+  min-height: 110px;
+  padding: 18px;
+}
+
+.metric span,
+th,
+dt,
+label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.metric strong {
+  display: block;
+  margin-top: 14px;
+  color: var(--ink);
+  font-size: 1.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.panel {
+  overflow: auto;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.panel-body {
+  padding: 16px 18px;
+}
+
+.panel-header h3,
+.provider-card h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.panel-header span,
+.provider-title-row span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.session-cards {
+  display: none;
+  margin: 0;
+  padding: 12px;
+  list-style: none;
+}
+
+table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+th,
+td {
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+th:first-child,
+td:first-child {
+  padding-left: 18px;
+}
+
+th:last-child,
+td:last-child {
+  padding-right: 18px;
+}
+
+.table-empty-cell {
+  padding: 24px 18px;
+  color: var(--muted);
+  font-size: 0.875rem;
+  white-space: normal;
+}
+
+td {
+  color: var(--ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+td:nth-child(4) {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.provider-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: 12px;
+}
+
+.dashboard-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  align-items: start;
+  gap: 12px;
+}
+
+.dashboard-provider-grid > .provider-card {
+  min-width: 0;
+}
+
+.provider-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 220px;
+  padding: 18px;
+  transition:
+    border-color 200ms ease,
+    transform 200ms ease;
+}
+
+.provider-card:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-1px);
+}
+
+/* Dashboard cards are keyboard-focusable (dnd-kit keyboard drag) — give them the
+   same visible focus ring as buttons/inputs so keyboard users can see focus. */
+.provider-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.provider-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.detail-list {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 0;
+}
+
+.detail-list div {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+}
+
+.detail-list.wide div {
+  grid-template-columns: 180px minmax(0, 1fr);
+}
+
+dt,
+dd {
+  margin: 0;
+  min-width: 0;
+}
+
+dd {
+  min-width: 0;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  color: var(--ink-secondary);
+}
+
+.mono-value {
+  font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.value-chip,
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.value-chip {
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+  border: 1px solid transparent;
+}
+
+.status-pill.success {
+  color: var(--success);
+  background: var(--success-soft);
+  border: 1px solid transparent;
+}
+
+.status-pill.muted {
+  color: var(--muted);
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+}
+
+/* Reset-credit expiry urgency pills (codex). The color ramp goes from spent/quiet
+   (expired) through alarming (urgent / ends today) to calm (plenty of time). A
+   leading dot in currentColor makes the state glanceable and keeps the signal off
+   color alone — the pill text ("Ends today", "in 5d") always says it too. */
+.status-pill[class*="reset-"] {
+  gap: 6px;
+  border: 1px solid transparent;
+}
+
+.status-pill[class*="reset-"]::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-pill.reset-expired {
+  color: var(--muted);
+  background: var(--surface-muted);
+  border-color: var(--line);
+}
+
+/* Expired is over and done — show a hollow dot so it reads as spent, not active. */
+.status-pill.reset-expired::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+}
+
+.status-pill.reset-urgent {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.status-pill.reset-soon {
+  color: var(--caution);
+  background: var(--caution-soft);
+}
+
+.status-pill.reset-week {
+  color: var(--ink-secondary);
+  background: var(--surface-muted);
+  border-color: var(--line);
+}
+
+.status-pill.reset-normal {
+  color: var(--muted);
+  background: var(--surface-muted);
+  border-color: var(--line);
+}
+
+.error-text {
+  color: var(--warning);
+}

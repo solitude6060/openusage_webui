@@ -1,0 +1,177 @@
+/* Pages: token range controls, allowance, usage card footer. */
+
+.token-range-bar {
+  display: grid;
+  gap: 12px;
+  padding: 14px 18px 0;
+}
+
+.token-range-bar .value-chip {
+  min-height: 32px;
+  padding: 5px 12px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.token-range-bar .token-range-active {
+  color: var(--ink);
+  background: var(--paper);
+  border-color: var(--line-strong);
+}
+
+.token-control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.token-custom-range {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.token-table {
+  min-width: 520px;
+}
+
+.token-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.token-model-row td:first-child {
+  padding-left: 28px;
+  color: var(--ink-secondary);
+  font-weight: 500;
+}
+
+.allowance-explanation {
+  margin: 0;
+}
+
+@media (min-width: 641px) {
+  .allowance-explanation > summary {
+    display: none;
+  }
+}
+
+.allowance-list {
+  display: grid;
+  gap: 12px;
+}
+
+.allowance-account {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.allowance-account-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.allowance-account-header h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.allowance-account-header span,
+.allowance-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.allowance-cycle {
+  display: grid;
+  gap: 4px;
+}
+
+.allowance-figure,
+.allowance-reason {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.allowance-api {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.allowance-unit {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.allowance-reason {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.allowance-models {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.allowance-models li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink-secondary);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.token-provider-row td {
+  font-weight: 600;
+}
+
+.token-exact-total {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-card-footer {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 0.72rem;
+  color: var(--muted);
+}

@@ -1,0 +1,271 @@
+/* Base: design tokens, reset, app shell, sidebar, topbar and buttons. */
+
+:root {
+  color-scheme: light dark;
+  font-family: "Inter Variable", "Inter", "IBM Plex Sans", "Aptos", "Segoe UI", system-ui, sans-serif;
+  font-synthesis: none;
+  line-height: 1.45;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+
+  --ink: #111111;
+  --ink-secondary: #555555;
+  --muted: #6c6b68;
+  --paper: #ffffff;
+  --canvas: #f7f6f3;
+  --surface-muted: #f0efec;
+  --line: #eaeaea;
+  --line-strong: #d4d4d4;
+  --accent: #21776e;
+  --accent-dark: #15544d;
+  --accent-soft: #dcefeb;
+  --warning: #a94332;
+  --warning-soft: #fdebec;
+  --caution: #9c5e18;
+  --caution-soft: #fbf0e0;
+  --success: #2f6c40;
+  --success-soft: #edf3ec;
+  --sidebar-bg: #111111;
+  --sidebar-text: #e8e8e6;
+  --sidebar-muted: #888888;
+  --sidebar-hover: #1e1e1e;
+  --sidebar-border: #2a2a2a;
+  --sidebar-active: #252525;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e8e8e6;
+    --ink-secondary: #a0a0a0;
+    --muted: #888888;
+    --paper: #1a1a1a;
+    --canvas: #111111;
+    --surface-muted: #1e1e1e;
+    --line: #2a2a2a;
+    --line-strong: #3a3a3a;
+    --accent: #3db8a9;
+    --accent-dark: #2a8f83;
+    --accent-soft: #1a2e2b;
+    --warning: #e5796b;
+    --warning-soft: #2e1a17;
+    --caution: #e0a458;
+    --caution-soft: #2a2113;
+    --success: #5db870;
+    --success-soft: #1a2e1d;
+    --sidebar-bg: #0a0a0a;
+    --sidebar-text: #e8e8e6;
+    --sidebar-muted: #666666;
+    --sidebar-hover: #1a1a1a;
+    --sidebar-border: #222222;
+    --sidebar-active: #1e1e1e;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  color: var(--ink);
+  background: var(--canvas);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+  transition:
+    background-color 200ms ease,
+    border-color 200ms ease,
+    color 200ms ease,
+    transform 120ms ease,
+    opacity 200ms ease;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  height: 100vh;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 24px 12px;
+  color: var(--sidebar-text);
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--sidebar-border);
+  overflow-y: auto;
+}
+
+.sidebar h1,
+.topbar h2,
+.panel h3,
+.provider-card h3 {
+  margin: 0;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.sidebar h1 {
+  max-width: 180px;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: var(--sidebar-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.topbar .eyebrow {
+  color: var(--muted);
+}
+
+.nav-list {
+  display: grid;
+  gap: 4px;
+}
+
+.nav-item {
+  position: relative;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  color: var(--sidebar-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.nav-item.active,
+.nav-item:hover {
+  color: var(--sidebar-text);
+  background: var(--sidebar-hover);
+  border-color: var(--sidebar-border);
+}
+
+/* Mark the current page with a crisp accent bar on the left edge — a clearer "you
+   are here" signal than background alone. A ::before (not an inset shadow) keeps the
+   bar straight instead of curving along the nav item's 6px corners, and adds no
+   layout shift. */
+.nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.nav-item:active,
+.primary-button:active,
+.secondary-button:active {
+  transform: scale(0.98);
+}
+
+.sidebar-refresh {
+  display: none;
+}
+
+.server-chip {
+  margin-top: auto;
+  padding: 8px 12px;
+  color: var(--sidebar-muted);
+  font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.75rem;
+  background: var(--sidebar-hover);
+  border: 1px solid var(--sidebar-border);
+  border-radius: 6px;
+}
+
+.content {
+  padding: 32px;
+  overflow-y: auto;
+}
+
+.content > * {
+  max-width: 1280px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.topbar h2 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.primary-button,
+.secondary-button {
+  min-height: 36px;
+  padding: 7px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 6px;
+}
+
+.primary-button {
+  color: #ffffff;
+  background: var(--ink);
+  border: 1px solid var(--ink);
+}
+
+.secondary-button {
+  color: var(--ink-secondary);
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+}
+
+.primary-button:hover {
+  opacity: 0.85;
+}
+
+.secondary-button:hover {
+  color: var(--ink);
+  background: var(--surface-muted);
+  border-color: var(--line-strong);
+}
+
+@media (prefers-color-scheme: dark) {
+  .primary-button {
+    color: #111111;
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  /* A light shadow vanishes on the dark canvas — deepen it and add a hairline
+     border so a floating toast still reads as separated from the content. */
+  .app-toasts .alert {
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+    border-color: var(--line-strong);
+  }
+}
