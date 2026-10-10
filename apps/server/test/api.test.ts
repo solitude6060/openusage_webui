@@ -603,6 +603,7 @@ describe("WebUI API", () => {
       name: "Claude Code",
       pluginId: "claude",
       env: { HOME: isolatedHome },
+      recordPiSessionTokens: false,
       scriptText: `
         globalThis.__openusage_plugin = {
           id: "claude",
