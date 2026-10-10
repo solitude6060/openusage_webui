@@ -131,6 +131,10 @@ Dashboard 顯示概覽：
 - Last refresh/status
 - Refresh All button
 
+`Refresh All` 與單一 provider 的更新會依請求順序執行；前一次更新完成後，才會開始下一次。帳號清單未變更時，多個同時發出的 `Refresh All` 請求會共用同一次更新。帳號變更後的請求會等待新一次更新。
+
+更新期間若刪除帳號或變更帳號設定，舊帳號的更新結果會捨棄。更新完成時會保留當下的啟用設定，避免把已停用的帳號重新啟用。
+
 注意：MiniMax Token Plan 回傳的是 quota snapshot，不是 token usage，所以不會加進 token/cost totals。MiniMax quota 會在 `Sessions` 的 `Quota` 欄位顯示。
 
 ### 5.2 Providers

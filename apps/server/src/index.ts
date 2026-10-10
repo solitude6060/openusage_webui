@@ -103,6 +103,28 @@ export function createRequestHandler(
   rebuildProviders?: () => Promise<void>,
 ): (request: Request) => Promise<Response> {
   const providersRef = asProvidersRef(providers);
+  let fullProviderRefresh: { providers: UsageProvider[]; promise: Promise<RefreshResult[]> } | null = null;
+  let providerRefreshQueue: Promise<void> = Promise.resolve();
+  function queueProviderRefresh(providerId?: ProviderId): Promise<RefreshResult[]> {
+    const refresh = providerRefreshQueue.then(() =>
+      runProviderRefresh(storage, providersRef, providerId));
+    providerRefreshQueue = refresh.then(() => undefined, () => undefined);
+    return refresh;
+  }
+
+  async function refreshProviders(providerId?: ProviderId): Promise<RefreshResult[]> {
+    if (providerId === undefined) {
+      const snapshot = providersRef.current;
+      if (fullProviderRefresh?.providers === snapshot) return fullProviderRefresh.promise;
+      const promise = queueProviderRefresh().finally(() => {
+        if (fullProviderRefresh?.promise === promise) fullProviderRefresh = null;
+      });
+      fullProviderRefresh = { providers: snapshot, promise };
+      return promise;
+    }
+    return queueProviderRefresh(providerId);
+  }
+
   return async (request) => {
     if (!isAllowedHost(request.headers.get("host"), serverInfo, request.url)) {
       return jsonError("FORBIDDEN_HOST", "Host header is not allowed", 403);
@@ -117,6 +139,7 @@ export function createRequestHandler(
           storage,
           serverInfo,
           providersRef,
+          refreshProviders,
           rebuildProviders,
         );
       }
@@ -137,9 +160,9 @@ async function handleApi(
   storage: SqliteStorage,
   serverInfo: { host: string; port: number },
   providersRef: ProvidersRef,
+  refreshProviders: (providerId?: ProviderId) => Promise<RefreshResult[]>,
   rebuildProviders?: () => Promise<void>,
 ): Promise<Response> {
-  const providers = () => providersRef.current;
   if (request.method === "GET" && url.pathname === "/api/health") {
     return json({
       ok: true,
@@ -156,14 +179,14 @@ async function handleApi(
   }
 
   if (request.method === "POST" && url.pathname === "/api/providers/refresh") {
-    const results = await refreshProviders(storage, providers());
+    const results = await refreshProviders();
     return json({ ok: true, results });
   }
 
   const providerRefreshMatch = url.pathname.match(/^\/api\/providers\/([^/]+)\/refresh$/);
   if (request.method === "POST" && providerRefreshMatch) {
     const providerId = parseProviderId(providerRefreshMatch[1]);
-    const results = await refreshProviders(storage, providers(), providerId);
+    const results = await refreshProviders(providerId);
     return json({ ok: true, results });
   }
 
@@ -432,12 +455,12 @@ async function seedProviderStatus(
   }
 }
 
-async function refreshProviders(
+async function runProviderRefresh(
   storage: SqliteStorage,
-  providers: UsageProvider[],
+  providersRef: ProvidersRef,
   providerId?: ProviderId,
 ): Promise<RefreshResult[]> {
-  const refreshableProviders = providers.filter((provider) => !providerId || provider.id === providerId);
+  const refreshableProviders = providersRef.current.filter((provider) => !providerId || provider.id === providerId);
   if (providerId && refreshableProviders.length === 0) {
     return [{ providerId, ok: false, error: "Provider is not refreshable yet" }];
   }
@@ -452,18 +475,19 @@ async function refreshProviders(
     if (existing && !existing.enabled && !providerId) {
       continue;
     }
-    const isEnabled = existing?.enabled ?? true;
     console.log(JSON.stringify({ event: "provider_refresh_started", providerId: provider.id }));
     let detected = false;
     try {
       detected = await provider.detect();
       const records = await provider.refresh();
+      const current = (await storage.listProviderStatus()).find((status) => status.providerId === provider.id);
+      if (!providersRef.current.includes(provider) || (existing && !current)) continue;
       await storage.upsertUsageRecords(records, { replaceScopes: true });
       await recordQuotaFromRefresh(storage, provider.id, records);
       await storage.upsertProviderStatus({
         providerId: provider.id,
         name: provider.name,
-        enabled: isEnabled,
+        enabled: current?.enabled ?? true,
         detected,
         lastRefreshAt: new Date().toISOString(),
       });
@@ -477,11 +501,13 @@ async function refreshProviders(
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Provider refresh failed";
+      const current = (await storage.listProviderStatus()).find((status) => status.providerId === provider.id);
+      if (!providersRef.current.includes(provider) || (existing && !current)) continue;
       await storage.insertProbeFailure(provider.id, new Date().toISOString(), message);
       await storage.upsertProviderStatus({
         providerId: provider.id,
         name: provider.name,
-        enabled: isEnabled,
+        enabled: current?.enabled ?? true,
         detected,
         lastRefreshAt: new Date().toISOString(),
         lastError: message,

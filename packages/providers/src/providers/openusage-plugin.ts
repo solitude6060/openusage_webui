@@ -29,6 +29,10 @@ import {
   type PluginRequestResponse,
 } from "./openusage-plugin-runtime";
 import type { UsageProvider } from "../types";
+import {
+  refreshOpenUsagePluginInWorker,
+  type OpenUsagePluginWorkerOptions,
+} from "./openusage-plugin-refresh-worker";
 import { scanGrokSessionUsage } from "./grok-session-usage";
 import {
   CursorUsageCollector,
@@ -94,6 +98,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
   private readonly now: () => string;
   private readonly pluginDataDir: string;
   private readonly homeDir: string;
+  private readonly useDefaultRuntime: boolean;
 
   constructor(options: OpenUsagePluginProviderOptions) {
     this.id = options.providerId;
@@ -111,6 +116,11 @@ export class OpenUsagePluginProvider implements UsageProvider {
     this.gitHubTokenRunner = options.gitHubTokenRunner;
     this.recordCcusageTokens = options.recordCcusageTokens ?? true;
     this.pluginDataDir = options.pluginDataDir ?? join(this.homeDir, ".openusage-webui", "plugins", this.id);
+    this.useDefaultRuntime = options.request === undefined
+      && options.ccusageQuery === undefined
+      && options.ccusageRunner === undefined
+      && options.gitHubTokenRunner === undefined
+      && options.now === undefined;
   }
 
   async detect(): Promise<boolean> {
@@ -123,6 +133,13 @@ export class OpenUsagePluginProvider implements UsageProvider {
   }
 
   async refresh(): Promise<UsageRecord[]> {
+    if (this.useDefaultRuntime) {
+      return refreshOpenUsagePluginInWorker(this.workerOptions());
+    }
+    return this.refreshInThread();
+  }
+
+  async refreshInThread(): Promise<UsageRecord[]> {
     const plugin = this.loadPlugin();
     if (typeof plugin.probe !== "function") {
       throw new Error("OpenUsage plugin does not export probe(ctx).");
@@ -178,6 +195,20 @@ export class OpenUsagePluginProvider implements UsageProvider {
       },
       ...usageRecords.values(),
     ];
+  }
+
+  private workerOptions(): OpenUsagePluginWorkerOptions {
+    return {
+      providerId: this.id,
+      name: this.name,
+      pluginId: this.pluginId,
+      scriptPath: this.scriptPath,
+      scriptText: this.scriptText,
+      env: this.env,
+      homeDir: this.homeDir,
+      pluginDataDir: this.pluginDataDir,
+      recordCcusageTokens: this.recordCcusageTokens,
+    };
   }
 
   private loadPlugin(): LoadedPlugin {
