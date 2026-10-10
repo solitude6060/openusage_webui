@@ -101,6 +101,12 @@ Google email stays out of provider/account labels and detect labels, and the
 - Tests: notice shown/hidden logic as a pure helper; badge omitted without email; detect
   rejects an IDE fixture without the OAuth key.
 
+Follow-up, same branch: the notice uses every account loaded when Settings opens, and
+it stays at the top of Provider Accounts when another provider is selected. The text is
+`Default Antigravity Account Not Tracked`. The button adds `Antigravity · Local CLI` /
+`~` and selects Antigravity. Antigravity's capability includes `defaultHomePath` from
+`normalizeHomePath("~")`. The page does not derive that home from the database path.
+
 ### C7 — Allowance boundary alignment (F14)
 Verified causes (2026-10-10):
 - `estimateCycle` (`packages/providers/src/allowance-estimate.ts:300-313`) measures from

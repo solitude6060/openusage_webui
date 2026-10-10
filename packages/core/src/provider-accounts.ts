@@ -23,6 +23,7 @@ export interface MultiAccountProviderCapability {
   homeEnvVar: string;
   homeLabel: string;
   homeEnvVarLabel?: string;
+  defaultHomePath?: string;
 }
 
 export const MULTI_ACCOUNT_PROVIDER_CAPABILITIES: MultiAccountProviderCapability[] = [

@@ -205,7 +205,11 @@ export function assertCodexCompatAccountId(id: string): void {
 }
 
 export function listAccountCapabilities() {
-  return listMultiAccountCapabilities();
+  return listMultiAccountCapabilities().map((capability) =>
+    capability.providerId === "antigravity"
+      ? { ...capability, defaultHomePath: normalizeHomePath("~") }
+      : capability,
+  );
 }
 
 export function detectAccountsForProvider(providerId: string) {

@@ -11,24 +11,17 @@ function pointsAtDefaultHome(homePath: string, defaultHomes: string[]): boolean 
   return defaultHomes.some((candidate) => canonicalHome(candidate) === home);
 }
 
-export function defaultHomeCandidates(databasePath?: string | null): string[] {
-  const homes = [ANTIGRAVITY_DEFAULT_HOME];
-  if (!databasePath) return homes;
-  const normalized = databasePath.replace(/\\/g, "/").replace(/\/+$/, "");
-  const suffix = "/.openusage-webui/openusage.sqlite";
-  if (!normalized.endsWith(suffix)) return homes;
-  const home = normalized.slice(0, -suffix.length);
-  if (home) homes.push(home);
-  return homes;
-}
-
 export function shouldShowDefaultAccountNotice(
-  providerId: string,
-  accounts: Array<{ homePath: string; enabled: boolean }>,
-  defaultHomes: string[],
+  accounts: ReadonlyArray<{ providerId: string; homePath: string; enabled: boolean }>,
+  defaultHomePath?: string | null,
 ): boolean {
-  if (providerId !== "antigravity") return false;
-  const enabled = accounts.filter((account) => account.enabled);
+  const defaultHomes = [ANTIGRAVITY_DEFAULT_HOME];
+  if (typeof defaultHomePath === "string" && defaultHomePath.trim()) {
+    defaultHomes.push(defaultHomePath);
+  }
+  const enabled = accounts.filter(
+    (account) => account.providerId === "antigravity" && account.enabled,
+  );
   if (enabled.length === 0) return false;
   return !enabled.some((account) => pointsAtDefaultHome(account.homePath, defaultHomes));
 }

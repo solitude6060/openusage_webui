@@ -237,7 +237,7 @@ Detect also includes the default CLI home (`$HOME`, stored as `~`, with `~/.gemi
 
 Probes add an **Account** badge when the oauth file has an OIDC `id_token`; the badge text is that token's email. If the file has no `id_token`, the badge is omitted. The card title already shows the home, and the Google email is not used as the account label.
 
-When enabled Antigravity accounts exist and none of them is the default CLI home, Settings shows **Default Account Not Tracked**. The button adds that home through the existing account API with the label `Antigravity · Local CLI`. The manual placeholder for Antigravity is the same label and `~`.
+When enabled Antigravity accounts exist and none of them is the default CLI home, Settings shows **Default Antigravity Account Not Tracked** at the top of Provider Accounts, whichever provider is selected. The button adds that home through the existing account API with the label `Antigravity · Local CLI` and selects Antigravity. The manual placeholder for Antigravity is the same label and `~`.
 
 When WebUI Provider Accounts pin a home, that path is injected as `OPENUSAGE_ANTIGRAVITY_CLI_HOME`. IDE config roots use `OPENUSAGE_ANTIGRAVITY_CONFIG_DIR` and only that root’s `state.vscdb`. A home is treated as an IDE config root when it looks like one: it contains `User/globalStorage`, ends with `/Antigravity` or `/Antigravity IDE`, or sits under `Library/Application Support/Antigravity`. Every other path counts as a CLI home, so a manual CLI home that doesn't have an oauth token file yet still gets picked up. Pinned homes skip local language-server discovery and the global keychain so accounts stay isolated.
 

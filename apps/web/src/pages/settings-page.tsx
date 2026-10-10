@@ -20,7 +20,6 @@ import { toDatetimeLocal, optionalNumber } from "../lib/format";
 import {
   ANTIGRAVITY_DEFAULT_HOME,
   ANTIGRAVITY_DEFAULT_LABEL,
-  defaultHomeCandidates,
   initialAccountProviderId,
   shouldShowDefaultAccountNotice,
 } from "../lib/default-account";
@@ -80,13 +79,16 @@ export function SettingsPage({
     [accounts, selectedProviderId],
   );
   const showDefaultAccountNotice = shouldShowDefaultAccountNotice(
-    selectedProviderId,
-    visibleAccounts,
-    defaultHomeCandidates(health?.databasePath),
+    accounts,
+    capabilities.find((item) => item.providerId === "antigravity")?.defaultHomePath,
   );
 
   async function reloadAccounts(providerId = selectedProviderId) {
-    setAccounts(await listProviderAccounts(providerId));
+    const next = await listProviderAccounts(providerId);
+    setAccounts((current) => [
+      ...current.filter((account) => account.providerId !== providerId),
+      ...next,
+    ]);
   }
 
   useEffect(() => {
@@ -97,6 +99,7 @@ export function SettingsPage({
           listProviderAccounts(),
         ]);
         setCapabilities(caps);
+        setAccounts(allAccounts);
         setSelectedProviderId(initialAccountProviderId(caps, allAccounts) as MultiAccountProviderId);
         setProviderSelectionReady(true);
       } catch (loadError) {
@@ -158,19 +161,26 @@ export function SettingsPage({
     }
   }
 
-  async function addAccount(label: string, homePath: string) {
+  async function addAccount(
+    label: string,
+    homePath: string,
+    providerId: MultiAccountProviderId = selectedProviderId,
+  ) {
     setBusy(true);
     setError(null);
     setMessage(null);
     try {
       await createProviderAccount({
-        providerId: selectedProviderId,
+        providerId,
         label,
         homePath,
       });
       setDraft({ label: "", homePath: "" });
       setCandidates((prev) => prev.filter((candidate) => candidate.homePath !== homePath));
-      await reloadAccounts();
+      if (providerId !== selectedProviderId) {
+        setSelectedProviderId(providerId);
+      }
+      await reloadAccounts(providerId);
       await onCreated();
       setMessage("Provider Account Added");
     } catch (addError) {
@@ -255,6 +265,21 @@ export function SettingsPage({
             Detect Homes
           </button>
         </div>
+        {showDefaultAccountNotice ? (
+          <div className="alert">
+            <strong>Default Antigravity Account Not Tracked</strong>
+            <button
+              className="secondary-button"
+              disabled={busy}
+              onClick={() =>
+                void addAccount(ANTIGRAVITY_DEFAULT_LABEL, ANTIGRAVITY_DEFAULT_HOME, "antigravity")
+              }
+              type="button"
+            >
+              Add Default Account
+            </button>
+          </div>
+        ) : null}
         <p className="settings-help">
           Choose a provider, detect signed-in homes, and track more than one account at once. Each
           enabled account becomes its own dashboard card.
@@ -329,20 +354,6 @@ export function SettingsPage({
             ))}
           </ul>
         )}
-
-        {showDefaultAccountNotice ? (
-          <div className="alert">
-            <strong>Default Account Not Tracked</strong>
-            <button
-              className="secondary-button"
-              disabled={busy}
-              onClick={() => void addAccount(ANTIGRAVITY_DEFAULT_LABEL, ANTIGRAVITY_DEFAULT_HOME)}
-              type="button"
-            >
-              Add Default Account
-            </button>
-          </div>
-        ) : null}
 
         {candidates.length > 0 ? (
           <div className="settings-subsection">
