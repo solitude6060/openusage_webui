@@ -30,7 +30,18 @@ main thread. One worker per refresh call, terminated afterwards; a worker crash 
 becomes a provider refresh error (existing error path).
 
 R2. Single-flight full refresh. Concurrent `POST /api/providers/refresh` calls share one
-in-flight run and receive the same results. Single-provider refresh is unchanged.
+in-flight run and receive the same results when the provider list has not changed. All
+refresh runs use one promise queue per request handler; single-provider refreshes wait
+for earlier runs and retain separate results. A queued run reads the current provider
+list when it starts. A full refresh requested after the list changes queues a fresh run.
+
+Before writing successful or failed results, confirm the same provider object is still
+current and re-read its stored status. Drop obsolete results and preserve the current
+enabled flag. Worker options preserve explicit undefined environment values.
+
+Behavior documentation to update: `docs/USER_GUIDE_WEBUI.zh-TW.md` and `README_WEBUI.md`.
+Review and repair evidence: `docs/reviews/2026-10-10-refresh-off-main-thread-review.md`
+and `docs/fix-logs/2026-10-10-refresh-off-main-thread-fix-log.md`.
 
 ## Out Of Scope
 
