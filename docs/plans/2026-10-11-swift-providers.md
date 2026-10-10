@@ -136,6 +136,8 @@ refreshes (same pattern as `packages/providers/src/providers/grok-session-usage.
   that date back to local midnight, including daylight-saving day lengths.
 - Account ownership uses the configured Codex homes' `tokens.account_id` and Pi's base
   `openai-codex` OAuth `accountId`; pool entries and credential sources remain out of scope.
+  Each Claude/Codex refresh resolves ownership from the current login files, including
+  inside the refresh worker; reusing providers does not freeze the login identity.
   Disabled configured accounts participate in ownership selection so their usage is not
   reassigned. Duplicate matching homes select one owner by account ID because Swift collapses
   identical account identities into one card. Only the unconfigured default Claude provider
@@ -306,8 +308,8 @@ the ownership rule from `ProviderAccountAssembly+Codex.swift:152,170`.
   accounts → only the account whose `<homePath>/auth.json` `tokens.account_id` equals
   `~/.pi/agent/auth.json` `openai-codex.accountId` owns it; no match → nobody, logged once. Our
   accounts are identified by `homePath` only (`registry.ts`, `account-detect.ts`), so this is a
-  file read per account, not a port of `PiCodexLoginScanner`. Pass the result into
-  `createHomedPluginProvider` the same way `recordCcusageTokens` is passed.
+  file read per account, not a port of `PiCodexLoginScanner`. Pass configured account homes
+  into `createHomedPluginProvider` and its refresh worker; resolve ownership at each refresh.
 - Not ported: pi as a Codex credential source (`piCredentialSources`); `multi-pass.json` labels;
   `openai-codex-N` pool entries (only `openai-codex` decides ownership upstream).
 - Tokens-page dedup: pi talks to the OpenAI Codex backend directly, not through the Codex CLI, so

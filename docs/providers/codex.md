@@ -153,6 +153,8 @@ WebUI tracks multiple homes through the shared Provider Accounts feature (Settin
 
 When Pi usage changes owners, same-day Pi records are moved to the new owner in one
 storage transaction. Native ccusage records are preserved.
+Each refresh rereads Pi and Codex login identities, so switching logins takes effect
+on the next refresh without a server restart.
 
 After a successful WebUI Codex refresh, Pi's `openai-codex` assistant messages add usage
 to the existing Codex provider. There is no Pi card. The scanner recursively reads

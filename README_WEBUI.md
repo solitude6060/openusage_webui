@@ -151,6 +151,8 @@ The original plugins may refresh OAuth tokens and write updated credentials back
 
 Changing Pi owners replaces same-day Pi records across the provider family. Configuring
 Claude accounts removes default Claude Pi records. Both operations preserve ccusage.
+Pi ownership is checked on each refresh. A Pi or Codex login change takes effect at
+the next refresh without restarting the server.
 
 After a successful Claude or Codex refresh, the WebUI reads Pi assistant usage from the
 last 30 days, starting at local midnight. Sessions come from `PI_CODING_AGENT_SESSION_DIR`,

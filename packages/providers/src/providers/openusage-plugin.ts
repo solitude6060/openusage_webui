@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { runInNewContext } from "node:vm";
-import type { ProviderId, UsageRecord } from "../../../core/src/types";
+import type { ProviderAccount, ProviderId, UsageRecord } from "../../../core/src/types";
+import { piSessionTokenOwnerIds } from "../pi-session-ownership";
 import {
   createBase64Api,
   createFormatApi,
@@ -74,6 +75,7 @@ export interface OpenUsagePluginProviderOptions {
   homeDir?: string;
   recordCcusageTokens?: boolean;
   recordPiSessionTokens?: boolean;
+  piSessionAccounts?: ProviderAccount[];
 }
 
 interface LoadedPlugin {
@@ -92,7 +94,8 @@ export class OpenUsagePluginProvider implements UsageProvider {
   readonly id: ProviderId;
   readonly name: string;
   readonly recordCcusageTokens: boolean;
-  readonly recordPiSessionTokens: boolean;
+  private readonly piSessionTokensEnabled: boolean;
+  private readonly piSessionAccounts?: ProviderAccount[];
   private readonly pluginId?: string;
   private readonly scriptPath?: string;
   private readonly scriptText?: string;
@@ -122,7 +125,8 @@ export class OpenUsagePluginProvider implements UsageProvider {
     this.gitHubTokenRunner = options.gitHubTokenRunner;
     this.lsDiscover = options.lsDiscover ?? discoverLanguageServer;
     this.recordCcusageTokens = options.recordCcusageTokens ?? true;
-    this.recordPiSessionTokens = options.recordPiSessionTokens ?? true;
+    this.piSessionTokensEnabled = options.recordPiSessionTokens ?? true;
+    this.piSessionAccounts = options.piSessionAccounts;
     this.pluginDataDir = options.pluginDataDir ?? join(this.homeDir, ".openusage-webui", "plugins", this.id);
     this.useDefaultRuntime = options.request === undefined
       && options.ccusageQuery === undefined
@@ -139,6 +143,11 @@ export class OpenUsagePluginProvider implements UsageProvider {
     } catch {
       return false;
     }
+  }
+
+  get recordPiSessionTokens(): boolean {
+    return this.piSessionTokensEnabled && (this.piSessionAccounts === undefined ||
+      piSessionTokenOwnerIds(this.piSessionAccounts, this.homeDir, this.env).has(this.id));
   }
 
   async refresh(): Promise<UsageRecord[]> {
@@ -230,7 +239,8 @@ export class OpenUsagePluginProvider implements UsageProvider {
       homeDir: this.homeDir,
       pluginDataDir: this.pluginDataDir,
       recordCcusageTokens: this.recordCcusageTokens,
-      recordPiSessionTokens: this.recordPiSessionTokens,
+      recordPiSessionTokens: this.piSessionTokensEnabled,
+      piSessionAccounts: this.piSessionAccounts,
     };
   }
 
