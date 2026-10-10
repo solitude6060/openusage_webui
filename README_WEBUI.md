@@ -75,6 +75,10 @@ bun run start:webui
 
 `start:webui` serves the built frontend and API from the same local server. If the frontend build is missing, the server returns a clear local error instead of serving an empty page.
 
+The server build also produces `apps/server/dist/index.js` and its plugin worker
+`openusage-plugin-worker.js`. Keep both files together when using the bundled server.
+The source-based `start:webui` command uses the TypeScript worker beside the provider source.
+
 ### Always-On Service From A Dedicated Worktree
 
 The server serves `apps/web/dist` and loads `plugins/` from its own checkout. Running
@@ -145,6 +149,9 @@ waits for an earlier refresh to finish. Concurrent Refresh All requests share on
 while the account list remains unchanged. Changing accounts starts a fresh queued run.
 Results from a deleted or replaced account are discarded, and a refresh preserves the
 account's current enabled setting.
+
+Refresh requests stay connected while waiting in the queue and running. Each plugin
+worker still has a 120-second limit; other requests keep the 120-second idle timeout.
 
 ## Grok Build Notes
 

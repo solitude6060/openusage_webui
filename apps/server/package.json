@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun src/dev.ts",
-    "build": "bun build src/index.ts --outdir dist --target bun",
+    "build": "bun build src/index.ts ../../packages/providers/src/providers/openusage-plugin-worker.ts --outdir dist --entry-naming '[name].js' --target bun",
     "start": "bun src/index.ts"
   }
 }
