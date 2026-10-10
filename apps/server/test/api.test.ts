@@ -578,6 +578,14 @@ describe("WebUI API", () => {
   });
 
   test("refresh all does not count Claude usage from both ccusage and its plugin", async () => {
+    const isolatedHome = join(dataDir, "native-claude-home");
+    const sessions = join(isolatedHome, ".pi/agent/sessions");
+    mkdirSync(sessions, { recursive: true });
+    writeFileSync(join(sessions, "claude.jsonl"), JSON.stringify({
+      type: "message", id: "pi-claude", timestamp: "2026-08-08T12:00:00.000Z",
+      message: { role: "assistant", provider: "anthropic", model: "claude-sonnet-4",
+        usage: { totalTokens: 10, cost: { total: 0.1 } } },
+    }));
     const ccusage = new CcusageProvider(async (_command, args) => ({
       ok: true,
       stderr: "",
@@ -594,6 +602,7 @@ describe("WebUI API", () => {
       providerId: "claude-code",
       name: "Claude Code",
       pluginId: "claude",
+      env: { HOME: isolatedHome },
       scriptText: `
         globalThis.__openusage_plugin = {
           id: "claude",
