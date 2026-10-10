@@ -625,6 +625,69 @@ describe("claude plugin", () => {
     expect(line.resetsAt).toBe("2099-01-01T00:00:00.000Z")
   })
 
+  it("renders Fable Weekly from a limits[] weekly_scoped entry", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+        seven_day: { utilization: 61, resets_at: "2099-01-08T00:00:00.000Z" },
+        seven_day_sonnet: null,
+        seven_day_opus: null,
+        limits: [
+          { kind: "session", group: "session", percent: 10, resets_at: "2099-01-01T00:00:00.000Z", scope: null },
+          { kind: "weekly_all", group: "weekly", percent: 61, resets_at: "2099-01-08T00:00:00.000Z", scope: null },
+          {
+            kind: "weekly_scoped",
+            group: "weekly",
+            percent: 44,
+            resets_at: "2099-01-08T18:59:59.734Z",
+            scope: { model: { id: null, display_name: "Fable" }, surface: null },
+          },
+        ],
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const fableLines = result.lines.filter((line) => line.label === "Fable Weekly")
+    expect(fableLines).toHaveLength(1)
+    expect(fableLines[0].used).toBe(44)
+    expect(fableLines[0].limit).toBe(100)
+    expect(fableLines[0].format).toEqual({ kind: "percent" })
+    expect(fableLines[0].resetsAt).toBe("2099-01-08T18:59:59.734Z")
+    expect(fableLines[0].periodDurationMs).toBe(7 * 24 * 60 * 60 * 1000)
+  })
+
+  it("emits one Fable Weekly line when legacy seven_day_fable and limits[] both exist", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        seven_day_fable: { utilization: 11, resets_at: "2099-01-01T00:00:00.000Z" },
+        limits: [
+          {
+            kind: "weekly_scoped",
+            group: "weekly",
+            percent: 44,
+            resets_at: "2099-01-08T18:59:59.734Z",
+            scope: { model: { id: null, display_name: "Fable" }, surface: null },
+          },
+        ],
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const fableLines = result.lines.filter((line) => line.label === "Fable Weekly")
+    expect(fableLines).toHaveLength(1)
+    expect(fableLines[0].used).toBe(11)
+  })
+
   it("accepts the misspelled falbe usage window from the Claude API", async () => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () =>
