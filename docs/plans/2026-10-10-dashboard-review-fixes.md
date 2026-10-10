@@ -33,11 +33,11 @@
 | F11 | Antigravity: enabling any account hides the bare default provider. The account actually in use (`$HOME`, token updated 2026-10-01, has `id_token`) is not tracked; tracked `acct1` is an idle spare account (all meters 0%, window never started). | `provider_accounts` rows: `antigravity:acct1` enabled, `antigravity:acct2` disabled, no `$HOME` row; last bare `antigravity` snapshot 2026-08-08 (1790 rows). `registry.ts:104-135`. | Yes |
 | F12 | Antigravity badge repeats the label (`acct1`) because spare-account token files lack `id_token`; plan falls back to generic `allowedTiers[0]` ("Gemini Code Assist"). | `plugins/antigravity/plugin.js:619-624,758-780`. | Yes |
 | F13 | Settings Provider Accounts always opens on Codex; Antigravity placeholder suggests `~/.agy-homes/acct1`. Detect treats IDE homes as signed in when `state.vscdb` merely exists. | `settings-page.tsx:31,56`; `account-detect.ts:202-205`. | Yes |
-| F14 | Allowance: see section below. | — | See below |
+| F14 | Allowance never aligns for Claude/Codex/Cursor: endpoints are mid-day readings, and ccusage rows are local-time days stored as UTC days. | See C7. | Yes |
 
 Deferred (recorded, not in this PR): Tokens "Today" uses UTC day bounds (deliberate for
 ccusage; needs a labeling decision), percent display ignoring `limit != 100`, count-format
-trailing space, accessibility of progress bars/keyboard drag/toggles, lowercase copy in
+trailing space, Tokens page date filters treat ccusage local-day rows as UTC days (same root cause as C7, page logic only), Antigravity `allowedTiers[0]` plan label, accessibility of progress bars/keyboard drag/toggles, lowercase copy in
 `usage-line.tsx:44` and `allowance-page.tsx:142`.
 
 ## Changes
@@ -82,18 +82,71 @@ trailing space, accessibility of progress bars/keyboard drag/toggles, lowercase 
 - `formatDate` returns `Invalid Date` text for unparseable input instead of throwing.
 
 ### C6 — Antigravity accounts (F11, F12, F13)
-- Detect labels CLI homes with the `id_token` email when present; IDE homes require the
-  OAuth key in `state.vscdb` (reuse the plugin's query), not file existence.
-- Plugin badge: use `id_token` email; otherwise omit the badge (no basename echo). Plan:
-  drop the `allowedTiers[0]` fallback unless the tier is marked default; return no plan
-  rather than a generic tier.
+Constraint from PR 31 (`docs/reviews/2026-08-08-cursor-antigravity-accounts-pr31-triple-review.md`):
+Google email stays out of provider/account labels and detect labels, and the
+`allowedTiers[0]` plan fallback is a deliberate QA fix. Both stay unchanged.
+- Settings: when a multi-account provider has at least one enabled account and none of
+  them points at that provider's default home (Antigravity: `~`), show a notice
+  `Default Account Not Tracked` with a button that adds the default home through the
+  existing add-account API (label `Antigravity · Local CLI`).
 - Settings: default the provider selector to the first provider that has accounts;
-  Antigravity placeholder becomes `~` labelled `Local CLI`. When enabling the first
-  account for a provider, show a notice that it replaces the default card and offer the
-  default home in detect results.
-- Live data step after merge (reversible, via the existing API): add and enable
-  `Antigravity · Local CLI` (`$HOME`); leave `acct1`/`acct2` as the user configured them.
-- Tests: detect fixture with and without `id_token`; plugin badge/plan fallbacks.
+  Antigravity placeholder becomes `Antigravity · Local CLI` / `~`.
+- Plugin badge: when there is no `id_token` email, omit the `Account` badge instead of
+  repeating the home basename that is already in the card title. Existing email badge
+  behavior is unchanged.
+- Detect: IDE homes count as signed in only when `state.vscdb` contains the OAuth key
+  (reuse the plugin's existing query), not when the file merely exists.
+- Live data step after merge (orchestrator, reversible, via the existing API): add and
+  enable `Antigravity · Local CLI` (`$HOME`); leave `acct1`/`acct2` as configured.
+- Tests: notice shown/hidden logic as a pure helper; badge omitted without email; detect
+  rejects an IDE fixture without the OAuth key.
+
+### C7 — Allowance boundary alignment (F14)
+Verified causes (2026-10-10):
+- `estimateCycle` (`packages/providers/src/allowance-estimate.ts:300-313`) measures from
+  the first to the last meter reading of the cycle. Both fall mid-day, so a daily token
+  row always straddles an endpoint and the cycle is rejected as `unaligned`. Live 7-day
+  result: Claude, Codex and Cursor unaligned; Grok aligned only because it had no token
+  rows on its endpoint days.
+- ccusage groups days by the system time zone (`--timezone` default; server runs in
+  Asia/Taipei, no `TZ` override). Stored ccusage rows use `YYYY-MM-DDT00:00:00.000Z`, but
+  the real bucket is the local day: Claude 2026-10-09 local = 382,279,638 tokens vs
+  231,894,683 with `--timezone UTC` (`../openusage_webui-artifacts/2026-10-10-review/ccusage-utc.json`).
+  `sqlite-storage.ts:779-781` treats the bucket as the UTC day, an 8-hour shift.
+  Cursor and Grok rows are true UTC days.
+
+Changes:
+1. `packages/storage/src/sqlite-storage.ts` token-row mapping for allowance: for tool
+   `ccusage`, `startedAt` = local midnight of the row's date in the server process time
+   zone and `bucketEnd` = next local midnight. Cursor/Grok keep UTC days. No stored data
+   is rewritten.
+2. `estimateCycle`: choose aligned measurement boundaries instead of raw first/last
+   readings. Candidates are the first and last readings plus every bucket start/end of
+   this provider's positive token rows inside that span. A candidate `t` is usable when
+   no positive row of the provider straddles `t` (`start < t < end`) and the meter value
+   at `t` is known: a reading exactly at `t`, or the nearest readings before and after
+   `t` are equal (the meter is monotonic within a cycle; falls are already reported as
+   `meter-fell`). Use the earliest usable candidate as `tokenFrom` with its value as
+   `percentStart`, and the latest as `tokenTo` / `percentEnd`. If fewer than two usable
+   candidates exist, keep the current `unaligned` result.
+3. The returned `from`/`to`/percent fields describe the aligned span so the page shows
+   what was actually measured. The page text stays as is except where it describes the
+   rule; update `docs/` allowance text.
+4. Accepted limit: an equal reading across a boundary only proves movement under one
+   percentage point, so each end can be off by up to one point. Claude weekly includes
+   usage from other surfaces/machines; this is already described on the page.
+
+Tests (`packages/providers/test`, `packages/storage/test`):
+- Cycle with mid-day first/last readings and daily rows, flat readings across two
+  boundaries → `ok`, tokens summed only over buckets inside the aligned span.
+- Boundary where readings differ on each side → not usable; fall back to `unaligned` when
+  no pair remains.
+- ccusage row date maps to local-midnight bounds when `TZ=Asia/Taipei` (run that test
+  file with `TZ=Asia/Taipei`), Cursor row stays UTC.
+
+Acceptance: run the server on port 6738 against a copy of the live database (never the
+live file) and confirm `GET /api/usage/allowance?days=7` returns `ok` estimates for
+Claude Code, Codex and Cursor; record the numbers in the fix log.
 
 ## Docs To Update
 - `docs/providers/` Claude and Antigravity pages (Fable from `limits[]`; account badge).
