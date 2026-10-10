@@ -19,6 +19,7 @@
 - Kimi
 - Kiro
 - OpenCode Go
+- OpenRouter
 - Perplexity
 - Synthetic
 - Z.ai
@@ -149,7 +150,7 @@ Providers 頁面顯示各 provider 狀態：
 - last error
 - refresh button
 
-Amp、Antigravity、Claude Code、Codex、Cursor、Devin、Factory、Grok Build、GitHub Copilot、JetBrains AI Assistant、Kimi、Kiro、OpenCode Go、Perplexity、Synthetic、Z.ai 目前透過原本 OpenUsage provider plugin adapter refresh。Gemini CLI / Google AI Pro 仍主要透過 `ccusage` 匯入，因為原本 repo 目前沒有 Gemini provider plugin。
+Amp、Antigravity、Claude Code、Codex、Cursor、Devin、Factory、Grok Build、GitHub Copilot、JetBrains AI Assistant、Kimi、Kiro、OpenCode Go、Perplexity、Synthetic、Z.ai 目前透過原本 OpenUsage provider plugin adapter refresh；OpenRouter 則由上游 Swift provider 移植成 plugin，API key 讀自 `~/.config/openusage/openrouter.json`（每次 refresh 重新讀取，不必重啟）或環境變數 `OPENROUTER_API_KEY`。Gemini CLI / Google AI Pro 仍主要透過 `ccusage` 匯入，因為原本 repo 目前沒有 Gemini provider plugin。
 
 ### 5.3 Sessions
 

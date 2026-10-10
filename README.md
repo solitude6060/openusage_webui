@@ -135,6 +135,7 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 - [**Kimi Code**](docs/providers/kimi.md) / session, weekly
 - [**MiniMax**](docs/providers/minimax.md) / coding plan session
 - [**OpenCode Go**](docs/providers/opencode-go.md) / 5h, weekly, monthly spend limits
+- [**OpenRouter**](docs/providers/openrouter.md) / credits, balance, period spend, key limit
 - [**Perplexity**](docs/providers/perplexity.md) / credits, requests
 - [**Synthetic**](docs/providers/synthetic.md) / API usage
 - [**Devin**](docs/providers/devin.md) / weekly quota, extra usage
@@ -163,6 +164,7 @@ Current WebUI provider support:
 - Kimi via the original `plugins/kimi/plugin.js` adapter
 - Kiro via the original `plugins/kiro/plugin.js` adapter
 - OpenCode Go via the original `plugins/opencode-go/plugin.js` adapter
+- OpenRouter via the `plugins/openrouter/plugin.js` adapter (port of the upstream Swift provider; API key from `~/.config/openusage/openrouter.json` or `OPENROUTER_API_KEY`)
 - Perplexity via the original `plugins/perplexity/plugin.js` adapter
 - Synthetic via the original `plugins/synthetic/plugin.js` adapter
 - Z.ai via the original `plugins/zai/plugin.js` adapter
