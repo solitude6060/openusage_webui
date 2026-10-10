@@ -48,3 +48,29 @@ Persistent command output: `docs/fix-logs/2026-10-10-refresh-off-main-thread.loc
 - Scope: no push, PR, new review round, live data modification, service operation, other-worktree modification, or `.sisyphus/` modification. All commits retain the requested `Claude-Session` trailer.
 
 First-principles check: the task restores refresh ordering and account validity after worker execution introduces interleaving. Deferred providers verify those actual interleavings; an executable fixture verifies environment masking across the real worker boundary. The queue and commit guards address the observed failures without changing plugin logic. Independent re-review before merge remains pending outside this implementer assignment.
+
+## Roles And Review Record (Orchestrator)
+
+| Role | Client / model / effort |
+|------|-------------------------|
+| Orchestrator, planning, verification | Claude Code, `claude-opus-5-5` |
+| Implementer R1/R2 (`bb0ec09`–`3cae978`) | Grok Build, `grok-4.7`, `xhigh` |
+| Implementer RR1-1–RR1-4 (`e7c5cb9`–`9a9bc66`) | Codex, `gpt-6.1-sol`, `xhigh` (user allowed Sol to implement part of the work) |
+| Review lanes | 1 Grok Build `grok-4.7` `high`; 2 AGY `gemini-3.8-flash-high` `high`; 3 Codex `gpt-6.1-sol` `high` |
+
+Family overlap: round 1 lane 1 shares the R1/R2 implementer family (xAI); round 2 lane 3 shares the
+RR1 implementer family (OpenAI). Each review ran in a fresh read-only session.
+
+Pre-review QA (orchestrator, `3cae978`, database copy on port 6740): two concurrent full refreshes
+returned in 21.7 s and ran each provider once; `GET /api/health` max 0.013 s during the run
+(24.2 s on the live service before this branch).
+
+Round 1 (`ff1abf1..3cae978`): Grok REQUEST_CHANGES (1 HIGH, 1 MEDIUM, 1 LOW), AGY APPROVE, Codex
+REQUEST_CHANGES (2 HIGH, 2 MEDIUM). The Grok HIGH and MEDIUM match RR1-2 and RR1-1.
+
+Round 2 (`3cae978..3d00791`): Grok APPROVE, AGY APPROVE, Codex REQUEST_CHANGES:
+
+| ID | Finding | Severity (lane) | Verified evidence | Disposition |
+|----|---------|-----------------|-------------------|-------------|
+| RR2-1 | After the identity/status check, the commit spans several `await`s, so an account change could interleave | HIGH (Codex) | Every storage method used in the commit is synchronous bun:sqlite; the only real I/O `await`s in `sqlite-storage.ts` are in initialization (lines 80–90). After the check the commit runs as microtasks in one event-loop turn, so no HTTP request can run in between. Codex reproduced it with an in-memory storage stub that yields to the event loop. Lane 1 reached the same conclusion independently. | Not applicable with the current storage; recorded as an invariant: if storage becomes truly asynchronous, the commit needs a lock shared with account mutations. |
+| RR2-2 | A single refresh queued behind a full refresh can exceed the 120 s `idleTimeout` | MEDIUM (Codex) | Before this branch a full refresh blocked every request, including that one. Measured full refresh: 21.7 s; slowest provider 33 s. | Deferred follow-up: request-level timeout policy covering queue wait. |
