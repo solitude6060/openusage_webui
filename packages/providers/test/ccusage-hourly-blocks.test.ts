@@ -124,6 +124,48 @@ describe("normalizeCcusageHourlyBlocks", () => {
     expect(errorSpy).toHaveBeenCalledTimes(1);
   });
 
+  test("logs a completed daily date that has no usable blocks and writes nothing for it", () => {
+    errorSpy = spyOn(console, "error").mockImplementation(() => undefined);
+    const records = normalizeCcusageHourlyBlocks(
+      "claude-code",
+      [block("2026-10-08T03:00:00.000Z", 100)],
+      [daily("2026-10-07", 300), daily("2026-10-08", 100)],
+      NOW,
+    );
+
+    // 2026-10-07 has 300 daily tokens and no block at all.
+    expect(records.map((record) => record.startedAt)).toEqual(["2026-10-08T03:00:00.000Z"]);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(String(errorSpy.mock.calls[0]?.[0])).toContain("2026-10-07");
+  });
+
+  test("logs a completed daily date whose only blocks are unusable", () => {
+    errorSpy = spyOn(console, "error").mockImplementation(() => undefined);
+    const records = normalizeCcusageHourlyBlocks(
+      "claude-code",
+      [block("2026-10-09T04:15:00.000Z", 300), { ...block("2026-10-09T06:00:00.000Z", 0), isGap: true }],
+      [daily("2026-10-09", 300)],
+      NOW,
+    );
+
+    expect(records).toEqual([]);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(String(errorSpy.mock.calls[0]?.[0])).toContain("2026-10-09");
+  });
+
+  test("stays quiet for an empty completed day and for today without blocks", () => {
+    errorSpy = spyOn(console, "error").mockImplementation(() => undefined);
+    const records = normalizeCcusageHourlyBlocks(
+      "claude-code",
+      [],
+      [daily("2026-10-08", 0), daily("2026-10-10", 400)],
+      NOW,
+    );
+
+    expect(records).toEqual([]);
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
   test("emits the current day without comparing totals", () => {
     errorSpy = spyOn(console, "error").mockImplementation(() => undefined);
     const records = normalizeCcusageHourlyBlocks(
