@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test";
+import { verify } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { OpenUsagePluginProvider } from "../src/index";
-import { readPluginScript, requestByUrl, withIsolatedHome, writeJson } from "./openusage-plugin-fixture-helpers";
+import {
+  createOpenSshEd25519Key,
+  readPluginScript,
+  requestByUrl,
+  withIsolatedHome,
+  writeJson,
+} from "./openusage-plugin-fixture-helpers";
 
 // Stand-in for a running Antigravity language server: the plugin's default discovery
 // matches it by argv (process name, marker, csrf and extension-port flags). `read`
@@ -76,6 +84,60 @@ describe("OpenUsagePluginProvider original API plugin fixtures", () => {
         "Claude",
       ]);
     }));
+  });
+
+  test("adapts the Ollama plugin through the real Ed25519 host primitive", async () => {
+    await withIsolatedHome(async (home) => {
+      const key = createOpenSshEd25519Key();
+      mkdirSync(join(home, ".ollama"), { recursive: true });
+      writeFileSync(join(home, ".ollama/id_ed25519"), key.pem, { mode: 0o600 });
+      const seen: Array<{ method: string; url: string; authorization: string }> = [];
+      const provider = new OpenUsagePluginProvider({
+        providerId: "ollama",
+        name: "Ollama",
+        pluginId: "ollama",
+        homeDir: home,
+        env: {},
+        now: () => "2023-11-14T22:13:20.000Z",
+        scriptText: readPluginScript("ollama"),
+        request: (opts) => {
+          seen.push({ method: opts.method ?? "GET", url: opts.url, authorization: opts.headers?.Authorization ?? "" });
+          const body = opts.url.startsWith("https://ollama.com/api/balance")
+            ? {
+                included: {
+                  balance_usd: 72.5,
+                  allowance_usd: 100,
+                  period: { from: "2026-09-15T09:30:00Z", until: "2026-10-15T09:30:00Z" },
+                },
+                purchased: { balance_usd: 25 },
+              }
+            : { Plan: "pro" };
+          return { status: 200, headers: {}, bodyText: JSON.stringify(body) };
+        },
+      });
+
+      const records = await provider.refresh();
+
+      expect(records[0]?.raw).toMatchObject({
+        pluginId: "ollama",
+        plan: "Pro",
+        lines: [
+          { type: "progress", label: "Monthly", used: 27.5, limit: 100 },
+          { type: "text", label: "Purchased Credits", value: "$25.00" },
+        ],
+      });
+      expect(seen.map(({ method, url }) => `${method} ${url}`)).toEqual([
+        "GET https://ollama.com/api/balance?ts=1700000000",
+        "POST https://ollama.com/api/me?ts=1700000000",
+      ]);
+      for (const call of seen) {
+        const separator = call.authorization.indexOf(":");
+        expect(call.authorization.slice(0, separator)).toBe(key.publicKeyBlobBase64);
+        const challenge = `${call.method},${new URL(call.url).pathname}${new URL(call.url).search}`;
+        const signature = Buffer.from(call.authorization.slice(separator + 1), "base64");
+        expect(verify(null, Buffer.from(challenge), key.publicKey, signature)).toBe(true);
+      }
+    });
   });
 
   test("adapts the original Synthetic plugin through env key and quotas API", async () => {

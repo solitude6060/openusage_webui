@@ -294,6 +294,7 @@ describe("OpenUsagePluginProvider original bundled plugin fixtures", () => {
     ["jetbrains-ai-assistant", "JetBrains AI Assistant", "jetbrains-ai-assistant", "JetBrains AI Assistant not detected"],
     ["kimi", "Kimi", "kimi", "kimi login"],
     ["kiro", "Kiro", "kiro", "Open Kiro"],
+    ["ollama", "Ollama", "ollama", "No Ollama key found"],
     ["opencode-go", "OpenCode Go", "opencode-go", "OpenCode Go not detected"],
     ["perplexity", "Perplexity", "perplexity", "Perplexity app"],
     ["synthetic", "Synthetic", "synthetic", "SYNTHETIC_API_KEY"],

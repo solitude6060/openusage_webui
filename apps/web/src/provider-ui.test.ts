@@ -83,6 +83,7 @@ describe("provider UI metadata", () => {
     ["jetbrains-ai-assistant", "JetBrains AI Assistant"],
     ["kimi", "Kimi"],
     ["kiro", "Kiro"],
+    ["ollama", "Ollama"],
     ["opencode-go", "OpenCode Go"],
     ["perplexity", "Perplexity"],
     ["synthetic", "Synthetic"],
