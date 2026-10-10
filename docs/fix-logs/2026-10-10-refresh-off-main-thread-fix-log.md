@@ -35,3 +35,16 @@ Persistent command output: `docs/fix-logs/2026-10-10-refresh-off-main-thread.loc
 - Fix: pass the provider environment directly through structured clone and retain `string | undefined` in the worker options type.
 - Files: `packages/providers/src/providers/openusage-plugin.ts`, `packages/providers/src/providers/openusage-plugin-refresh-worker.ts`, `packages/providers/test/openusage-plugin-worker.test.ts`.
 - Green: `rr1-3-green.log`, 3 passed, 0 failed, including the real worker/in-thread environment comparison.
+
+## Final Verification
+
+- Baseline check: temporarily restore the three changed production files from `3cae978`, keeping repaired bytes in persistent backups and restoring them through an exit trap. `baseline-3cae978-red.log` reports 3 passed and 13 failed. Every safety regression fails for its intended assertion; there are no import or fixture errors.
+- `bun run test -- --run`: exit 0, 1193 passed across 66 files (`vitest.log`).
+- `bun test packages/storage/test packages/providers/test apps/server/test apps/web/src`: exit 0, 373 passed across 43 files (`buntest.log`).
+- The known ccusage timeout-cleanup and Antigravity Cloud Code fixture tests both passed in this run. No unrelated test was modified.
+- `bun run build:webui`: exit 0; TypeScript, Vite, and server Bun bundle completed (`build-webui.log`). Building the bundle does not verify its worker path; that finding remains explicitly deferred.
+- Final source inspection removed the provider accessor made unused by the callback routing change. No other adjacent cleanup was performed.
+- After that removal: `bun test apps/server/test` passed 51 tests across 7 files (`server-final.log`), and `bun run build:webui` passed again. `git diff --check` passed.
+- Scope: no push, PR, new review round, live data modification, service operation, other-worktree modification, or `.sisyphus/` modification. All commits retain the requested `Claude-Session` trailer.
+
+First-principles check: the task restores refresh ordering and account validity after worker execution introduces interleaving. Deferred providers verify those actual interleavings; an executable fixture verifies environment masking across the real worker boundary. The queue and commit guards address the observed failures without changing plugin logic. Independent re-review before merge remains pending outside this implementer assignment.

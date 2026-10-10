@@ -163,7 +163,6 @@ async function handleApi(
   refreshProviders: (providerId?: ProviderId) => Promise<RefreshResult[]>,
   rebuildProviders?: () => Promise<void>,
 ): Promise<Response> {
-  const providers = () => providersRef.current;
   if (request.method === "GET" && url.pathname === "/api/health") {
     return json({
       ok: true,
