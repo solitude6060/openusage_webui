@@ -130,7 +130,9 @@ describe("Sessions narrow record cards", () => {
 
     render(<SessionsPage providers={[]} refreshToken={0} />);
 
-    const list = await screen.findByRole("list", { name: "Session Records" });
+    // The empty list renders before records load; wait for the record itself.
+    await screen.findAllByText("cli-tool");
+    const list = screen.getByRole("list", { name: "Session Records" });
     expect(list).toHaveClass("session-cards");
     expect(list).toHaveTextContent("Started At");
     expect(list).toHaveTextContent(formatDate(startedAt));
