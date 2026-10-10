@@ -13,7 +13,7 @@ A local-first WebUI dashboard for AI coding usage on Ubuntu/Linux.
 - Cursor via the original OpenUsage plugin adapter — optional **Provider Accounts** for multiple Cursor config homes
 - Devin via the original OpenUsage plugin adapter
 - Factory / Droid via the original OpenUsage plugin adapter
-- Grok Build via the original OpenUsage plugin adapter — weekly shared pool, plan, pay-as-you-go cap, local spend from the Grok CLI log, and Tokens-page totals from Grok CLI session transcripts
+- Grok Build via the original OpenUsage plugin adapter — weekly shared pool, plan, pay-as-you-go cap, and card spend and Tokens-page totals from Grok CLI session transcripts
 - GitHub Copilot via the original OpenUsage plugin adapter
 - JetBrains AI Assistant via the original OpenUsage plugin adapter
 - Kimi via the original OpenUsage plugin adapter
@@ -155,9 +155,9 @@ worker still has a 120-second limit; other requests keep the 120-second idle tim
 
 ## Grok Build Notes
 
-Grok Build uses the original `plugins/grok/plugin.js` adapter. Sign in with `grok login`. The plugin reads `~/.grok/auth.json` (expanded from the process `HOME`). `$GROK_HOME` is used for session transcripts and the local spend log, not for `auth.json`.
+Grok Build uses the original `plugins/grok/plugin.js` adapter. Sign in with `grok login`. The plugin reads `~/.grok/auth.json` (expanded from the process `HOME`). `$GROK_HOME` is used for session transcripts, not for `auth.json`.
 
-Dashboard weekly pool and pay-as-you-go come from the Grok CLI billing API. Card spend tiles (Today / Yesterday / Last 30 Days) are estimated from `~/.grok/logs/unified.jsonl`. The Tokens page does not use that log. After a successful Grok refresh it sums completed turns in `~/.grok/sessions/**/updates.jsonl` (`turn_completed` / `modelUsage`). Copied events count once per `eventId` and model. Child, resumed, and forked sessions are included. Cursor-billed Grok stays under Cursor.
+Dashboard weekly pool and pay-as-you-go come from the Grok CLI billing API. Card spend tiles (Today / Yesterday / Last 30 Days) and the Tokens page share completed turns in `~/.grok/sessions/**/updates.jsonl` (`turn_completed` / `modelUsage`) after a successful Grok refresh. The capped `unified.jsonl` debug log is not used. Costs come from the CLI's recorded cost; turns without a cost contribute tokens and $0. A period with no recorded costs shows tokens only, and a period with no tokens is omitted. Tokens are input plus output, without adding reasoning again. Today and Yesterday use the server's local days, Last 30 Days covers the rolling 30 × 24 hours ending at refresh time, and Tokens-page Grok days remain UTC. Copied events count once per `eventId` and model. Child, resumed, and forked sessions are included. Cursor-billed Grok stays under Cursor.
 
 ## GitHub Copilot Notes
 

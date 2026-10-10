@@ -34,7 +34,7 @@ import {
   refreshOpenUsagePluginInWorker,
   type OpenUsagePluginWorkerOptions,
 } from "./openusage-plugin-refresh-worker";
-import { scanGrokSessionUsage } from "./grok-session-usage";
+import { aggregateGrokSessionRecords, grokSpendLines, scanGrokSessionEntries } from "./grok-session-usage";
 import {
   CursorUsageCollector,
   normalizeCcusageDailyRecords,
@@ -166,11 +166,12 @@ export class OpenUsagePluginProvider implements UsageProvider {
     const snapshot = normalizePluginResult(result);
     if (this.pluginId === "grok") {
       try {
-        captureUsage(scanGrokSessionUsage({
-          providerId: this.id,
+        const entries = scanGrokSessionEntries({
           homeDir: this.homeDir,
           env: this.env,
-        }));
+        });
+        captureUsage(aggregateGrokSessionRecords(this.id, entries));
+        snapshot.lines.push(...grokSpendLines(entries, Date.parse(this.now())));
       } catch (error) {
         console.error(
           "Grok session token scan failed:",
