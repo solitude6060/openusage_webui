@@ -183,8 +183,10 @@ refreshes, Pi assistant sessions, and Grok Build CLI session transcripts as date
 refreshes update existing totals without double counting. Codex homes that share one
 `sessions` directory contribute those totals once. The Allowance page compares tokens
 and recorded API costs with quota movement over the same measured interval. It aligns
-that interval to a day boundary when the meter is unchanged across it, and shows
-an alignment warning when a daily total still cannot be placed inside the interval.
+that interval to an hour boundary where hourly token data exists (Claude, Cursor and
+Grok; stored separately and read only by Allowance) and to a day boundary otherwise
+(Codex and older days), and shows an alignment warning when a total still cannot be
+placed inside the interval.
 Claude and Codex daily rows use this computer's local day. Cursor and Grok daily rows use UTC days.
 Quota history retains each percent change and any absolute limit supplied by the provider.
 Cursor-billed Grok stays

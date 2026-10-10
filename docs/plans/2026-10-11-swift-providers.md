@@ -105,7 +105,7 @@ Actual imported files: the seven OpenRouter files in the table above (hashes re-
 the pin on 2026-10-11) plus `Sources/OpenUsage/Support/ProviderParse.swift` (`number`, `jsonObject`),
 sha256 `97bd62ef886543ee5c7653617313a6b992a8143dcdec1f31d438a2f56fd1630a`, which the plan's file table
 omitted. Read-only copies are kept in
-`/home/ma/Research/side_project/openusage_webui-artifacts/2026-10-11-backlog/openrouter/upstream/`.
+the orchestrator artifacts directory (`../openusage_webui-artifacts/2026-10-11-backlog/openrouter/upstream/`).
 `plugins/openrouter/icon.svg` is byte-identical to upstream `openrouter.svg` (sha256
 `0d3983f2545afd7f7b51d94f97cc30196cca6e7020c19632b01e2e1e41d9e75e`, `fill="currentColor"`).
 

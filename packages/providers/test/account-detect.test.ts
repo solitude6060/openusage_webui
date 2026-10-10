@@ -153,26 +153,26 @@ describe("detectProviderAccounts", () => {
   });
 
   test("looksLikeAntigravityCliHome classifies real-world home shapes", () => {
-    expect(looksLikeAntigravityCliHome("/home/ma/.agy-homes/acct1")).toBe(true);
-    expect(looksLikeAntigravityCliHome("/home/ma/.agy-homes")).toBe(true);
-    expect(looksLikeAntigravityCliHome("/home/ma/.agy-homes/acct1/.gemini/antigravity-cli")).toBe(true);
+    expect(looksLikeAntigravityCliHome("/home/user/.agy-homes/acct1")).toBe(true);
+    expect(looksLikeAntigravityCliHome("/home/user/.agy-homes")).toBe(true);
+    expect(looksLikeAntigravityCliHome("/home/user/.agy-homes/acct1/.gemini/antigravity-cli")).toBe(true);
 
     expect(
-      looksLikeAntigravityCliHome("/home/ma/AppData/Roaming/Code/User/globalStorage/antigravity.google"),
+      looksLikeAntigravityCliHome("/home/user/AppData/Roaming/Code/User/globalStorage/antigravity.google"),
     ).toBe(false);
     expect(
-      looksLikeAntigravityCliHome("/home/ma/.config/Code/User/globalStorage/antigravity.google"),
+      looksLikeAntigravityCliHome("/home/user/.config/Code/User/globalStorage/antigravity.google"),
     ).toBe(false);
-    expect(looksLikeAntigravityCliHome("/home/ma/.config/Antigravity")).toBe(false);
-    expect(looksLikeAntigravityCliHome("/home/ma/.config/Antigravity IDE")).toBe(false);
+    expect(looksLikeAntigravityCliHome("/home/user/.config/Antigravity")).toBe(false);
+    expect(looksLikeAntigravityCliHome("/home/user/.config/Antigravity IDE")).toBe(false);
     expect(
-      looksLikeAntigravityCliHome("/home/ma/Library/Application Support/Antigravity"),
+      looksLikeAntigravityCliHome("/home/user/Library/Application Support/Antigravity"),
     ).toBe(false);
     expect(
-      looksLikeAntigravityCliHome("/home/ma/Library/Application Support/Antigravity IDE"),
+      looksLikeAntigravityCliHome("/home/user/Library/Application Support/Antigravity IDE"),
     ).toBe(false);
 
-    expect(looksLikeAntigravityCliHome("/home/ma/.config/antigravity-cli")).toBe(true);
+    expect(looksLikeAntigravityCliHome("/home/user/.config/antigravity-cli")).toBe(true);
   });
 });
 
@@ -191,38 +191,38 @@ describe("looksLikeAntigravityCliHome", () => {
   });
 
   test("returns true for .agy-homes profiles including windows separators", () => {
-    expect(looksLikeAntigravityCliHome("/home/ma/.agy-homes/acct1")).toBe(true);
-    expect(looksLikeAntigravityCliHome("/home/ma/.agy-homes")).toBe(true);
+    expect(looksLikeAntigravityCliHome("/home/user/.agy-homes/acct1")).toBe(true);
+    expect(looksLikeAntigravityCliHome("/home/user/.agy-homes")).toBe(true);
     expect(looksLikeAntigravityCliHome("C:\\Users\\ma\\.agy-homes\\acct1")).toBe(true);
   });
 
   test("returns false for VS Code-family IDE homes with globalStorage", () => {
     expect(
       looksLikeAntigravityCliHome(
-        "/home/ma/AppData/Roaming/Code/User/globalStorage/antigravity/state.vscdb",
+        "/home/user/AppData/Roaming/Code/User/globalStorage/antigravity/state.vscdb",
       ),
     ).toBe(false);
     expect(
-      looksLikeAntigravityCliHome("/home/ma/.config/Cursor/User/globalStorage/state.vscdb"),
+      looksLikeAntigravityCliHome("/home/user/.config/Cursor/User/globalStorage/state.vscdb"),
     ).toBe(false);
   });
 
   test("returns false for Antigravity IDE config and macOS application support homes", () => {
-    expect(looksLikeAntigravityCliHome("/home/ma/.config/Antigravity")).toBe(false);
-    expect(looksLikeAntigravityCliHome("/home/ma/.config/Antigravity IDE")).toBe(false);
+    expect(looksLikeAntigravityCliHome("/home/user/.config/Antigravity")).toBe(false);
+    expect(looksLikeAntigravityCliHome("/home/user/.config/Antigravity IDE")).toBe(false);
     expect(
-      looksLikeAntigravityCliHome("/home/ma/Library/Application Support/Antigravity"),
+      looksLikeAntigravityCliHome("/home/user/Library/Application Support/Antigravity"),
     ).toBe(false);
     expect(
       looksLikeAntigravityCliHome(
-        "/home/ma/Library/Application Support/Antigravity/User/globalStorage",
+        "/home/user/Library/Application Support/Antigravity/User/globalStorage",
       ),
     ).toBe(false);
   });
 
   test("returns true for unclassified paths (default CLI fallback)", () => {
-    expect(looksLikeAntigravityCliHome("/home/ma/.gemini")).toBe(true);
-    expect(looksLikeAntigravityCliHome("/home/ma/whatever/state")).toBe(true);
+    expect(looksLikeAntigravityCliHome("/home/user/.gemini")).toBe(true);
+    expect(looksLikeAntigravityCliHome("/home/user/whatever/state")).toBe(true);
   });
 });
 
