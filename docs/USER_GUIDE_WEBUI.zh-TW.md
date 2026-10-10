@@ -13,7 +13,7 @@
 - Cursor
 - Devin
 - Factory / Droid
-- Grok Build（週配額、pay-as-you-go，本機 CLI log 的 Today／Yesterday／Last 30 Days，以及 Tokens 頁從 Grok CLI session transcripts（本機完成回合紀錄）讀到的 token）
+- Grok Build（週配額、pay-as-you-go，以及 Today／Yesterday／Last 30 Days 和 Tokens 頁共用的 Grok CLI session transcripts（本機完成回合紀錄））
 - GitHub Copilot CLI
 - JetBrains AI Assistant
 - Kimi
@@ -150,6 +150,8 @@ Providers 頁面顯示各 provider 狀態：
 - refresh button
 
 Amp、Antigravity、Claude Code、Codex、Cursor、Devin、Factory、Grok Build、GitHub Copilot、JetBrains AI Assistant、Kimi、Kiro、OpenCode Go、Perplexity、Synthetic、Z.ai 目前透過原本 OpenUsage provider plugin adapter refresh。Gemini CLI / Google AI Pro 仍主要透過 `ccusage` 匯入，因為原本 repo 目前沒有 Gemini provider plugin。
+
+Grok Build 的 Today／Yesterday／Last 30 Days 與 Tokens 頁共用本機完成回合紀錄。花費使用 CLI 記錄的費用；沒有費用的回合仍計入 token，費用加總為 $0。整個期間都沒有費用紀錄時，只顯示 token；沒有 token 時省略該期間。Today／Yesterday 使用伺服器本地日，Last 30 Days 涵蓋更新當下往前 30 × 24 小時；Tokens 頁的 Grok 每日用量仍維持 UTC 日。
 
 ### 5.3 Sessions
 

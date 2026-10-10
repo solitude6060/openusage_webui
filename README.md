@@ -4,9 +4,13 @@
 
 ### What's New
 
+**2026-10-11**
+
+- **Grok Build Spend:** WebUI Today, Yesterday, and Last 30 Days now use the same completed session transcripts as the Tokens page, with recorded costs. Turns without a cost still count toward tokens. Card days are local; Tokens-page Grok days remain UTC.
+
 **2026-09-20**
 
-- **Grok Build Tokens:** The Tokens page lists **Grok Build** (the Grok CLI / Grok Build login, provider id `grok`) from completed session transcripts at `~/.grok/sessions/**/updates.jsonl`, matching original OpenUsage. Dashboard spend tiles still use `~/.grok/logs/unified.jsonl`. Grok models billed through Cursor stay under Cursor.
+- **Grok Build Tokens:** The Tokens page lists **Grok Build** (the Grok CLI / Grok Build login, provider id `grok`) from completed session transcripts at `~/.grok/sessions/**/updates.jsonl`, matching original OpenUsage. Grok models billed through Cursor stay under Cursor.
 
 **2026-08-18**
 
