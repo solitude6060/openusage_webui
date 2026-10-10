@@ -182,6 +182,22 @@ describe("Pi session usage", () => {
     });
   });
 
+  test("normalizes upstream ISO timestamps without a zone as UTC and rejects non-ISO dates", async () => {
+    await withIsolatedHome(async (home) => {
+      session(home, "a.jsonl", [
+        line({ id: "naive", timestamp: " 2026-10-10T23:00:00.123456 " }),
+        line({ id: "space", timestamp: "2026-10-10 23:00:00.123 UTC" }),
+        line({ id: "zoned", timestamp: "2026-10-10T23:00:00.123Z" }),
+        line({ id: "non-iso", timestamp: "10/10/2026 23:00:00" }),
+      ]);
+      const instant = new Date("2026-10-10T23:00:00.123Z");
+      const date = `${instant.getFullYear()}-${String(instant.getMonth() + 1).padStart(2, "0")}-${String(instant.getDate()).padStart(2, "0")}`;
+      expect(tokens(await provider(home).refresh())).toEqual([
+        expect.objectContaining({ startedAt: `${date}T00:00:00.000Z`, totalTokens: 450, costUsd: 1.5 }),
+      ]);
+    });
+  });
+
   test.each(["session", "config", "default"])("resolves %s directory precedence with whitespace and tilde expansion", async (choice) => {
     await withIsolatedHome(async (home) => {
       for (const [directory, count] of [[".pi/agent/sessions", 10], ["custom/sessions", 20], ["explicit", 30]] as const) {
