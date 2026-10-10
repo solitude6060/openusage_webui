@@ -388,6 +388,55 @@ describe("openrouter plugin", () => {
     });
   });
 
+  describe("parse failure logging", () => {
+    const BODY = "<html>secret-body-text</html>";
+
+    it("warns with the endpoint name and size, never the body, for an invalid JSON 200", () => {
+      const ctx = ctxWithKey({
+        [CREDITS_URL]: { __status: 200, __body: BODY },
+        [KEY_URL]: data({ usage_daily: 1 }),
+      });
+      plugin.probe(ctx);
+      expect(ctx.host.log.warn).toHaveBeenCalledTimes(1);
+      const message = String(ctx.host.log.warn.mock.calls[0][0]);
+      expect(message).toContain("/api/v1/credits");
+      expect(message).toContain(String(BODY.length));
+      expect(message).not.toContain("secret-body-text");
+      expect(message).not.toContain(KEY);
+    });
+
+    it("warns for each endpoint whose body is not valid JSON", () => {
+      const ctx = ctxWithKey({
+        [CREDITS_URL]: { __status: 200, __body: BODY },
+        [KEY_URL]: { __status: 200, __body: BODY },
+      });
+      expect(() => plugin.probe(ctx)).toThrow(UNAVAILABLE);
+      const messages = ctx.host.log.warn.mock.calls.map((c) => String(c[0]));
+      expect(messages).toHaveLength(2);
+      expect(messages[0]).toContain("/api/v1/credits");
+      expect(messages[1]).toContain("/api/v1/key");
+    });
+
+    it.each([
+      ["an empty body", { __status: 200, __body: "" }],
+      ["a valid JSON array", { __status: 200, __body: "[]" }],
+      ["a valid JSON object without data", {}],
+    ])("does not warn for %s (upstream logs only unparsable non-empty bodies)", (_name, body) => {
+      const ctx = ctxWithKey({ [CREDITS_URL]: body, [KEY_URL]: data({ usage_daily: 1 }) });
+      plugin.probe(ctx);
+      expect(ctx.host.log.warn).not.toHaveBeenCalled();
+    });
+
+    it("does not parse or log non-2xx bodies", () => {
+      const ctx = ctxWithKey({
+        [CREDITS_URL]: status(500, BODY),
+        [KEY_URL]: data({ usage_daily: 1 }),
+      });
+      plugin.probe(ctx);
+      expect(ctx.host.log.warn).not.toHaveBeenCalled();
+    });
+  });
+
   describe("sensitive data", () => {
     const LABEL = "my-laptop-key-label";
     const payloads = {
