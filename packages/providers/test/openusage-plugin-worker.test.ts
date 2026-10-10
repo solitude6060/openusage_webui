@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { UsageRecord } from "../../core/src/types";
@@ -60,6 +60,54 @@ function withoutClock(records: UsageRecord[]): Array<Omit<UsageRecord, "id" | "s
 }
 
 describe("OpenUsage plugin refresh off the main thread", () => {
+  test("preserves undefined environment masking in worker ccusage calls", async () => {
+    const home = mkdtempSync(join(tmpdir(), "openusage-worker-env-"));
+    const bin = join(home, "bin");
+    mkdirSync(bin);
+    writeFileSync(join(bin, "bunx"), `#!/bin/sh
+if [ "\${OPENUSAGE_WORKER_MASK+x}" = x ]; then value=99; else value=17; fi
+printf '{"daily":[{"date":"2026-10-10","inputTokens":%s}]}' "$value"
+`, { mode: 0o755 });
+    const options = {
+      providerId: "manual" as const,
+      name: "Manual",
+      homeDir: home,
+      pluginDataDir: join(home, "plugins"),
+      env: { HOME: home, PATH: bin, OPENUSAGE_WORKER_MASK: undefined },
+      recordCcusageTokens: false,
+      scriptText: `globalThis.__openusage_plugin = {
+        probe(ctx) {
+          const result = ctx.host.ccusage.query({ provider: "claude" });
+          return { plan: result.status, lines: [ctx.line.text({ label: "Daily", value: JSON.stringify(result.data.daily) })] };
+        },
+      };`,
+    };
+    // Bun workers inherit startup environment rather than later process.env edits.
+    const probePath = join(home, "probe.ts");
+    const providerUrl = new URL("../src/providers/openusage-plugin.ts", import.meta.url).href;
+    writeFileSync(probePath, `
+import { OpenUsagePluginProvider } from ${JSON.stringify(providerUrl)};
+if (process.env.OPENUSAGE_WORKER_MASK !== "ambient-value") throw new Error("Missing ambient fixture value");
+const options = ${JSON.stringify(options)};
+options.env.OPENUSAGE_WORKER_MASK = undefined;
+const inThread = await new OpenUsagePluginProvider({ ...options, now: () => ${JSON.stringify(fixedNow)} }).refresh();
+const worker = await new OpenUsagePluginProvider(options).refresh();
+process.stdout.write(JSON.stringify({ inThread, worker }));
+`);
+    const proc = Bun.spawnSync([process.execPath, probePath], {
+      env: { ...process.env, OPENUSAGE_WORKER_MASK: "ambient-value" },
+      stdout: "pipe", stderr: "pipe",
+    });
+    expect(proc.exitCode).toBe(0);
+    const { inThread, worker } = JSON.parse(Buffer.from(proc.stdout).toString("utf8")) as {
+      inThread: UsageRecord[]; worker: UsageRecord[];
+    };
+    expect(inThread[0]?.raw).toMatchObject({
+      lines: [{ type: "text", label: "Daily", value: '[{"date":"2026-10-10","inputTokens":17}]' }],
+    });
+    expect(withoutClock(worker)).toEqual(withoutClock(inThread));
+  });
+
   test("fires a main-thread timer before refresh resolves while the plugin blocks synchronously", async () => {
     const provider = isolatedProvider(blockingScript);
     let timerFiredAt: number | null = null;
