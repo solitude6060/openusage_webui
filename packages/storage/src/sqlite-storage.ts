@@ -637,7 +637,9 @@ export class SqliteStorage implements Storage {
   }
 
   async deleteUsageRecordsForProvider(providerId: ProviderId): Promise<void> {
-    this.requireDb().query("DELETE FROM usage_records WHERE provider_id = ?").run(providerId);
+    const db = this.requireDb();
+    db.query("DELETE FROM usage_records WHERE provider_id = ?").run(providerId);
+    db.query("DELETE FROM token_hourly WHERE provider_id = ?").run(providerId);
   }
 
   async deleteLocalLogUsageRecords(providerIds: ProviderId[], tool: string): Promise<void> {
