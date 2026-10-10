@@ -12,7 +12,7 @@ export interface OpenUsagePluginWorkerOptions {
   pluginId?: string;
   scriptPath?: string;
   scriptText?: string;
-  env: Record<string, string>;
+  env: Record<string, string | undefined>;
   homeDir: string;
   pluginDataDir: string;
   recordCcusageTokens: boolean;

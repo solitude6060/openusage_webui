@@ -198,17 +198,13 @@ export class OpenUsagePluginProvider implements UsageProvider {
   }
 
   private workerOptions(): OpenUsagePluginWorkerOptions {
-    const env: Record<string, string> = {};
-    for (const [key, value] of Object.entries(this.env)) {
-      if (typeof value === "string") env[key] = value;
-    }
     return {
       providerId: this.id,
       name: this.name,
       pluginId: this.pluginId,
       scriptPath: this.scriptPath,
       scriptText: this.scriptText,
-      env,
+      env: this.env,
       homeDir: this.homeDir,
       pluginDataDir: this.pluginDataDir,
       recordCcusageTokens: this.recordCcusageTokens,
