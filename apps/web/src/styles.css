@@ -1138,6 +1138,16 @@ textarea {
   font-weight: 500;
 }
 
+.allowance-explanation {
+  margin: 0;
+}
+
+@media (min-width: 641px) {
+  .allowance-explanation > summary {
+    display: none;
+  }
+}
+
 .allowance-list {
   display: grid;
   gap: 12px;
@@ -1389,6 +1399,25 @@ textarea {
   .session-card-empty {
     color: var(--muted);
     font-size: 0.875rem;
+  }
+
+  .allowance-range-bar {
+    min-width: 0;
+  }
+
+  .allowance-range-bar .chip-list {
+    flex-wrap: nowrap;
+    min-width: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .allowance-explanation > summary {
+    cursor: pointer;
+    margin: 0 0 8px;
+    color: var(--ink);
+    font-size: 0.875rem;
+    font-weight: 600;
   }
 
   .content {

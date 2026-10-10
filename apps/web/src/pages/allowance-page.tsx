@@ -9,6 +9,8 @@ import { formatDate, formatMoney, formatNumber } from "../lib/format";
 import { providerLabel } from "../provider-ui";
 import { formatCompactTokenCount } from "./tokens-page";
 
+const NARROW_LAYOUT = "(max-width: 640px)";
+
 const RANGE_OPTIONS: Array<{ id: AllowanceRange; label: string }> = [
   { id: "1", label: "1 Day" },
   { id: "3", label: "3 Days" },
@@ -31,6 +33,7 @@ export function AllowancePage({
   const [estimates, setEstimates] = useState<AllowanceEstimate[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const narrow = useNarrowLayout();
   const names = useMemo(
     () => new Map(providers.map((provider) => [provider.providerId, provider.name])),
     [providers],
@@ -70,7 +73,7 @@ export function AllowancePage({
           <h3>Allowance</h3>
           <span>{loading ? "—" : `${estimates.length} Windows`}</span>
         </div>
-        <div className="token-range-bar">
+        <div className="token-range-bar allowance-range-bar">
           <div className="chip-list" role="group" aria-label="Time Range">
             {RANGE_OPTIONS.map((option) => (
               <button
@@ -85,12 +88,15 @@ export function AllowancePage({
           </div>
         </div>
         <div className="panel-body">
-          <p className="settings-help muted">
-            Estimated allowance divides the tokens used while the meter moved by how far that meter moved. API Value applies that same ratio to the API price recorded on those tokens. This Period is the current reset cycle, and Previous Period is the cycle before it. This Month uses this computer's calendar.
-          </p>
-          <p className="settings-help muted">
-            Daily totals cannot be split inside a day. A day boundary counts when the meter readings on both sides are equal, and each end can then be off by one percentage point. Spans that cannot find two such times show Daily Usage Cannot Align and have no allowance estimate. Token totals below include only fully covered records.
-          </p>
+          <details className="allowance-explanation" open={!narrow}>
+            <summary>How This Is Calculated</summary>
+            <p className="settings-help muted">
+              Estimated allowance divides the tokens used while the meter moved by how far that meter moved. API Value applies that same ratio to the API price recorded on those tokens. This Period is the current reset cycle, and Previous Period is the cycle before it. This Month uses this computer's calendar.
+            </p>
+            <p className="settings-help muted">
+              Daily totals cannot be split inside a day. A day boundary counts when the meter readings on both sides are equal, and each end can then be off by one percentage point. Spans that cannot find two such times show Daily Usage Cannot Align and have no allowance estimate. Token totals below include only fully covered records.
+            </p>
+          </details>
           {error ? <div className="alert error">{error}</div> : null}
           {loading ? <div className="loading-indicator">Loading...</div> : null}
           {!loading && !error && groups.length === 0 ? (
@@ -115,6 +121,23 @@ export function AllowancePage({
       </section>
     </section>
   );
+}
+
+function useNarrowLayout(): boolean {
+  const [narrow, setNarrow] = useState(
+    () => typeof window.matchMedia === "function" && window.matchMedia(NARROW_LAYOUT).matches,
+  );
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const media = window.matchMedia(NARROW_LAYOUT);
+    const apply = () => setNarrow(media.matches);
+    apply();
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, []);
+
+  return narrow;
 }
 
 function AllowanceCycle({ cycle }: { cycle: AllowanceEstimate }) {
