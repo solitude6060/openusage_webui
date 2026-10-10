@@ -301,16 +301,18 @@ function estimateCycle(
   const startPoint = inside[0] ?? null;
   const endPoint = inside.at(-1) ?? null;
   const measured = startPoint != null && endPoint != null && endPoint.at > startPoint.at;
-  const percentStart = measured ? startPoint.usedPercent : endPoint?.usedPercent ?? startPoint?.usedPercent ?? null;
-  const percentEnd = measured ? endPoint.usedPercent : percentStart;
-  const tokenFrom = measured ? startPoint.at : segmentFrom;
-  const tokenTo = measured ? endPoint.at : segmentFrom;
-  const unaligned = measured && tokenRows.some((row) => {
-    if (row.providerId !== window.providerId || row.tokens <= 0 || !row.bucketEnd) return false;
-    const start = Date.parse(row.startedAt);
-    const end = Date.parse(row.bucketEnd);
-    return start < tokenTo && end > tokenFrom && (start < tokenFrom || end > tokenTo);
-  });
+  const rawPercentStart = measured ? startPoint.usedPercent : endPoint?.usedPercent ?? startPoint?.usedPercent ?? null;
+  const rawPercentEnd = measured ? endPoint.usedPercent : rawPercentStart;
+  const rawFrom = measured ? startPoint.at : segmentFrom;
+  const rawTo = measured ? endPoint.at : segmentFrom;
+  const aligned = measured
+    ? alignedMeasurement(window.providerId, tokenRows, inside, startPoint.at, endPoint.at)
+    : null;
+  const percentStart = aligned?.percentStart ?? rawPercentStart;
+  const percentEnd = aligned?.percentEnd ?? rawPercentEnd;
+  const tokenFrom = aligned?.from ?? rawFrom;
+  const tokenTo = aligned?.to ?? rawTo;
+  const unaligned = measured && aligned == null;
   const meterFell = inside.some((point, index) => index > 0 && point.usedPercent < inside[index - 1]!.usedPercent);
   const models = measured
     ? tokensBetween(tokenRows, window.providerId, tokenFrom, tokenTo)
@@ -354,6 +356,64 @@ function estimateCycle(
     models: shared ? [] : models,
     reason,
   };
+}
+
+function alignedMeasurement(
+  providerId: string,
+  tokenRows: AllowanceTokenRow[],
+  points: MeterPoint[],
+  spanStart: number,
+  spanEnd: number,
+): { from: number; to: number; percentStart: number; percentEnd: number } | null {
+  const rows = tokenRows.filter((row) => row.providerId === providerId && row.tokens > 0);
+  const times = new Set<number>([spanStart, spanEnd]);
+  for (const row of rows) {
+    addSpanTime(times, Date.parse(row.startedAt), spanStart, spanEnd);
+    if (row.bucketEnd) addSpanTime(times, Date.parse(row.bucketEnd), spanStart, spanEnd);
+  }
+
+  const usable: Array<{ at: number; percent: number }> = [];
+  for (const at of times) {
+    if (rows.some((row) => bucketStraddles(row, at))) continue;
+    const percent = meterPercentAt(at, points);
+    if (percent == null) continue;
+    usable.push({ at, percent });
+  }
+  usable.sort((left, right) => left.at - right.at);
+  const earliest = usable[0];
+  const latest = usable.at(-1);
+  if (!earliest || !latest || usable.length < 2 || latest.at <= earliest.at) return null;
+  return {
+    from: earliest.at,
+    to: latest.at,
+    percentStart: earliest.percent,
+    percentEnd: latest.percent,
+  };
+}
+
+function addSpanTime(times: Set<number>, at: number, spanStart: number, spanEnd: number): void {
+  if (Number.isFinite(at) && at >= spanStart && at <= spanEnd) times.add(at);
+}
+
+function bucketStraddles(row: AllowanceTokenRow, at: number): boolean {
+  if (!row.bucketEnd) return false;
+  const start = Date.parse(row.startedAt);
+  const end = Date.parse(row.bucketEnd);
+  return Number.isFinite(start) && Number.isFinite(end) && start < at && at < end;
+}
+
+function meterPercentAt(at: number, points: MeterPoint[]): number | null {
+  let exact: MeterPoint | null = null;
+  let before: MeterPoint | null = null;
+  let after: MeterPoint | null = null;
+  for (const point of points) {
+    if (point.at === at) exact = point;
+    else if (point.at < at) before = point;
+    else if (after == null) after = point;
+  }
+  if (exact) return exact.usedPercent;
+  if (before && after && before.usedPercent === after.usedPercent) return before.usedPercent;
+  return null;
 }
 
 function apiCostBetween(

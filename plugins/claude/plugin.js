@@ -837,6 +837,44 @@
     return Number.isFinite(number) ? number : null
   }
 
+  function scopedWeeklyDisplayName(entry) {
+    if (!entry || entry.kind !== "weekly_scoped") return ""
+    const scope = entry.scope
+    const model = scope && typeof scope === "object" ? scope.model : null
+    if (!model || typeof model !== "object") return ""
+    const name = typeof model.display_name === "string" ? model.display_name.trim() : ""
+    return name
+  }
+
+  function pushScopedWeeklyLimits(lines, ctx, data) {
+    if (!data || !Array.isArray(data.limits)) return
+    const seen = {}
+    for (let i = 0; i < lines.length; i++) {
+      const label = lines[i] && lines[i].label
+      if (typeof label === "string" && label) seen[label] = true
+    }
+    for (let i = 0; i < data.limits.length; i++) {
+      const entry = data.limits[i]
+      const displayName = scopedWeeklyDisplayName(entry)
+      if (!displayName) continue
+      const label = displayName + " Weekly"
+      if (seen[label] || seen[displayName]) continue
+      if (typeof entry.percent !== "number" || !Number.isFinite(entry.percent)) continue
+      const percent = entry.percent
+      const pushed = pushPercentUsageLine(
+        lines,
+        ctx,
+        label,
+        { utilization: percent, resets_at: entry.resets_at },
+        SEVEN_DAY_MS
+      )
+      if (pushed) {
+        seen[label] = true
+        seen[displayName] = true
+      }
+    }
+  }
+
   function pushPercentUsageLine(lines, ctx, label, windowData, periodDurationMs) {
     if (!windowData || typeof windowData.utilization !== "number") return false
     const progress = {
@@ -1001,6 +1039,7 @@
         ),
         SEVEN_DAY_MS
       )
+      pushScopedWeeklyLimits(lines, ctx, data)
 
       if (data.extra_usage && data.extra_usage.is_enabled) {
         const used = data.extra_usage.used_credits

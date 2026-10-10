@@ -6,6 +6,9 @@ import {
   MULTI_ACCOUNT_PROVIDER_CAPABILITIES,
   type MultiAccountProviderId,
 } from "../../core/src/types";
+import { querySqlite } from "./providers/openusage-plugin-runtime";
+
+const ANTIGRAVITY_OAUTH_TOKEN_KEY = "antigravityUnifiedStateSync.oauthToken";
 
 export interface AccountHomeCandidate {
   providerId: MultiAccountProviderId;
@@ -83,6 +86,29 @@ function detectClaudeHomes(options: {
 
 function cursorStateDb(configDir: string): string {
   return join(configDir, "User", "globalStorage", "state.vscdb");
+}
+
+function antigravityStateHasOAuth(configDir: string): boolean {
+  const dbPath = cursorStateDb(configDir);
+  if (!existsSync(dbPath)) return false;
+  try {
+    const parsed = JSON.parse(querySqlite(
+      dbPath,
+      `SELECT value FROM ItemTable WHERE key = '${ANTIGRAVITY_OAUTH_TOKEN_KEY}' LIMIT 1`,
+    )) as unknown;
+    return Array.isArray(parsed) && parsed.some((row) => {
+      if (!row || typeof row !== "object") return false;
+      const value = (row as { value?: unknown }).value;
+      return typeof value === "string" && value.length > 0;
+    });
+  } catch (error) {
+    console.warn(
+      `[openusage] failed to read Antigravity IDE oauth key: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return false;
+  }
 }
 
 function detectCursorHomes(options: {
@@ -193,7 +219,7 @@ function detectAntigravityHomes(options: {
       const isCli = looksLikeAntigravityCliHome(candidate.homePath);
       const hasAuth = isCli
         ? existsSync(antigravityCliOauthPath(candidate.homePath))
-        : existsSync(cursorStateDb(candidate.homePath));
+        : antigravityStateHasOAuth(candidate.homePath);
       return {
         providerId: "antigravity" as const,
         homePath: candidate.homePath,

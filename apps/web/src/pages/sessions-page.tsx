@@ -1,24 +1,57 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { ProviderStatus, UsageRecord } from "../../../../packages/core/src/types";
 import { getUsageRecords } from "../lib/api";
+import { shouldApplySessionLoad } from "../lib/session-load";
 import { listProviderCards, providerLabel } from "../provider-ui";
-import { formatDate, formatMoney, formatNumber, formatQuota } from "../lib/format";
+import {
+  clampUsageLimit,
+  emptySessionMessage,
+  formatDate,
+  formatOptionalMoney,
+  formatOptionalNumber,
+  formatQuota,
+} from "../lib/format";
+
+type SessionFilters = {
+  providerId: string;
+  from: string;
+  to: string;
+  limit: string;
+};
+
+function usageQuery(filters: SessionFilters) {
+  return {
+    providerId: filters.providerId,
+    from: filters.from ? new Date(filters.from).toISOString() : undefined,
+    to: filters.to ? new Date(filters.to).toISOString() : undefined,
+    limit: clampUsageLimit(filters.limit),
+  };
+}
+
+function sessionFiltersActive(filters: SessionFilters): boolean {
+  if (filters.providerId || filters.from || filters.to) return true;
+  const limit = filters.limit.trim();
+  return limit !== "" && limit !== "100";
+}
 
 export function SessionsPage({
-  records,
   providers,
-  onRecords,
+  refreshToken,
 }: {
-  records: UsageRecord[];
   providers: ProviderStatus[];
-  onRecords: (records: UsageRecord[]) => void;
+  refreshToken: number;
 }) {
-  const [filters, setFilters] = useState({
+  const [records, setRecords] = useState<UsageRecord[]>([]);
+  const [filters, setFilters] = useState<SessionFilters>({
     providerId: "",
     from: "",
     to: "",
     limit: "100",
   });
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
+  const loadRequestId = useRef(0);
+  const [loadedFilters, setLoadedFilters] = useState(filters);
   const [error, setError] = useState<string | null>(null);
   const providerOptions = useMemo(() => listProviderCards(providers), [providers]);
   const providerNames = useMemo(() => {
@@ -29,21 +62,27 @@ export function SessionsPage({
     return map;
   }, [providers]);
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function load(next: SessionFilters) {
+    const requestId = ++loadRequestId.current;
     setError(null);
+    setLoadedFilters(next);
     try {
-      onRecords(
-        await getUsageRecords({
-          providerId: filters.providerId,
-          from: filters.from ? new Date(filters.from).toISOString() : undefined,
-          to: filters.to ? new Date(filters.to).toISOString() : undefined,
-          limit: Number(filters.limit),
-        }),
-      );
+      const nextRecords = await getUsageRecords(usageQuery(next));
+      if (!shouldApplySessionLoad(requestId, loadRequestId.current)) return;
+      setRecords(nextRecords);
     } catch (filterError) {
+      if (!shouldApplySessionLoad(requestId, loadRequestId.current)) return;
       setError(filterError instanceof Error ? filterError.message : "Filter failed");
     }
+  }
+
+  useEffect(() => {
+    void load(filtersRef.current);
+  }, [refreshToken]);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    await load(filters);
   }
 
   return (
@@ -119,7 +158,7 @@ export function SessionsPage({
               {records.length === 0 ? (
                 <tr>
                   <td className="table-empty-cell" colSpan={10}>
-                    No Usage Records Yet
+                    {emptySessionMessage(sessionFiltersActive(loadedFilters))}
                   </td>
                 </tr>
               ) : (
@@ -129,11 +168,11 @@ export function SessionsPage({
                     <td>{providerLabel(record.providerId, providerNames.get(record.providerId))}</td>
                     <td>{record.tool ?? "-"}</td>
                     <td>{record.model ?? "-"}</td>
-                    <td>{formatNumber(record.inputTokens ?? 0)}</td>
-                    <td>{formatNumber(record.outputTokens ?? 0)}</td>
-                    <td>{formatNumber(record.totalTokens ?? 0)}</td>
+                    <td>{formatOptionalNumber(record.inputTokens)}</td>
+                    <td>{formatOptionalNumber(record.outputTokens)}</td>
+                    <td>{formatOptionalNumber(record.totalTokens)}</td>
                     <td>{formatQuota(record)}</td>
-                    <td>{formatMoney(record.costUsd ?? 0)}</td>
+                    <td>{formatOptionalMoney(record.costUsd)}</td>
                     <td>{record.source}</td>
                   </tr>
                 ))

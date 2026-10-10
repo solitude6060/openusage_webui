@@ -31,8 +31,8 @@ describe("settings page manual placeholders", () => {
       homePath: "~/.config/cursor-work",
     });
     expect(MANUAL_PLACEHOLDERS.antigravity).toEqual({
-      label: "Antigravity · Main",
-      homePath: "~/.agy-homes/acct1",
+      label: "Antigravity · Local CLI",
+      homePath: "~",
     });
   });
 });

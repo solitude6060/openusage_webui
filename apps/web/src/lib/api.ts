@@ -84,6 +84,10 @@ export async function getTokenUsage(params: {
   return request(`/api/usage/tokens${search.size ? `?${search}` : ""}`);
 }
 
+export async function getLatestSnapshots(): Promise<UsageRecord[]> {
+  return request("/api/usage/latest-snapshots");
+}
+
 export async function getUsageRecords(params: {
   providerId?: string;
   from?: string;

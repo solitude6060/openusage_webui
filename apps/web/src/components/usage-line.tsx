@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { resetCreditExpiryView, plainBadgeText } from "../provider-ui";
-import { formatDate, formatNumber, formatRelativeTime, isPlainObject } from "../lib/format";
+import { formatDate, formatNumber, formatRelativeTime, isPlainObject, progressResetLabel } from "../lib/format";
 
 type ChartPoint = {
   label: string;
@@ -94,6 +94,8 @@ export function UsageLine({ line }: { line: Record<string, unknown> }) {
     const formatKind = isPlainObject(format) ? String(format.kind ?? "percent") : "percent";
     const suffix = isPlainObject(format) && typeof format.suffix === "string" ? format.suffix : "";
     const resetsAt = typeof line.resetsAt === "string" ? line.resetsAt : undefined;
+    const periodDurationMs = typeof line.periodDurationMs === "number" ? line.periodDurationMs : undefined;
+    const resetLabel = progressResetLabel({ resetsAt, periodDurationMs, used });
 
     let usageText: string;
     if (formatKind === "percent") {
@@ -118,9 +120,9 @@ export function UsageLine({ line }: { line: Record<string, unknown> }) {
             style={{ width: `${percent}%` }}
           />
         </div>
-        {resetsAt ? (
+        {resetLabel ? (
           <div className="usage-progress-reset">
-            Resets {formatRelativeTime(resetsAt)}
+            {resetLabel}
           </div>
         ) : null}
       </div>

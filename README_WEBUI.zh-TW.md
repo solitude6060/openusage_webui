@@ -15,7 +15,7 @@ http://127.0.0.1:6736
 ## 目前支援
 
 - Amp via 原本 OpenUsage plugin adapter
-- Antigravity via 原本 OpenUsage plugin adapter（可選 **Provider Accounts** 追蹤多個 CLI／IDE 家目錄，含 `~/.agy-homes/*`）
+- Antigravity via 原本 OpenUsage plugin adapter（可選 **Provider Accounts** 追蹤多個 CLI／IDE 家目錄，含 `~/.agy-homes/*` 與預設本機 CLI 家目錄 `~`）
 - Claude Code via 原本 OpenUsage plugin adapter（可選 **Provider Accounts** 追蹤多個 `CLAUDE_CONFIG_DIR`）
 - Codex CLI via 原本 OpenUsage plugin adapter（可選 **Provider Accounts** 追蹤多個 `CODEX_HOME`）
 - Cursor via 原本 OpenUsage plugin adapter（可選 **Provider Accounts** 追蹤多個 Cursor 設定目錄）

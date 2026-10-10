@@ -1175,7 +1175,7 @@ describe("antigravity plugin", () => {
     })
   })
 
-  it("pinned CLI account with no id_token falls back to home basename with a log line", async () => {
+  it("omits the account badge when the pinned CLI oauth file has no id_token", async () => {
     const ctx = makeCtx()
     setupSqliteMock(ctx, null)
     ctx.host.ls.discover.mockReturnValue(null)
@@ -1198,14 +1198,9 @@ describe("antigravity plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines[0]).toMatchObject({
-      type: "badge",
-      label: "Account",
-      text: "agy-acct1",
-    })
-    expect(ctx.host.log.info).toHaveBeenCalledWith(
-      "antigravity oauth file has no id_token; using home basename for account badge"
-    )
+    expect(result.lines.some((line) => line.label === "Account")).toBe(false)
+    expect(result.lines.some((line) => line.text === "agy-acct1")).toBe(false)
+    expect(result.lines.length).toBeGreaterThan(0)
   })
 
   it("does not attach a CLI account badge when OPENUSAGE_ANTIGRAVITY_CONFIG_DIR is set", async () => {

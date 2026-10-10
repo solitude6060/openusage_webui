@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -80,8 +81,15 @@ describe("detectProviderAccounts", () => {
     );
 
     const agyIde = join(home, ".config", "Antigravity");
-    mkdirSync(join(agyIde, "User", "globalStorage"), { recursive: true });
-    writeFileSync(join(agyIde, "User", "globalStorage", "state.vscdb"), "db");
+    const agyDbDir = join(agyIde, "User", "globalStorage");
+    mkdirSync(agyDbDir, { recursive: true });
+    const agyDb = new Database(join(agyDbDir, "state.vscdb"));
+    agyDb.exec("CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)");
+    agyDb.query("INSERT INTO ItemTable (key, value) VALUES (?, ?)").run(
+      "antigravityUnifiedStateSync.oauthToken",
+      "fixture-oauth-value",
+    );
+    agyDb.close();
 
     expect(
       detectProviderAccounts("cursor", { homeDir: home, env: {} }).map((item) => item.homePath),
@@ -114,6 +122,21 @@ describe("detectProviderAccounts", () => {
 
     expect(byPath[home]).toBe("Antigravity · Local CLI");
     expect(byPath[acct2]).toBe("Antigravity · acct2");
+  });
+
+  test("rejects an Antigravity IDE home whose state database has no oauth key", () => {
+    const home = mkdtempSync(join(tmpdir(), "openusage-account-detect-agy-ide-"));
+    tempDirs.push(home);
+    const agyIde = join(home, ".config", "Antigravity");
+    const dbDir = join(agyIde, "User", "globalStorage");
+    mkdirSync(dbDir, { recursive: true });
+    const db = new Database(join(dbDir, "state.vscdb"));
+    db.exec("CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)");
+    db.query("INSERT INTO ItemTable (key, value) VALUES (?, ?)").run("other.key", "present");
+    db.close();
+
+    const detected = detectProviderAccounts("antigravity", { homeDir: home, env: {} });
+    expect(detected.map((item) => item.homePath)).not.toContain(agyIde);
   });
 
   test("looksLikeAntigravityCliHome prefers an existing oauth token over path shape", () => {

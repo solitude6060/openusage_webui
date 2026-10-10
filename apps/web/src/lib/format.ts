@@ -13,6 +13,10 @@ export function formatNumber(value: number): string {
   return new Intl.NumberFormat().format(value);
 }
 
+export function formatOptionalNumber(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? formatNumber(value) : "-";
+}
+
 export function formatMoney(value: number): string {
   return new Intl.NumberFormat(undefined, {
     style: "currency",
@@ -21,12 +25,30 @@ export function formatMoney(value: number): string {
   }).format(value);
 }
 
+export function formatOptionalMoney(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? formatMoney(value) : "-";
+}
+
+export function clampUsageLimit(value: string): number {
+  const trimmed = value.trim();
+  if (!trimmed) return 100;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed)) return 100;
+  return Math.min(1000, Math.max(1, Math.trunc(parsed)));
+}
+
+export function emptySessionMessage(filtersActive: boolean): string {
+  return filtersActive ? "No Records Match These Filters" : "No Usage Records Yet";
+}
+
 export function formatDate(value?: string): string {
   if (!value) return "Never";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Invalid Date";
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
-  }).format(new Date(value));
+  }).format(date);
 }
 
 export function formatQuota(record: UsageRecord): string {
@@ -46,10 +68,29 @@ export function formatQuota(record: UsageRecord): string {
   return `${formatNumber(used)} / ${formatNumber(limit)}${suffix}${remainingText}${reset}`;
 }
 
-export function formatRelativeTime(isoString: string): string {
+export function progressResetLabel(input: {
+  resetsAt?: string | null;
+  periodDurationMs?: number | null;
+  used?: number | null;
+  nowMs?: number;
+}): string | null {
+  const nowMs = input.nowMs ?? Date.now();
+  if (typeof input.resetsAt === "string" && input.resetsAt.trim()) {
+    const target = new Date(input.resetsAt).getTime();
+    if (!Number.isFinite(target)) return null;
+    if (target <= nowMs) return "Reset Due · Refresh For New Value";
+    return `Resets ${formatRelativeTime(input.resetsAt, nowMs)}`;
+  }
+  const period = Number(input.periodDurationMs);
+  if (Number.isFinite(period) && period > 0 && input.used === 0) {
+    return "Window Starts On Next Use";
+  }
+  return null;
+}
+
+export function formatRelativeTime(isoString: string, nowMs = Date.now()): string {
   const target = new Date(isoString).getTime();
-  const now = Date.now();
-  const diffMs = target - now;
+  const diffMs = target - nowMs;
   if (diffMs <= 0) return "now";
   const minutes = Math.floor(diffMs / 60_000);
   const hours = Math.floor(minutes / 60);

@@ -5,8 +5,8 @@ import type {
 } from "../../../packages/core/src/types";
 import {
   getHealth,
+  getLatestSnapshots,
   getProviders,
-  getUsageRecords,
   refreshAllProviders,
   refreshProvider,
   setProviderEnabled,
@@ -36,7 +36,7 @@ export function App() {
   const [page, setPage] = useState<Page>(pageFromPath(window.location.pathname));
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [providers, setProviders] = useState<ProviderStatus[]>([]);
-  const [records, setRecords] = useState<UsageRecord[]>([]);
+  const [snapshots, setSnapshots] = useState<UsageRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,14 +47,14 @@ export function App() {
   async function loadData() {
     setError(null);
     try {
-      const [healthData, providerData, recordData] = await Promise.all([
+      const [healthData, providerData, snapshotData] = await Promise.all([
         getHealth(),
         getProviders(),
-        getUsageRecords({ limit: 100 }),
+        getLatestSnapshots(),
       ]);
       setHealth(healthData);
       setProviders(providerData);
-      setRecords(recordData);
+      setSnapshots(snapshotData);
       setRefreshToken((token) => token + 1);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load data");
@@ -182,7 +182,7 @@ export function App() {
           <DashboardPage
             providers={providers}
             providerMap={providerMap}
-            records={records}
+            records={snapshots}
           />
         ) : null}
         {!loading && page === "providers" ? (
@@ -214,7 +214,7 @@ export function App() {
           />
         ) : null}
         {!loading && page === "sessions" ? (
-          <SessionsPage records={records} providers={providers} onRecords={setRecords} />
+          <SessionsPage providers={providers} refreshToken={refreshToken} />
         ) : null}
         {!loading && page === "tokens" ? (
           <TokensPage providers={providers} refreshToken={refreshToken} />
