@@ -101,6 +101,20 @@ refreshes (same pattern as `packages/providers/src/providers/grok-session-usage.
 
 ### Pi implementation decisions and differences
 
+- Second-round remediation (PR2-1, stale Pi usage after losing the matching account):
+  after a successful Claude/Codex probe, scan Pi data when that family has no owner and
+  attach an explicit null owner plus the scanned usage days to the plugin snapshot.
+  Storage clears only that family's `Pi Session` / `local-log` rows for those days in
+  the same replacement transaction as the snapshot insertion. A configured owner on
+  another account must not trigger cleanup. Preserve ccusage, other days, families,
+  and sources; an insertion failure rolls back cleanup. Add storage integration tests
+  for matching-to-unmatched Codex logins and configured Claude accounts, through both
+  in-thread and worker refreshes. Commit the failing tests before the fix. Update
+  `docs/providers/codex.md`, `docs/providers/claude.md`, `README_WEBUI.md`,
+  `README_WEBUI.zh-TW.md`, and `docs/USER_GUIDE_WEBUI.zh-TW.md`. Validation logs:
+  `../openusage_webui-artifacts/2026-10-11-backlog/pi/r2/`. Run the focused regression,
+  `bun run test -- --run`, `bun test packages/storage/test packages/providers/test apps/server/test apps/web/src`,
+  and `bun run build:webui`. No push, service operation, or edits to other worktrees.
 - Review remediation scope (PR1-1 through PR1-5): atomically remove same-day Pi rows
   from previous owners within the Claude/Codex family, preserving ccusage; remove default
   Claude Pi rows when Claude accounts are configured; resolve login ownership at each

@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { UsageRecord } from "../../core/src/types";
+import type { ProviderAccount, UsageRecord } from "../../core/src/types";
+import { OpenUsagePluginProvider } from "../../providers/src/providers/openusage-plugin";
+import { writeJson } from "../../providers/test/openusage-plugin-fixture-helpers";
 import { SqliteStorage } from "../src/index";
 
 let storage: SqliteStorage;
@@ -23,6 +25,80 @@ function record(tool: string, costUsd: number | undefined = 2): UsageRecord {
 }
 
 describe("Pi storage consumers", () => {
+  test.each([
+    ["codex", "in-thread"], ["codex", "worker"],
+    ["claude-code", "in-thread"], ["claude-code", "worker"],
+  ] as const)("losing the %s Pi owner clears only scanned days through %s refresh", async (family, runtime) => {
+    const timestamps = [new Date(), new Date()];
+    timestamps[1]!.setDate(timestamps[1]!.getDate() - 1);
+    const days = timestamps.map((date) => new Date(Date.UTC(
+      date.getFullYear(), date.getMonth(), date.getDate(),
+    )).toISOString());
+    for (const [index, timestamp] of timestamps.entries()) {
+      writeJson(join(dataDir, `.pi/agent/sessions/${index}.jsonl`), {
+        type: "message", id: `message-${index}`, timestamp: timestamp.toISOString(),
+        message: { role: "assistant", provider: family === "codex" ? "openai-codex" : "anthropic",
+          model: "gpt-6.1-sol", usage: { totalTokens: 100, cost: { total: 1 } } },
+      });
+    }
+    const accounts: ProviderAccount[] = ["work", "family"].map((name, index) => ({
+      id: `${family}:${name}`, providerId: family, label: name,
+      homePath: join(dataDir, name), enabled: true, sortOrder: index,
+    }));
+    for (const account of accounts) {
+      writeJson(join(account.homePath, "auth.json"), { tokens: { account_id: account.label } });
+    }
+    const login = (identity: string) => writeJson(join(dataDir, ".pi/agent/auth.json"), {
+      "openai-codex": { type: "oauth", access: "PRIVATE_ACCESS_FIXTURE", accountId: identity },
+    });
+    const providers = (configured: ProviderAccount[]) => (configured.length ? configured.map((account) => account.id) : [family])
+      .map((providerId) => new OpenUsagePluginProvider({
+        providerId, name: providerId, pluginId: family === "codex" ? "codex" : "claude",
+        scriptText: `globalThis.__openusage_plugin = { probe() { return { lines: [] }; } };`,
+        homeDir: dataDir, env: { HOME: dataDir }, piSessionAccounts: configured,
+      }));
+    const initialProviders = providers(family === "codex" ? accounts : []);
+    const refresh = async (items: OpenUsagePluginProvider[]) => {
+      const results: UsageRecord[] = [];
+      for (const provider of items) {
+        const records = await (runtime === "worker" ? provider.refresh() : provider.refreshInThread());
+        await storage.upsertUsageRecords(records, { replaceScopes: true });
+        results.push(...records);
+      }
+      return results;
+    };
+    login("work");
+    expect((await refresh(initialProviders)).filter((row) => row.tool === "Pi Session")).toHaveLength(2);
+    const previousOwner = family === "codex" ? "codex:work" : family;
+    const preserved: UsageRecord[] = [
+      ...days.map((startedAt, index) => ({ ...record("ccusage"), id: `native-${index}`, providerId: previousOwner, startedAt })),
+      { ...record("Pi Session"), id: "other-day", providerId: previousOwner, startedAt: "2026-09-01T00:00:00.000Z" },
+      { ...record("Pi Session"), id: "other-family", providerId: family === "codex" ? "claude-code" : "codex", startedAt: days[0]! },
+      { ...record("Pi Session"), id: "manual-pi", providerId: previousOwner, source: "manual", startedAt: days[0]! },
+      { ...record("Pi Session"), id: "similar-prefix", providerId: `${family}-extra`, startedAt: days[0]! },
+    ];
+    await storage.upsertUsageRecords([...preserved,
+      ...days.map((startedAt, index) => ({ ...record("Pi Session"), id: `old-owner-${index}`, providerId: `${family}:old`, startedAt })),
+    ]);
+    login("unmatched");
+    const records = await refresh(family === "codex" ? initialProviders : providers(accounts));
+    expect(records.filter((row) => row.tool === "Pi Session")).toEqual([]);
+    expect(JSON.stringify(records)).not.toContain("PRIVATE_ACCESS_FIXTURE");
+    const remaining = (await storage.listUsageRecords()).filter((row) => row.tool !== "OpenUsage Plugin Snapshot");
+    expect(remaining.map((row) => row.id).sort()).toEqual(preserved.map((row) => row.id).sort());
+    expect((await storage.getTokenUsageBreakdown({ from: days[1], to: days[0] })).totalTokens).toBe(500);
+  });
+
+  test("a failed snapshot insertion rolls back no-owner Pi cleanup", async () => {
+    await storage.upsertUsageRecords([record("Pi Session")]);
+    await expect(storage.upsertUsageRecords([
+      { ...record("OpenUsage Plugin Snapshot"), id: "no-owner", source: "api", totalTokens: undefined,
+        raw: { piSessionOwnership: { ownerId: null, days: [record("Pi Session").startedAt] } } },
+      { ...record("invalid"), raw: { invalid: BigInt(1) } },
+    ], { replaceScopes: true })).rejects.toThrow();
+    expect((await storage.listUsageRecords()).map((row) => row.id)).toEqual(["Pi Session"]);
+  });
+
   test.each([["codex", "codex:work"], ["codex:work", "codex:family"],
     ["codex:family", "codex"], ["claude-code", "claude-code:work"]])(
     "moving Pi usage from %s to %s keeps one row and 100 tokens", async (previous, owner) => {
