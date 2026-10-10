@@ -101,3 +101,81 @@ describe("token_hourly storage", () => {
     expect(rows).toEqual([{ total_tokens: 50 }]);
   });
 });
+
+describe("listAllowanceTokenRows", () => {
+  const FROM = "2026-10-01T00:00:00.000Z";
+
+  async function seeded(records: UsageRecord[]) {
+    const storage = new SqliteStorage();
+    await storage.init();
+    await storage.upsertUsageRecords(records, { replaceScopes: true });
+    return storage;
+  }
+
+  test("a UTC day with hourly rows returns only those rows, a day without keeps its daily row", async () => {
+    const storage = await seeded([
+      daily({ id: "d-9", providerId: "cursor", tool: "Cursor Usage Event", source: "api", startedAt: "2026-10-09T00:00:00.000Z", totalTokens: 60 }),
+      daily({ id: "d-8", providerId: "cursor", tool: "Cursor Usage Event", source: "api", startedAt: "2026-10-08T00:00:00.000Z", totalTokens: 40 }),
+      hourly({ id: "h-a", providerId: "cursor", tool: "Cursor Usage Event", source: "api", startedAt: "2026-10-09T05:00:00.000Z", totalTokens: 25, costUsd: 0.5 }),
+      hourly({ id: "h-b", providerId: "cursor", tool: "Cursor Usage Event", source: "api", startedAt: "2026-10-09T23:00:00.000Z", totalTokens: 35 }),
+    ]);
+    const rows = (await storage.listAllowanceTokenRows(FROM)).sort((l, r) => l.startedAt.localeCompare(r.startedAt));
+    storage.close();
+
+    expect(rows).toEqual([
+      { providerId: "cursor", model: "model", tokens: 40, costUsd: null, startedAt: "2026-10-08T00:00:00.000Z", bucketEnd: "2026-10-09T00:00:00.000Z" },
+      { providerId: "cursor", model: "model", tokens: 25, costUsd: 0.5, startedAt: "2026-10-09T05:00:00.000Z", bucketEnd: "2026-10-09T06:00:00.000Z" },
+      { providerId: "cursor", model: "model", tokens: 35, costUsd: null, startedAt: "2026-10-09T23:00:00.000Z", bucketEnd: "2026-10-10T00:00:00.000Z" },
+    ]);
+  });
+
+  test("hourly rows of one provider or tool do not replace another provider's daily row", async () => {
+    const storage = await seeded([
+      daily({ id: "d-cursor", providerId: "cursor", tool: "Cursor Usage Event", source: "api", totalTokens: 60 }),
+      daily({ id: "d-grok", providerId: "grok", tool: "Grok Session", source: "local-log", totalTokens: 70 }),
+      hourly({ id: "h-grok", providerId: "grok", tool: "Grok Session", source: "local-log", startedAt: "2026-10-09T05:00:00.000Z", totalTokens: 70 }),
+    ]);
+    const rows = await storage.listAllowanceTokenRows(FROM);
+    storage.close();
+
+    expect(rows.map((row) => [row.providerId, row.tokens, row.bucketEnd]).sort()).toEqual([
+      ["cursor", 60, "2026-10-10T00:00:00.000Z"],
+      ["grok", 70, "2026-10-09T06:00:00.000Z"],
+    ]);
+  });
+
+  test("a ccusage local day pairs with its UTC hours under Asia/Taipei", async () => {
+    const previousTz = process.env.TZ;
+    process.env.TZ = "Asia/Taipei";
+    try {
+      expect(new Date(2026, 9, 9).toISOString()).toBe("2026-10-08T16:00:00.000Z");
+      const storage = await seeded([
+        daily({ id: "d-09", providerId: "claude-code", tool: "ccusage", source: "local-log", startedAt: "2026-10-09T00:00:00.000Z", totalTokens: 300 }),
+        daily({ id: "d-10", providerId: "claude-code", tool: "ccusage", source: "local-log", startedAt: "2026-10-10T00:00:00.000Z", totalTokens: 90 }),
+        // Local 2026-10-09 runs from 16:00Z on the 8th to 15:00Z on the 9th.
+        hourly({ id: "h-first", providerId: "claude-code", tool: "ccusage", source: "local-log", startedAt: "2026-10-08T16:00:00.000Z", model: "All Models", totalTokens: 100 }),
+        hourly({ id: "h-last", providerId: "claude-code", tool: "ccusage", source: "local-log", startedAt: "2026-10-09T15:00:00.000Z", model: "All Models", totalTokens: 200 }),
+      ]);
+      const rows = (await storage.listAllowanceTokenRows(FROM)).sort((l, r) => l.startedAt.localeCompare(r.startedAt));
+      storage.close();
+
+      expect(rows).toEqual([
+        { providerId: "claude-code", model: "All Models", tokens: 100, costUsd: null, startedAt: "2026-10-08T16:00:00.000Z", bucketEnd: "2026-10-08T17:00:00.000Z" },
+        { providerId: "claude-code", model: "All Models", tokens: 200, costUsd: null, startedAt: "2026-10-09T15:00:00.000Z", bucketEnd: "2026-10-09T16:00:00.000Z" },
+        { providerId: "claude-code", model: "model", tokens: 90, costUsd: null, startedAt: "2026-10-09T16:00:00.000Z", bucketEnd: "2026-10-10T16:00:00.000Z" },
+      ]);
+    } finally {
+      process.env.TZ = previousTz ?? "UTC";
+    }
+  });
+
+  test("ignores zero-token hourly rows and hours older than the cutoff", async () => {
+    const storage = await seeded([
+      hourly({ id: "h-zero", providerId: "grok", tool: "Grok Session", source: "local-log", startedAt: "2026-10-09T05:00:00.000Z", totalTokens: 0 }),
+      hourly({ id: "h-old", providerId: "grok", tool: "Grok Session", source: "local-log", startedAt: "2026-09-20T05:00:00.000Z", totalTokens: 5 }),
+    ]);
+    const rows = await storage.listAllowanceTokenRows(FROM);
+    storage.close();
+    expect(rows).toEqual([]);
+  });
+});
