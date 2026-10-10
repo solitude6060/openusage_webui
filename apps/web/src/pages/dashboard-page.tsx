@@ -21,7 +21,6 @@ import { providerLabel } from "../provider-ui";
 import { formatDate, isPlainObject, linesFromRaw } from "../lib/format";
 import { UsageLine } from "../components/usage-line";
 import { SortableCard } from "../components/sortable-card";
-
 const CARD_ORDER_KEY = "openusage-dashboard-card-order";
 const SUMMARY_PROGRESS_LABELS = new Set([
   "Session",
@@ -31,6 +30,8 @@ const SUMMARY_PROGRESS_LABELS = new Set([
   "Fable Weekly",
   "Credits",
   "Total usage",
+  "Auto usage",
+  "API usage",
   "Requests",
 ]);
 const SUMMARY_TEXT_LABELS = new Set(["Today"]);
