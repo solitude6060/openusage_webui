@@ -346,6 +346,13 @@ label {
   -webkit-overflow-scrolling: touch;
 }
 
+.session-cards {
+  display: none;
+  margin: 0;
+  padding: 12px;
+  list-style: none;
+}
+
 table {
   width: 100%;
   min-width: 860px;
@@ -1339,6 +1346,51 @@ textarea {
 }
 
 @media (max-width: 640px) {
+  .session-table {
+    display: none;
+  }
+
+  .session-cards {
+    display: grid;
+    gap: 8px;
+  }
+
+  .session-card {
+    display: grid;
+    gap: 6px;
+    padding: 12px;
+    background: var(--surface-muted);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+
+  .session-card div {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 8px;
+    align-items: baseline;
+  }
+
+  .session-card span {
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .session-card strong {
+    min-width: 0;
+    color: var(--ink-secondary);
+    font-weight: 500;
+    overflow-wrap: anywhere;
+  }
+
+  .session-card-empty {
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+
   .content {
     padding: 18px 12px;
   }

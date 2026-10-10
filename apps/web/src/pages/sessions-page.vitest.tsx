@@ -72,12 +72,12 @@ describe("Sessions page load generation", () => {
     await flushSettledUpdate(() => {
       newer.resolve([record("fresh", "fresh-row")]);
     });
-    expect(screen.getByText("fresh-row")).toBeInTheDocument();
+    expect(screen.getAllByText("fresh-row").length).toBeGreaterThan(0);
 
     await flushSettledUpdate(() => {
       older.resolve([record("stale", "stale-row")]);
     });
-    expect(screen.getByText("fresh-row")).toBeInTheDocument();
+    expect(screen.getAllByText("fresh-row").length).toBeGreaterThan(0);
     expect(screen.queryByText("stale-row")).not.toBeInTheDocument();
   });
 
@@ -87,13 +87,13 @@ describe("Sessions page load generation", () => {
     await flushSettledUpdate(() => {
       newer.resolve([record("fresh", "fresh-row")]);
     });
-    expect(screen.getByText("fresh-row")).toBeInTheDocument();
+    expect(screen.getAllByText("fresh-row").length).toBeGreaterThan(0);
 
     await flushSettledUpdate(() => {
       older.reject(new Error("Stale Filter Failed"));
     });
     expect(screen.queryByText("Stale Filter Failed")).not.toBeInTheDocument();
-    expect(screen.getByText("fresh-row")).toBeInTheDocument();
+    expect(screen.getAllByText("fresh-row").length).toBeGreaterThan(0);
   });
 
   test("shows an error from the latest request", async () => {
