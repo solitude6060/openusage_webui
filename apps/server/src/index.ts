@@ -103,6 +103,17 @@ export function createRequestHandler(
   rebuildProviders?: () => Promise<void>,
 ): (request: Request) => Promise<Response> {
   const providersRef = asProvidersRef(providers);
+  let fullProviderRefresh: Promise<RefreshResult[]> | null = null;
+  async function refreshProviders(providerId?: ProviderId): Promise<RefreshResult[]> {
+    if (providerId === undefined) {
+      fullProviderRefresh ??= runProviderRefresh(storage, providersRef.current).finally(() => {
+        fullProviderRefresh = null;
+      });
+      return fullProviderRefresh;
+    }
+    return runProviderRefresh(storage, providersRef.current, providerId);
+  }
+
   return async (request) => {
     if (!isAllowedHost(request.headers.get("host"), serverInfo, request.url)) {
       return jsonError("FORBIDDEN_HOST", "Host header is not allowed", 403);
@@ -117,6 +128,7 @@ export function createRequestHandler(
           storage,
           serverInfo,
           providersRef,
+          refreshProviders,
           rebuildProviders,
         );
       }
@@ -137,6 +149,7 @@ async function handleApi(
   storage: SqliteStorage,
   serverInfo: { host: string; port: number },
   providersRef: ProvidersRef,
+  refreshProviders: (providerId?: ProviderId) => Promise<RefreshResult[]>,
   rebuildProviders?: () => Promise<void>,
 ): Promise<Response> {
   const providers = () => providersRef.current;
@@ -156,14 +169,14 @@ async function handleApi(
   }
 
   if (request.method === "POST" && url.pathname === "/api/providers/refresh") {
-    const results = await refreshProviders(storage, providers());
+    const results = await refreshProviders();
     return json({ ok: true, results });
   }
 
   const providerRefreshMatch = url.pathname.match(/^\/api\/providers\/([^/]+)\/refresh$/);
   if (request.method === "POST" && providerRefreshMatch) {
     const providerId = parseProviderId(providerRefreshMatch[1]);
-    const results = await refreshProviders(storage, providers(), providerId);
+    const results = await refreshProviders(providerId);
     return json({ ok: true, results });
   }
 
@@ -430,22 +443,6 @@ async function seedProviderStatus(
       detected,
     });
   }
-}
-
-let fullProviderRefresh: Promise<RefreshResult[]> | null = null;
-
-async function refreshProviders(
-  storage: SqliteStorage,
-  providers: UsageProvider[],
-  providerId?: ProviderId,
-): Promise<RefreshResult[]> {
-  if (providerId === undefined) {
-    fullProviderRefresh ??= runProviderRefresh(storage, providers).finally(() => {
-      fullProviderRefresh = null;
-    });
-    return fullProviderRefresh;
-  }
-  return runProviderRefresh(storage, providers, providerId);
 }
 
 async function runProviderRefresh(
