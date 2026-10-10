@@ -14,6 +14,7 @@ import {
 import {
   decryptAes256Gcm,
   discoverLanguageServer,
+  ed25519Sign,
   encryptAes256Gcm,
   execSqlite,
   expandHome,
@@ -305,6 +306,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
           sha256Hex: (text: string) => createHash("sha256").update(String(text)).digest("hex"),
           encryptAes256Gcm: encryptAes256Gcm,
           decryptAes256Gcm: decryptAes256Gcm,
+          ed25519Sign: ed25519Sign,
         },
         http: {
           request,

@@ -75,7 +75,7 @@ describe("host.crypto.ed25519Sign", () => {
     const badSeed = Buffer.from("not-a-valid-ed25519-seed-material").toString("base64");
     const out = await runProbe(`
       try { ctx.host.crypto.ed25519Sign(${JSON.stringify(badSeed)}, "x"); put("error", "none"); }
-      catch (e) { put("error", e instanceof Error ? e.message : String(e)); }
+      catch (e) { put("error", e && e.message ? e.message : String(e)); }
     `);
 
     expect(out.error).toBe("Invalid Ed25519 seed.");

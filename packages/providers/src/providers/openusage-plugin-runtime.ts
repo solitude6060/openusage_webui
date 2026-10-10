@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createPrivateKey, createPublicKey, randomBytes, sign } from "node:crypto";
 import { Database } from "bun:sqlite";
 import { existsSync, readdirSync, readFileSync, readlinkSync } from "node:fs";
 import { homedir } from "node:os";
@@ -515,6 +515,40 @@ export function encryptAes256Gcm(plaintext: string, keyB64: string): string {
   const ciphertext = Buffer.concat([cipher.update(String(plaintext), "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
   return `${iv.toString("base64")}:${tag.toString("base64")}:${ciphertext.toString("base64")}`;
+}
+
+// PKCS#8 header for an Ed25519 private key; the 32-byte seed follows it directly.
+const ED25519_PKCS8_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
+
+/**
+ * Signs the UTF-8 bytes of `message` with a raw 32-byte Ed25519 seed (base64) and returns the
+ * signature plus the raw 32-byte public key, both base64. Errors are fixed strings: the seed is
+ * secret key material and must never reach a plugin log line or an error message.
+ */
+export function ed25519Sign(
+  seedBase64: string,
+  message: string,
+): { signatureBase64: string; publicKeyBase64: string } {
+  const seed = Buffer.from(String(seedBase64).trim(), "base64");
+  if (seed.length !== 32) {
+    throw new Error("Invalid Ed25519 seed.");
+  }
+  try {
+    const privateKey = createPrivateKey({
+      key: Buffer.concat([ED25519_PKCS8_PREFIX, seed]),
+      format: "der",
+      type: "pkcs8",
+    });
+    const signature = sign(null, Buffer.from(String(message), "utf8"), privateKey);
+    // An Ed25519 SPKI encoding is a 12-byte header followed by the 32-byte raw public key.
+    const spki = createPublicKey(privateKey).export({ format: "der", type: "spki" });
+    return {
+      signatureBase64: signature.toString("base64"),
+      publicKeyBase64: spki.subarray(-32).toString("base64"),
+    };
+  } catch {
+    throw new Error("Ed25519 signing failed.");
+  }
 }
 
 export function decryptAes256Gcm(envelope: string, keyB64: string): string {
