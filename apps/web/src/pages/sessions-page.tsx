@@ -138,7 +138,7 @@ export function SessionsPage({
           <h3>Usage Records</h3>
           <span>{records.length} Rows</span>
         </div>
-        <div className="table-scroll">
+        <div className="table-scroll session-table">
           <table>
             <thead>
               <tr>
@@ -180,6 +180,42 @@ export function SessionsPage({
             </tbody>
           </table>
         </div>
+        <ul className="session-cards" aria-label="Session Records">
+          {records.length === 0 ? (
+            <li className="session-card session-card-empty">
+              {emptySessionMessage(sessionFiltersActive(loadedFilters))}
+            </li>
+          ) : (
+            records.map((record) => (
+              <li className="session-card" key={record.id}>
+                <div>
+                  <span>Started At</span>
+                  <strong>{formatDate(record.startedAt)}</strong>
+                </div>
+                <div>
+                  <span>Provider</span>
+                  <strong>{providerLabel(record.providerId, providerNames.get(record.providerId))}</strong>
+                </div>
+                <div>
+                  <span>Tool</span>
+                  <strong>{record.tool ?? "-"}</strong>
+                </div>
+                <div>
+                  <span>Model</span>
+                  <strong>{record.model ?? "-"}</strong>
+                </div>
+                <div>
+                  <span>Tokens</span>
+                  <strong>{formatOptionalNumber(record.totalTokens)}</strong>
+                </div>
+                <div>
+                  <span>Cost</span>
+                  <strong>{formatOptionalMoney(record.costUsd)}</strong>
+                </div>
+              </li>
+            ))
+          )}
+        </ul>
       </section>
     </section>
   );
