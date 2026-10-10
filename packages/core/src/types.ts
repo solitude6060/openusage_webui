@@ -14,6 +14,7 @@ export const PROVIDER_IDS = [
   "jetbrains-ai-assistant",
   "kimi",
   "kiro",
+  "ollama",
   "opencode-go",
   "perplexity",
   "synthetic",

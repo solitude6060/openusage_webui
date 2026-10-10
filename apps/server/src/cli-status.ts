@@ -81,7 +81,7 @@ async function main() {
     );
     for (const provider of providers) {
       const existing = statusMap.get(provider.id);
-      if (existing && !existing.enabled) continue;
+      if (!(existing?.enabled ?? provider.defaultEnabled !== false)) continue;
       try {
         const detected = await provider.detect();
         const records = await provider.refresh();
@@ -89,7 +89,7 @@ async function main() {
         await storage.upsertProviderStatus({
           providerId: provider.id,
           name: provider.name,
-          enabled: existing?.enabled ?? true,
+          enabled: existing?.enabled ?? provider.defaultEnabled !== false,
           detected,
           lastRefreshAt: new Date().toISOString(),
         });
@@ -98,7 +98,7 @@ async function main() {
         await storage.upsertProviderStatus({
           providerId: provider.id,
           name: provider.name,
-          enabled: existing?.enabled ?? true,
+          enabled: existing?.enabled ?? provider.defaultEnabled !== false,
           detected: existing?.detected ?? false,
           lastRefreshAt: new Date().toISOString(),
           lastError: msg,

@@ -67,7 +67,7 @@ export async function syncProviderStatus(
       await storage.upsertProviderStatus({
         providerId: provider.id,
         name: provider.name,
-        enabled: account?.enabled ?? true,
+        enabled: account?.enabled ?? provider.defaultEnabled !== false,
         detected,
       });
       continue;
