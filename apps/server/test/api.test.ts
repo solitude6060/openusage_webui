@@ -485,12 +485,21 @@ describe("WebUI API", () => {
     );
   });
 
-  test("provider refresh persists structured daily token usage without double counting", async () => {
+  test("provider refresh persists native and Pi daily token usage without double counting", async () => {
+    const sessions = join(dataDir, ".pi/agent/sessions");
+    mkdirSync(sessions, { recursive: true });
+    writeFileSync(join(sessions, "fixture.jsonl"), JSON.stringify({
+      type: "message", id: "pi-fixture", timestamp: "2026-08-08T09:00:00.000Z",
+      message: { role: "assistant", provider: "openai-codex", model: "gpt-5.6-sol",
+        usage: { input: 20, output: 10, totalTokens: 30, cost: { total: 0.5 } } },
+    }));
     const refreshTimes = ["2026-08-09T10:00:00.000Z", "2026-08-09T10:20:00.000Z"];
     const provider = new OpenUsagePluginProvider({
       providerId: "codex:family",
       name: "Codex Family",
       pluginId: "codex",
+      homeDir: dataDir,
+      env: { HOME: dataDir },
       scriptText: `
         globalThis.__openusage_plugin = {
           id: "codex",
@@ -550,14 +559,14 @@ describe("WebUI API", () => {
     ));
     const body = await response.json();
 
-    expect(body).toMatchObject({ totalTokens: 120, records: 2 });
+    expect(body).toMatchObject({ totalTokens: 150, records: 3 });
     expect(body.providers).toEqual([
       {
         providerId: "codex:family",
-        totalTokens: 120,
-        records: 2,
+        totalTokens: 150,
+        records: 3,
         models: [
-          { model: "gpt-5.6-sol", totalTokens: 100, records: 1 },
+          { model: "gpt-5.6-sol", totalTokens: 130, records: 2 },
           { model: "gpt-5.6-luna", totalTokens: 20, records: 1 },
         ],
       },

@@ -124,6 +124,25 @@ Because Linux WebUI does not use the macOS keychain, the adapter relies on the f
 
 Use Settings → Provider Accounts, choose **Claude Code**, then detect or add homes. Configured accounts become `claude-code:<slug>` providers with `CLAUDE_CONFIG_DIR` set to that home. Detect looks for `~/.claude` and process `CLAUDE_CONFIG_DIR` when `.credentials.json` is present.
 
+### Usage From Pi
+
+After a successful WebUI Claude refresh, Pi assistant messages with provider `anthropic`
+or `claude-agent-sdk` add usage to the default Claude provider when no Claude accounts
+are configured. Configured Claude homes do not receive unattributed Pi usage; a warning
+is logged once. Pi has no separate card.
+
+The scanner recursively reads `*.jsonl` from `PI_CODING_AGENT_SESSION_DIR`, else
+`PI_CODING_AGENT_DIR/sessions`, else `~/.pi/agent/sessions`. It starts at local midnight
+30 days ago, keeps the first occurrence of each message ID, and groups reported tokens
+by local day and model. Other Pi providers are excluded.
+
+`Pi Session` records add to Tokens, Allowance, and cost summaries alongside ccusage.
+Positive Pi costs are preserved. Zero/missing costs remain unknown because the WebUI
+has no Claude fallback rate table; tokens remain available. A model-day containing any
+unpriced message retains unknown cost. The scanner only reads files and stores no
+message content or credentials. Scan errors are logged without discarding the successful
+quota snapshot.
+
 The original plugin may refresh OAuth tokens and write the updated credential JSON back to the same file source. Browser cookies are not used.
 
 ### Token Refresh

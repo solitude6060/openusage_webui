@@ -6,6 +6,8 @@ import {
 } from "../../core/src/types";
 import { applyProviderHomeEnv } from "./account-detect";
 import { codexSessionTokenOwnerIds } from "./codex-session-ownership";
+import { piSessionTokenOwnerIds } from "./pi-session-ownership";
+import { normalizeHomeDir } from "./providers/openusage-plugin-runtime";
 import { CcusageProvider } from "./providers/ccusage";
 import { ManualProvider } from "./providers/manual";
 import { MiniMaxProvider } from "./providers/minimax";
@@ -62,6 +64,7 @@ function createHomedPluginProvider(options: {
   homePath: string | undefined;
   env: NodeJS.ProcessEnv;
   recordCcusageTokens?: boolean;
+  recordPiSessionTokens?: boolean;
 }): UsageProvider {
   const providerEnv = { ...options.env };
   if (options.homePath) {
@@ -74,6 +77,7 @@ function createHomedPluginProvider(options: {
     scriptPath: resolveBundledPluginScriptPath(options.pluginId),
     env: providerEnv,
     recordCcusageTokens: options.recordCcusageTokens,
+    recordPiSessionTokens: options.recordPiSessionTokens,
   });
 }
 
@@ -87,6 +91,7 @@ function accountsForProvider(
 export function getProviders(options: GetProvidersOptions = {}): UsageProvider[] {
   const env = options.env ?? process.env;
   const accounts = options.providerAccounts ?? options.codexInstances ?? [];
+  const piOwnerIds = piSessionTokenOwnerIds(accounts, normalizeHomeDir(env.HOME), env);
 
   const plugins = pluginProviders.flatMap((provider) => {
     if (!isMultiAccountProviderId(provider.providerId)) {
@@ -119,6 +124,7 @@ export function getProviders(options: GetProvidersOptions = {}): UsageProvider[]
           homePath: account.homePath,
           env,
           recordCcusageTokens: tokenOwnerIds ? tokenOwnerIds.has(account.id) : true,
+          recordPiSessionTokens: piOwnerIds.has(account.id),
         }),
       );
     }
@@ -131,6 +137,7 @@ export function getProviders(options: GetProvidersOptions = {}): UsageProvider[]
         baseProviderId: provider.providerId,
         homePath: undefined,
         env,
+        recordPiSessionTokens: piOwnerIds.has(provider.providerId),
       }),
     ];
   });

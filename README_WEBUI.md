@@ -30,6 +30,9 @@ A local-first WebUI dashboard for AI coding usage on Ubuntu/Linux.
   from Claude/Codex local usage, complete Cursor usage-event refreshes, and Grok Build
   CLI session transcripts
 
+Pi session usage is included under the existing Claude and Codex providers; it has no
+separate provider card.
+
 ## What It Does Not Do
 
 - No browser cookie scraping
@@ -143,6 +146,26 @@ Claude reads `CLAUDE_CONFIG_DIR/.credentials.json` when `CLAUDE_CONFIG_DIR` is s
 Codex reads `CODEX_HOME/auth.json` when `CODEX_HOME` is set, otherwise `~/.config/codex/auth.json` and `~/.codex/auth.json`. When two Codex homes resolve to the same `sessions` directory, the Tokens page stores those rows once, on the account whose `sessions` path is the real directory. The Allowance page does not turn that shared session log into a per-account token allowance.
 
 The original plugins may refresh OAuth tokens and write updated credentials back to the same file source. Browser cookies are not used.
+
+### Usage From Pi
+
+After a successful Claude or Codex refresh, the WebUI reads Pi assistant usage from the
+last 30 days, starting at local midnight. Sessions come from `PI_CODING_AGENT_SESSION_DIR`,
+then `PI_CODING_AGENT_DIR/sessions`, then `~/.pi/agent/sessions`. Only `anthropic`,
+`claude-agent-sdk`, and `openai-codex` usage is included. Copied message IDs count once.
+
+`Pi Session` records add to Tokens, Allowance, and cost summaries alongside ccusage. They
+use local calendar days and Pi's positive recorded cost; Codex falls back to the existing
+standard token rates. Unpriced usage retains its tokens with unknown cost. Codex
+`codex-auto-review` is free from 2026-10-06 UTC, even if Pi records an estimated cost.
+
+A single Codex provider owns Pi Codex usage. With several configured homes, only the home
+whose `auth.json` `tokens.account_id` matches Pi's `openai-codex` OAuth `accountId` receives
+it. Pi auth uses `PI_CODING_AGENT_DIR/auth.json`, otherwise `~/.pi/agent/auth.json`.
+Disabled accounts are not reassigned. Claude usage goes only to the default provider
+when no Claude accounts are configured. An unmatched account or scan error is logged;
+the existing quota snapshot remains available. The scanner never imports or updates
+Pi credentials, and stores no message content.
 
 Refresh All and individual provider refreshes run in request order. An individual refresh
 waits for an earlier refresh to finish. Concurrent Refresh All requests share one run

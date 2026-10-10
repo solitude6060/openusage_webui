@@ -16,6 +16,7 @@ export interface OpenUsagePluginWorkerOptions {
   homeDir: string;
   pluginDataDir: string;
   recordCcusageTokens: boolean;
+  recordPiSessionTokens?: boolean;
 }
 
 type WorkerResponse =

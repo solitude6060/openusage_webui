@@ -181,6 +181,8 @@ Tokens 頁面依時間區間加總本機 `usage_records` 的 token：
   不同 model 版本仍分開顯示
 - Claude／Codex 會使用本機 usage logs；Cursor 會使用完整取得的 usage events；Grok Build 會使用 Grok CLI session transcripts（`~/.grok/sessions/**/updates.jsonl` 裡的完成回合）
 - 多個 Codex 帳號的 `sessions` 目錄若解析後是同一個目錄，Tokens 只保留該目錄本體那個帳號的列。另一個帳號的配額卡仍分開更新，卡片上的 Today／Last 30 Days 也仍會顯示。
+- Pi 的 `anthropic`／`claude-agent-sdk`／`openai-codex` assistant 用量，在 Claude／Codex 更新成功後加入既有 provider。掃描最近 30 天的 `~/.pi/agent/sessions/**/*.jsonl`，也支援 `PI_CODING_AGENT_SESSION_DIR` 與 `PI_CODING_AGENT_DIR`。重複訊息 ID 只計一次，以 `Pi Session` 紀錄與 ccusage 分別保存。
+- 只有一個 Codex provider 時會接收 Pi Codex 用量；設定多個帳號時，只有登入帳號 ID 與 Pi `openai-codex` OAuth 登入相同者接收。沒有符合帳號就略過，停用帳號的用量不會重新分配。Claude 只在沒有設定 Claude 帳號時，由預設 provider 接收 Pi 用量。Pi 登入檔只讀取，不匯入或更新憑證。
 
 按下 Refresh All 或等待自動 refresh 後，上述來源會更新對應日期與 model 的 token
 records。Claude／Codex plugin refresh 失敗時，本機 `ccusage` token 數值仍會保留；plugin
@@ -200,7 +202,7 @@ Allowance 頁用你這段時間的實際 token，除以同一個額度表移動�
 - 區間裡額度重設時，重設前後各算一次，方便比較配額有沒有變小。新週期提早開始時，舊週期算到新週期開始為止
 - 沒有兩筆額度觀測時，不換算。有兩筆以上時，起訖放在額度值已知、而且沒有單日合計橫跨的時間。一天的零時前後最近的兩筆讀數相同，就把測量對齊到那個零時。找不到兩個這樣的時間，顯示 Daily Usage Cannot Align，暫停換算
 - 單日合計不拆成日內的幾小時。token 與 API Cost 只加總完整落在對齊後區間裡的紀錄
-- Claude 與 Codex 的 ccusage 每日用量是匯入當下的本地日，讀取時用這台電腦的當地午夜對齊。Cursor 與 Grok 的每日用量維持 UTC 日。這台電腦改了時區，既有的 ccusage 每日用量會整批跟著新時區平移
+- Claude 與 Codex 的 ccusage／Pi Session 每日用量是匯入當下的本地日，讀取時用這台電腦的當地午夜對齊。Cursor 與 Grok 的每日用量維持 UTC 日。這台電腦改了時區，既有的 ccusage／Pi Session 每日用量會整批跟著新時區平移
 - 零時前後讀數相同，只代表用量沒有跨過下一個百分點，每一端最多可能差 1 個百分點
 - 百分比移動不到 5 個點時，數字仍會顯示，並標成 Rough Estimate
 - 百分比沒有移動、區間中途往下掉，或這段沒有 token 紀錄時，不算出配額。正向移動不到 1 個百分點仍可粗估
@@ -211,6 +213,7 @@ Allowance 頁用你這段時間的實際 token，除以同一個額度表移動�
 - Codex 優先保留 ccusage 提供的模型費用，包含明確的 0。整天總額若只剩一個模型尚未定價，可將可確認的餘額歸給該模型；其餘已知模型才依 OpenAI 標準短上下文單價估價。多個未知模型無法拆分時，保持未知。單日合計看不出哪些請求用了長上下文或 Fast mode
 - Cursor 的非數字費用保持未知，明確數字 0 則保留。API Value 為 0 時仍會顯示
 - Summary 遇到同一天舊 CLI 費用與新模型費用時，只有能辨認單一帳號的資料才套用來源優先序：模型費用完整就使用模型總額，模型費用不完整則使用已知的舊每日總額。原始紀錄保留；多帳號的舊紀錄無法確認歸屬時仍分別顯示
+- Pi 費用另外加入 Summary 與 Allowance，優先使用每筆訊息記下的大於零費用；Codex 缺少費用時使用既有標準單價，Claude 保持未知。`codex-auto-review` 自 2026-10-06 UTC 起費用為零。無法定價的紀錄保留 token；同一模型同一天含有無法定價的訊息時，該合計費用保持未知
 
 模型名稱列在估算下面，表示這些 token 怎麼組成，不是每個模型各有一份訂閱配額。
 

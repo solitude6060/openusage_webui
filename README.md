@@ -124,8 +124,8 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 
 - [**Amp**](docs/providers/amp.md) / free tier, bonus, credits
 - [**Antigravity**](docs/providers/antigravity.md) / all models
-- [**Claude**](docs/providers/claude.md) / session, weekly, extra usage, local token usage (ccusage)
-- [**Codex**](docs/providers/codex.md) / session, weekly, reviews, credits, reset-credit expiry
+- [**Claude**](docs/providers/claude.md) / session, weekly, extra usage, local token usage (ccusage and Pi sessions in WebUI)
+- [**Codex**](docs/providers/codex.md) / session, weekly, reviews, credits, reset-credit expiry, Pi session usage in WebUI
 - [**Copilot**](docs/providers/copilot.md) / premium, chat, completions
 - [**Cursor**](docs/providers/cursor.md) / credits, total usage, auto usage, API usage, on-demand, CLI auth
 - [**Factory / Droid**](docs/providers/factory.md) / standard, premium tokens
@@ -171,7 +171,7 @@ Current WebUI provider support:
 - Manual usage entries
 
 The WebUI Tokens page stores Claude/Codex local usage, complete Cursor usage-event
-refreshes, and Grok Build CLI session transcripts as dated model totals, so repeated
+refreshes, Pi assistant sessions, and Grok Build CLI session transcripts as dated model totals, so repeated
 refreshes update existing totals without double counting. Codex homes that share one
 `sessions` directory contribute those totals once. The Allowance page compares tokens
 and recorded API costs with quota movement over the same measured interval. It aligns
@@ -181,6 +181,12 @@ Claude and Codex daily rows use this computer's local day. Cursor and Grok daily
 Quota history retains each percent change and any absolute limit supplied by the provider.
 Cursor-billed Grok stays
 under Cursor. Grok Build is omitted until a Grok refresh finds `turn_completed` rows.
+
+Pi usage joins the existing Claude and Codex providers after a successful refresh. The
+scanner reads the last 30 days from `~/.pi/agent/sessions` (or the Pi directory overrides),
+keeps Pi costs separate from ccusage, and assigns multi-account Codex usage only to the
+matching Pi login. See [Codex](docs/providers/codex.md#usage-from-pi) and
+[Claude](docs/providers/claude.md#usage-from-pi) for account rules.
 
 The WebUI adapter provides Linux host shims for original plugin HTTP, SQLite, local keychain, filesystem, crypto, and formatting APIs where needed. Local keychain shim data stays under `~/.openusage-webui/plugins/<provider>/keychain.json`.
 

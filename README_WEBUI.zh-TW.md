@@ -37,6 +37,8 @@ http://127.0.0.1:6736
   展開後顯示完整數值；Claude／Codex 本機用量、Cursor 完整 usage events，以及 Grok Build
   CLI 本機完成回合紀錄會在 refresh 後自動寫入。Cursor 帳單裡的 Grok 仍掛在 Cursor 底下。
 
+Pi 的本機用量會併入既有 Claude／Codex，沒有獨立的 provider 卡片。
+
 ## 目前不做
 
 - 不做 browser cookie scraping
@@ -189,6 +191,23 @@ CODEX_HOME/auth.json
 多個 Codex 家目錄若解析到同一個 `sessions` 目錄，Tokens 頁只保留該目錄本體那個帳號的用量。配額卡仍依各帳號分開顯示。Allowance 頁不會把這份共用 session 用量換算成各帳號的 token 配額。
 
 原本 plugin 可能會 refresh OAuth token，並把更新後的 credential 寫回同一個檔案來源。WebUI 不使用 browser cookies。
+
+### Pi 的用量
+
+Claude 或 Codex 更新成功後，WebUI 會讀取最近 30 天的 Pi assistant 用量，起點為當地午夜。
+目錄依序使用 `PI_CODING_AGENT_SESSION_DIR`、`PI_CODING_AGENT_DIR/sessions`、
+`~/.pi/agent/sessions`。只納入 `anthropic`、`claude-agent-sdk`、`openai-codex`；重複的訊息 ID 只計一次。
+
+用量以 `Pi Session` 紀錄加入 Tokens、Allowance 與費用摘要，和 ccusage 分別保存。
+每日合計使用這台電腦的本地日，優先採用 Pi 記下的大於零費用；Codex 缺少費用時使用既有標準單價。
+無法定價的紀錄保留 token，費用保持未知。`codex-auto-review` 自 2026-10-06 UTC 起費用為零。
+
+只有一個 Codex provider 時，由它接收 Pi 用量。設定多個 Codex 家目錄時，只有
+`auth.json` 的 `tokens.account_id` 與 Pi `openai-codex` OAuth 登入的 `accountId`
+相同者接收。Pi 登入檔來自 `PI_CODING_AGENT_DIR/auth.json`，預設為 `~/.pi/agent/auth.json`。
+停用帳號的用量不會移交給其他帳號。Claude 只在沒有設定 Claude 帳號時，由預設 provider 接收。
+沒有符合帳號或掃描失敗時會記錄錯誤，已取得的配額快照仍保留。掃描器只讀檔案，不匯入或更新
+Pi 憑證，也不儲存訊息內容。
 
 ## Grok Build 設定
 

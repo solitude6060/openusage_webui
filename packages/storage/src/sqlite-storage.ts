@@ -931,10 +931,10 @@ function roundCurrency(value: number): number {
   return Math.round(value * 10000) / 10000;
 }
 
-const DAILY_TOKEN_TOOLS = ["ccusage", "Cursor Usage Event", "Grok Session"];
+const DAILY_TOKEN_TOOLS = ["ccusage", "Cursor Usage Event", "Grok Session", "Pi Session"];
 
 function allowanceTokenTimes(tool: string | null, startedAt: string): { startedAt: string; bucketEnd?: string } {
-  if (tool === "ccusage") {
+  if (tool === "ccusage" || tool === "Pi Session") {
     const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(startedAt);
     if (match) {
       const year = Number(match[1]);

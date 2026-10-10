@@ -35,6 +35,7 @@ import {
   type OpenUsagePluginWorkerOptions,
 } from "./openusage-plugin-refresh-worker";
 import { scanGrokSessionUsage } from "./grok-session-usage";
+import { scanPiSessionUsage } from "./pi-session-usage";
 import {
   CursorUsageCollector,
   normalizeCcusageDailyRecords,
@@ -72,6 +73,7 @@ export interface OpenUsagePluginProviderOptions {
   pluginDataDir?: string;
   homeDir?: string;
   recordCcusageTokens?: boolean;
+  recordPiSessionTokens?: boolean;
 }
 
 interface LoadedPlugin {
@@ -90,6 +92,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
   readonly id: ProviderId;
   readonly name: string;
   readonly recordCcusageTokens: boolean;
+  readonly recordPiSessionTokens: boolean;
   private readonly pluginId?: string;
   private readonly scriptPath?: string;
   private readonly scriptText?: string;
@@ -119,6 +122,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
     this.gitHubTokenRunner = options.gitHubTokenRunner;
     this.lsDiscover = options.lsDiscover ?? discoverLanguageServer;
     this.recordCcusageTokens = options.recordCcusageTokens ?? true;
+    this.recordPiSessionTokens = options.recordPiSessionTokens ?? true;
     this.pluginDataDir = options.pluginDataDir ?? join(this.homeDir, ".openusage-webui", "plugins", this.id);
     this.useDefaultRuntime = options.request === undefined
       && options.ccusageQuery === undefined
@@ -164,6 +168,20 @@ export class OpenUsagePluginProvider implements UsageProvider {
     }
 
     const snapshot = normalizePluginResult(result);
+    const startedAt = this.now();
+    if (this.recordPiSessionTokens && (this.pluginId === "codex" || this.pluginId === "claude")) {
+      try {
+        captureUsage(scanPiSessionUsage({
+          providerId: this.id,
+          card: this.pluginId === "codex" ? "codex" : "claude",
+          homeDir: this.homeDir,
+          env: this.env,
+          now: startedAt,
+        }));
+      } catch {
+        console.error("Pi session token scan failed.");
+      }
+    }
     if (this.pluginId === "grok") {
       try {
         captureUsage(scanGrokSessionUsage({
@@ -179,7 +197,6 @@ export class OpenUsagePluginProvider implements UsageProvider {
       }
     }
     captureUsage(cursorUsage.records(this.id));
-    const startedAt = this.now();
     const raw = {
       pluginId: plugin.id ?? this.pluginId ?? this.id,
       plan: snapshot.plan,
@@ -213,6 +230,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
       homeDir: this.homeDir,
       pluginDataDir: this.pluginDataDir,
       recordCcusageTokens: this.recordCcusageTokens,
+      recordPiSessionTokens: this.recordPiSessionTokens,
     };
   }
 

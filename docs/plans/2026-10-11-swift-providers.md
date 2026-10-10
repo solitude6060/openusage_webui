@@ -74,6 +74,8 @@ refreshes (same pattern as `packages/providers/src/providers/grok-session-usage.
 | `Sources/OpenUsage/Providers/DailyUsageAccumulator.swift` | `75c97a080f60f63a7fb620b88302c79fcc4e6a5ade4855b09c733328057de867` |
 | `Sources/OpenUsage/Providers/Codex/CodexUsagePricing.swift` | `26fc91db759466cf13c0e0bd82293c9d85c57f895e358e76a601281126b83009` |
 | `Sources/OpenUsage/Support/ProviderParse.swift` | `97bd62ef886543ee5c7653617313a6b992a8143dcdec1f31d438a2f56fd1630a` |
+| `Sources/OpenUsage/Support/OpenUsageISO8601.swift` | `326bd0e01154be921b9c8e3da240dfb647bacb563e8567b19610ce9cac43c7a9` |
+| `Sources/OpenUsage/Providers/JSONLStreamingReader.swift` | `0659314418a50815a28ef7e526817e7754d19d15ec6198f6d8c57b929c9f7f98` |
 
   Also read for context (not ported): `ProviderCatalog.swift`, `ClaudeProvider.swift`,
   `CodexProvider.swift`, `CodexHistoryScope.swift`, `ProviderAccountAssembly+Codex.swift`,
@@ -105,6 +107,8 @@ refreshes (same pattern as `packages/providers/src/providers/grok-session-usage.
   are dropped, per decision 3. No Pi provider card or credential import is added.
 - The scan cutoff is local midnight 30 calendar days before refresh, matching
   `JSONLScanning.sinceDate`; files are path-sorted before keep-first message-ID deduplication.
+  ISO timestamps without a zone are normalized as UTC; fractional seconds and the space/UTC
+  forms use the existing plugin utility, matching `OpenUsageISO8601`.
 - Pi costs join the existing usage summary. `getUsageSummary` already sums all tools; its
   `ccusage`-only branch chooses between native structured costs and legacy CLI costs. Keep Pi
   outside that branch so a legacy CLI price never removes independent Pi costs.
@@ -117,15 +121,57 @@ refreshes (same pattern as `packages/providers/src/providers/grok-session-usage.
   any unpriced message has undefined cost. Claude has no fallback rate table.
 - Upstream splits cache writes into 5-minute and 1-hour buckets. `UsageRecord` has one cache-write
   field, so the port stores `max(cacheWrite - cacheWrite1h, 0) + cacheWrite1h` there.
+  Missing model names use the existing storage label `Unknown`.
 - Pi daily records encode the local date at UTC midnight, like ccusage. Allowance translates
   that date back to local midnight, including daylight-saving day lengths.
 - Account ownership uses the configured Codex homes' `tokens.account_id` and Pi's base
   `openai-codex` OAuth `accountId`; pool entries and credential sources remain out of scope.
   Disabled configured accounts participate in ownership selection so their usage is not
-  reassigned. Only the unconfigured default Claude provider receives unattributed Pi usage.
+  reassigned. Duplicate matching homes select one owner by account ID because Swift collapses
+  identical account identities into one card. Only the unconfigured default Claude provider
+  receives unattributed Pi usage.
 - Full rescan replaces the upstream persistent cache (D4). Read failures are logged without
   file contents and preserve the successful plugin snapshot. Authentication reads are strictly
   read-only; no keys, tokens, message bodies, or response IDs enter usage records or logs.
+- Redaction audit: Pi adds no HTTP request, plugin request/response fields, or Rust host API.
+  `host_api.rs:396-434` already redacts `accountId` and `account_id` but has no plain `access`
+  or `refresh` auth-key rule. Pi auth stays inside the Node ownership reader and never crosses
+  that logging boundary; all its error messages are constant strings. Pi fixtures assert that
+  private access values and message text are absent from logs and emitted records. No host
+  redaction-list change is required for this scanner.
+
+### Pi implementation evidence (2026-10-11)
+
+- No separate Pi plugin, card, credential source, or network call was added. The scanner,
+  ownership resolver, worker options, token-record tool, and local Allowance day buckets are
+  wired into existing Claude/Codex refreshes. The six Pi-relevant documentation files listed
+  below were updated; OpenRouter/Ollama documentation is left to their own implementations.
+- Red: 26 of 30 focused tests failed on absent Pi behavior (`pi/red.log`), with four existing
+  storage behaviors passing. An additional timestamp test failed on incorrect local-day
+  grouping (`pi/red-timestamp.log`) before normalization was corrected.
+- Green: 31 Pi tests passed under `TZ=Asia/Taipei` (`pi/green-timestamp.log`). The full requested
+  Bun suite passed 409 tests across 48 files (`pi/bun-tests-complete.log`); Vitest passed 1,196
+  tests across 67 files (`pi/vitest-final.log`). `bun run build:webui` passed
+  (`pi/build-final.log`). Logs are under the persistent artifact directory named above.
+- The first full Bun run exposed four fixture tests reading actual Pi sessions; native-only
+  tests now explicitly disable Pi recording, and the server test uses its isolated fixture
+  home with both Pi and native rows. The known ccusage timeout child-process test failed once
+  in that run, then passed in both subsequent full runs without a production change.
+- Read-only real-data check at `2026-10-11T00:21:34.670981+08:00`, cutoff
+  `2026-09-11T00:00:00+08:00`: 285 Pi files contain 34,428 Codex assistant usage messages and
+  4,368 other-provider usage messages. The scanner produces two daily-model records for
+  2026-09-13 through 2026-09-15, from 277 usable messages after ID deduplication and the cutoff.
+  Three additional messages have zero tokens and no known cost and emit no record.
+- Real Codex totals: 40,168,984 reported tokens; 2,019,171 input; 111,157 output; 38,038,656
+  cache-read; zero cache-write tokens. Both records have known cost. Independent Python counts
+  match every token bucket and record count (`pi/real-data-reference.json`,
+  `pi/real-data-scan-final.json`); scripts are archived beside those count-only files. The first
+  comparison counted empty model groups; its initial script, counts, and failed comparison
+  remain archived, and the corrected reference explicitly counts the three empty messages.
+- The local ownership check selects `~/.codex` once and `~/.codex-family` zero times. Across
+  all Pi Codex messages, 11,185 unique response IDs have zero overlap with response IDs in
+  4,128 native Codex rollout files (`pi/real-data-reference.json`). No response IDs or private
+  contents were printed or saved. No live database, other worktree, or service was accessed.
 
 ## Changes
 
