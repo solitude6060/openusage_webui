@@ -230,7 +230,7 @@ describe("Pi session usage", () => {
         const records = await provider(home).refresh();
         expect(records).toHaveLength(1);
         expect(records[0]?.model).toBe("Plus");
-        expect(log).toHaveBeenCalledWith("Pi session token scan failed.");
+        expect(log).toHaveBeenCalledWith("Pi session token scan failed:", "ENOTDIR");
         expect(JSON.stringify(log.mock.calls)).not.toContain("PRIVATE_SESSION_FIXTURE");
       } finally { log.mockRestore(); }
     });
