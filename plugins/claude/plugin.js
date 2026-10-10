@@ -859,8 +859,8 @@
       if (!displayName) continue
       const label = displayName + " Weekly"
       if (seen[label]) continue
-      const percent = Number(entry.percent)
-      if (!Number.isFinite(percent)) continue
+      if (typeof entry.percent !== "number" || !Number.isFinite(entry.percent)) continue
+      const percent = entry.percent
       const pushed = pushPercentUsageLine(
         lines,
         ctx,
