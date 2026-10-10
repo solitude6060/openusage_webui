@@ -46,10 +46,29 @@ export function formatQuota(record: UsageRecord): string {
   return `${formatNumber(used)} / ${formatNumber(limit)}${suffix}${remainingText}${reset}`;
 }
 
-export function formatRelativeTime(isoString: string): string {
+export function progressResetLabel(input: {
+  resetsAt?: string | null;
+  periodDurationMs?: number | null;
+  used?: number | null;
+  nowMs?: number;
+}): string | null {
+  const nowMs = input.nowMs ?? Date.now();
+  if (typeof input.resetsAt === "string" && input.resetsAt.trim()) {
+    const target = new Date(input.resetsAt).getTime();
+    if (!Number.isFinite(target)) return null;
+    if (target <= nowMs) return "Reset Due · Refresh For New Value";
+    return `Resets ${formatRelativeTime(input.resetsAt, nowMs)}`;
+  }
+  const period = Number(input.periodDurationMs);
+  if (Number.isFinite(period) && period > 0 && input.used === 0) {
+    return "Window Starts On Next Use";
+  }
+  return null;
+}
+
+export function formatRelativeTime(isoString: string, nowMs = Date.now()): string {
   const target = new Date(isoString).getTime();
-  const now = Date.now();
-  const diffMs = target - now;
+  const diffMs = target - nowMs;
   if (diffMs <= 0) return "now";
   const minutes = Math.floor(diffMs / 60_000);
   const hours = Math.floor(minutes / 60);
