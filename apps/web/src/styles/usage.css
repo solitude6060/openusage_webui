@@ -1,0 +1,256 @@
+/* Usage cards: progress lines, reset-credit expiry, bar chart. */
+
+.usage-card {
+  min-height: 160px;
+  gap: 0;
+}
+
+.usage-card.compact {
+  min-height: auto;
+  padding: 14px;
+}
+
+.usage-card.compact .usage-lines {
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.usage-card-body {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.usage-summary-column {
+  min-width: 0;
+}
+
+.usage-lines {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.usage-detail-lines {
+  display: grid;
+  gap: 12px;
+  margin-top: 0;
+  padding: 12px;
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.usage-detail-lines[hidden] {
+  display: none;
+}
+
+.details-toggle {
+  justify-self: start;
+  margin-top: 12px;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 10px;
+  color: var(--ink-secondary);
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.details-toggle:hover {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+.usage-progress {
+  display: grid;
+  gap: 6px;
+}
+
+.usage-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.usage-progress-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.usage-progress-value {
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.usage-progress-bar {
+  height: 6px;
+  background: var(--surface-muted);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.usage-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 300ms ease;
+}
+
+.usage-progress-fill.warning {
+  background: var(--warning);
+}
+
+.usage-progress-reset {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Reset-credit expiry line: a header (label + live-countdown urgency pill) over the
+   exact expiry date — mirrors the progress line so the pill is not a direct
+   `.usage-text-line > span:last-child`, letting its urgency color win. */
+.usage-credit-expiry {
+  display: grid;
+  gap: 6px;
+}
+
+.usage-credit-expiry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.usage-credit-expiry-label {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-credit-expiry-date {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-text-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 22px;
+}
+
+.usage-text-line > span:first-child {
+  font-size: 0.78rem;
+  color: var(--muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-text-line > span:last-child {
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-secondary);
+  text-align: right;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 62%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.usage-progress-header {
+  min-width: 0;
+}
+
+.usage-progress-value {
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.usage-barchart {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.usage-barchart-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.usage-barchart-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 0;
+}
+
+.usage-barchart-readout {
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.usage-barchart-bars {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(4px, 1fr);
+  align-items: end;
+  gap: 3px;
+  height: 88px;
+  min-width: 0;
+  padding: 4px 2px 0;
+}
+
+.usage-barchart-bar {
+  width: 100%;
+  min-height: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px 3px 1px 1px;
+  background: var(--ink);
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+
+.usage-barchart-bar.dimmed {
+  opacity: 0.28;
+}
+
+.usage-barchart-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-barchart-note {
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--muted);
+}

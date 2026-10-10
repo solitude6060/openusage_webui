@@ -1,0 +1,255 @@
+/* Forms: filter bar, settings, alerts and toasts, toggle switch. */
+
+.filter-bar {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.2fr) repeat(3, minmax(140px, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+  padding: 14px;
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 10px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  font-size: 0.875rem;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.settings-grid {
+  grid-template-columns: minmax(280px, 0.92fr) minmax(280px, 1fr);
+  align-items: start;
+}
+
+.settings-grid > .alert,
+.settings-grid > .form-panel {
+  grid-column: 1 / -1;
+}
+
+.form-panel {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.form-panel .panel-header {
+  margin: -18px -18px 0;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-help {
+  margin: 0 0 14px;
+  color: var(--ink-secondary);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.settings-help.muted {
+  color: var(--muted);
+}
+
+.settings-list {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-list li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.settings-list li:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-list li > :first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.settings-list .mono-value {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.settings-list .button-row {
+  flex: 0 0 auto;
+}
+
+.settings-subsection {
+  margin-top: 8px;
+}
+
+.settings-subsection h4,
+.nested-form h4 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+}
+
+.nested-form {
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* Fixed region for global alerts: floats them over the page so showing/hiding an
+   error or notice never pushes the content below it down (no layout reflow). */
+.app-toasts {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  /* sit above all page content — the topmost global layer in this app */
+  z-index: 1000;
+  display: grid;
+  gap: 8px;
+  width: min(420px, calc(100vw - 48px));
+  /* Informational, text-only toasts: keep the whole region click-through so a
+     floating toast can never cover and block a control beneath it. pointer-events
+     none cascades to the .alert children (no override), so nothing here steals
+     clicks from the page. */
+  pointer-events: none;
+}
+
+.app-toasts .alert {
+  margin: 0;
+  /* a restrained lift so the toast separates from whatever it floats over — the
+     one spot a shadow earns its place in this otherwise-flat design */
+  box-shadow: 0 6px 20px rgba(17, 17, 17, 0.16);
+}
+
+@media (max-width: 640px) {
+  .app-toasts {
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    width: auto;
+  }
+}
+
+.alert {
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.alert.error {
+  color: var(--warning);
+  background: var(--warning-soft);
+  border: 1px solid var(--warning-soft);
+}
+
+.alert.success {
+  color: var(--success);
+  background: var(--success-soft);
+  border: 1px solid var(--success-soft);
+}
+
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.disabled-card {
+  opacity: 0.5;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  min-height: 0;
+  position: absolute;
+}
+
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--line-strong);
+  border-radius: 10px;
+  transition: background 200ms ease;
+}
+
+.toggle-slider::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 16px;
+  height: 16px;
+  background: var(--paper);
+  border-radius: 50%;
+  transition: transform 200ms ease;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--accent);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(16px);
+}
+
+.toggle-switch input:focus-visible + .toggle-slider {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
