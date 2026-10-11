@@ -393,6 +393,33 @@ describe("allowance cycle baseline", () => {
     expect(summary?.current).not.toBeNull();
   });
 
+  test("excludes a cycle that starts before the loaded history", () => {
+    const period = 30 * DAY_MS;
+    const now = new Date("2026-10-11T00:00:00.000Z");
+    const observationStartMs = now.getTime() - 120 * DAY_MS;
+    const oldReset = observationStartMs + 10 * DAY_MS;
+    const keptReset = oldReset + period;
+    const summaries = buildAllowanceCycleSummaries(
+      [
+        observation(new Date(oldReset - 12 * 60 * 60 * 1000).toISOString(), 100, new Date(oldReset).toISOString(), "cursor", period),
+        observation(new Date(keptReset - 12 * 60 * 60 * 1000).toISOString(), 100, new Date(keptReset).toISOString(), "cursor", period),
+      ],
+      [
+        bucket(new Date(oldReset - 3 * DAY_MS).toISOString(), 10, { costUsd: 1, providerId: "cursor" }),
+        bucket(new Date(keptReset - 3 * DAY_MS).toISOString(), 40, { costUsd: 1, providerId: "cursor" }),
+      ],
+      new Set(),
+      now,
+      { observationStartMs, tokenStartMs: observationStartMs - DAY_MS },
+    );
+    const summary = summaries[0];
+
+    expect(summary?.cycles.find((cycle) => cycle.end === new Date(oldReset).toISOString())).toEqual(
+      expect.objectContaining({ included: false, exclusion: "history-truncated" }),
+    );
+    expect(summary?.baseline.tokens).toEqual({ median: 40, min: 40, max: 40, n: 1 });
+  });
+
   test("excludes a provider whose session log is shared", () => {
     const summaries = buildAllowanceCycleSummaries(
       [observation("2026-10-07T12:00:00.000Z", 50, "2026-10-08T00:00:00.000Z", "codex:family")],

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequestHandler } from "../src/index";
-import { backfillQuotaObservations, loadAllowanceEstimates, recordQuotaFromRefresh } from "../src/quota-history";
+import { backfillQuotaObservations, loadAllowanceCycleSummaries, loadAllowanceEstimates, recordQuotaFromRefresh } from "../src/quota-history";
 import { SqliteStorage } from "../../../packages/storage/src/index";
 
 let dataDir = "";
@@ -286,6 +286,34 @@ test("allowance span=cycles returns summaries for the last 120 days", async () =
   expect(body.span).toBe("cycles");
   expect(body.summaries.map((item) => item.providerId)).toEqual(["grok"]);
   expect(body.summaries[0]?.cycles[0]).toEqual(expect.objectContaining({ included: true, endPercent: 40 }));
+  storage.close();
+});
+
+test("allowance span=cycles excludes a cycle that starts before the loaded history", async () => {
+  const storage = new SqliteStorage();
+  await storage.init();
+  const now = new Date("2026-10-11T00:00:00.000Z");
+  const day = 24 * 60 * 60 * 1000;
+  const period = 30 * day;
+  const historyStart = now.getTime() - 120 * day;
+  const reset = historyStart + 10 * day;
+  const openReset = now.getTime() + 10 * day;
+  await storage.insertQuotaObservations([
+    cycleObservation("cursor", reset, period),
+    {
+      ...cycleObservation("cursor", openReset, period),
+      observedAt: new Date(now.getTime() - 60 * 60 * 1000).toISOString(),
+      usedPercent: 15,
+    },
+  ]);
+  await storage.upsertUsageRecords([
+    cycleTokens("cursor", reset - 3 * day, 1000, 1),
+  ]);
+
+  const body = await loadAllowanceCycleSummaries(storage, now);
+  const cycle = body.summaries[0]?.cycles.find((item) => item.end === new Date(reset).toISOString());
+  expect(cycle).toEqual(expect.objectContaining({ included: false, exclusion: "history-truncated" }));
+  expect(body.summaries[0]?.baseline.tokens).toBeNull();
   storage.close();
 });
 
