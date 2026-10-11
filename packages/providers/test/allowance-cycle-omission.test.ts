@@ -60,6 +60,31 @@ describe("allowance cycle summary omission", () => {
     expect(summaries).toEqual([]);
   });
 
+  test("keeps a summary when every reading is zero and the current cycle has tokens", () => {
+    const summaries = buildAllowanceCycleSummaries(
+      [observation("2026-10-09T00:00:00.000Z", 0, "2026-10-15T00:00:00.000Z")],
+      [{
+        providerId: "grok",
+        model: "model",
+        startedAt: "2026-10-09T00:00:00.000Z",
+        tokens: 100,
+        costUsd: 2,
+        bucketEnd: "2026-10-10T00:00:00.000Z",
+      }],
+      new Set(),
+      new Date("2026-10-10T00:00:00.000Z"),
+    );
+
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]?.current).toMatchObject({
+      start: "2026-10-08T00:00:00.000Z",
+      end: "2026-10-15T00:00:00.000Z",
+      usedPercent: 0,
+      tokens: 100,
+      apiCost: 2,
+    });
+  });
+
   test("keeps a summary that has an open cycle when completed cycles are excluded", () => {
     const summaries = buildAllowanceCycleSummaries(
       [
