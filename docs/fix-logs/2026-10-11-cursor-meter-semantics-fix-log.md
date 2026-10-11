@@ -7,7 +7,7 @@
 | Role | Client / model / effort |
 |------|-------------------------|
 | Implementer | Grok Build, `grok-4.7`, `xhigh` |
-| Review | Round 1 reviewed `1b40aef` (Codex, Grok, AGY). R1-1 through R1-4 are fixed in this log. R1-5 and R1-6 were rejected. This branch was not pushed. |
+| Review | Round 1 reviewed `1b40aef` (Codex, Grok, AGY). R1-1 through R1-4 are fixed in this log. R1-5 and R1-6 were rejected. Round 2 reviewed `693015f` (Codex and Grok requested changes; AGY approved). R2-1 through R2-4 are fixed in this log. This branch was not pushed. |
 
 ## C1 — what the fields measure
 
@@ -81,3 +81,36 @@ Included Spend now uses finite `includedSpend`, otherwise `limit - remaining`. T
 | `bun run build:webui` | exit 0 |
 
 The Antigravity Cloud Code test was not the failure in this bun run. It was not changed. The Allowance label was checked by the page test. It was not clicked through in a browser. Playwright was unavailable, and the always-on service runs another checkout.
+
+## Review round 2
+
+Reviewed commit `693015f`. The triage below is the round 2 disposition. All four findings were fixed.
+
+| Finding | Source | Severity | Verified | Disposition |
+|---|---|---|---|---|
+| R2-1 Allowance label/note check `providerId === "cursor"` misses named accounts `cursor:<slug>` | Grok, AGY(LOW), Codex | MEDIUM | yes: registry.ts:130 uses account.id; quota-observations.ts:42 uses base id | fix: base-id check (`cursor` or `cursor:` prefix) in both places; page test with `cursor:work` |
+| R2-2 Note claims a different denominator also for Team (dollar meter) and the spend/limit fallback | Codex | MEDIUM | yes: plugin.js:1003,1027 | fix: scope the note wording to individual accounts that report Cursor's pool percent (e.g. "On individual plans the percent is Cursor's combined pool percent; its denominator differs from this dollar limit."), or show it only when the data identifies that path; test |
+| R2-3 Included Spend falls back to `limit - 0` when both includedSpend and remaining are missing | Grok | LOW | yes: plugin.js:1057-1059 | fix: use `limit - remaining` only when remaining is finite; otherwise omit the line; test |
+| R2-4 docs/providers/cursor.md:20 still says "Spend divided by limit is Included Spend" | Grok | LOW | yes | fix wording |
+
+A named Cursor account such as `cursor:work` now gets the Included Dollar Limit label and the note. The note says: "On individual plans the percent is Cursor's combined pool percent; its denominator differs from this dollar limit." Team dollar meters and the spend-divided-by-limit fallback are not described as a different denominator. Included Spend uses finite `includedSpend`. When that field is missing and `remaining` is finite, the numerator is `limit - remaining`. When both are missing, the line is omitted. Total usage `usedValue` still prefers `totalSpend`. The Total usage row in the provider doc calls Included Spend the included dollar amount, a separate reading from the pool percent. The user guide states the same individual-plan scope for the note.
+
+R2-4 is a documentation sentence. It has no runtime check, so it landed as a docs commit, as the round 1 doc fixes did.
+
+| Commit | Change |
+|--------|--------|
+| `93800e8` | test: named Cursor account expects Included Dollar Limit and the note |
+| `ff161ad` | fix: label and note use the Cursor base id |
+| `51d672f` | test: note must name individual plans |
+| `909a8d2` | fix: scope the note; provider doc and user guide match |
+| `504f994` | test: omit Included Spend when includedSpend and remaining are both missing |
+| `b676d36` | fix: omit that line; provider doc states the finite-remaining rule |
+| `9641660` | docs: Total usage row no longer calls spend divided by the limit Included Spend |
+
+| Runner | Result |
+|--------|--------|
+| `bun run test -- --run` | 69 files, 1308 passed, exit 0 |
+| `bun test packages/storage/test packages/providers/test apps/server/test apps/web/src` | 488 passed, 0 failed, 59 files, exit 0 |
+| `bun run build:webui` | exit 0 |
+
+`CcusageProvider` child-process timeout and the Antigravity Cloud Code test both passed in this bun run. They were not changed. The Allowance label and note were checked by the page test. They were not clicked through in a browser. Playwright was unavailable, and the always-on service runs another checkout.
