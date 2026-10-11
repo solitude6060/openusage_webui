@@ -270,7 +270,7 @@ describe("codex plugin", () => {
     expect(credits.value).toBe("$4.00 · 100 credits")
   })
 
-  it("keeps the weekly body window when the session header is the only percent header", async () => {
+  it("maps two 7-day windows to one Weekly line and ignores the stale header", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
       tokens: { access_token: "token" },
@@ -290,14 +290,11 @@ describe("codex plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    const session = result.lines.find((line) => line.label === "Session")
-    const weekly = result.lines.find((line) => line.label === "Weekly")
-    expect(session).toEqual(expect.objectContaining({
+    expect(result.lines.find((line) => line.label === "Session")).toBeUndefined()
+    const weekly = result.lines.filter((line) => line.label === "Weekly")
+    expect(weekly).toHaveLength(1)
+    expect(weekly[0]).toEqual(expect.objectContaining({
       used: 10,
-      periodDurationMs: 604800000,
-    }))
-    expect(weekly).toEqual(expect.objectContaining({
-      used: 12,
       periodDurationMs: 604800000,
     }))
   })
@@ -2279,5 +2276,81 @@ describe("codex plugin", () => {
     )
     expect(result.lines.find((line) => line.label === "Session")).toEqual(expect.objectContaining({ used: 25 }))
     expect(result.lines.find((line) => line.label === "Weekly")).toEqual(expect.objectContaining({ used: 50 }))
+  })
+
+  it("maps a 7-day primary window to Weekly and does not invent a Session line", async () => {
+    const result = await probeSignedIn({
+      rate_limit: {
+        primary_window: {
+          used_percent: 5,
+          limit_window_seconds: 604800,
+          reset_after_seconds: 60,
+        },
+        secondary_window: null,
+      },
+    })
+    expect(result.lines.find((line) => line.label === "Session")).toBeUndefined()
+    expect(result.lines.find((line) => line.label === "Weekly")).toEqual(expect.objectContaining({
+      used: 5,
+      periodDurationMs: 604800000,
+    }))
+  })
+
+  it("keeps the primary and secondary slots when the window duration is unrecognized", async () => {
+    const result = await probeSignedIn({
+      rate_limit: {
+        primary_window: { used_percent: 11, limit_window_seconds: 86400 },
+        secondary_window: { used_percent: 22, limit_window_seconds: 2592000 },
+      },
+    })
+    expect(result.lines.find((line) => line.label === "Session")).toEqual(expect.objectContaining({
+      used: 11,
+      periodDurationMs: 86400000,
+    }))
+    expect(result.lines.find((line) => line.label === "Weekly")).toEqual(expect.objectContaining({
+      used: 22,
+      periodDurationMs: 2592000000,
+    }))
+  })
+
+  it("classifies a 5-hour secondary and a 7-day primary by duration", async () => {
+    const result = await probeSignedIn(
+      {
+        rate_limit: {
+          primary_window: { limit_window_seconds: 604800, reset_after_seconds: 400000 },
+          secondary_window: { used_percent: 10, limit_window_seconds: 18000, reset_after_seconds: 3600 },
+        },
+      },
+      { "x-codex-primary-used-percent": "40" },
+    )
+    expect(result.lines.find((line) => line.label === "Session")).toEqual(expect.objectContaining({
+      used: 10,
+      periodDurationMs: 18000000,
+    }))
+    expect(result.lines.find((line) => line.label === "Weekly")).toEqual(expect.objectContaining({
+      used: 40,
+      periodDurationMs: 604800000,
+    }))
+  })
+
+  it("maps a 7-day Spark primary window to Spark Weekly", async () => {
+    const result = await probeSignedIn({
+      additional_rate_limits: [{
+        limit_name: "GPT-5.3-Codex-Spark",
+        rate_limit: {
+          primary_window: {
+            used_percent: 7,
+            limit_window_seconds: 604800,
+            reset_after_seconds: 60,
+          },
+          secondary_window: null,
+        },
+      }],
+    })
+    expect(result.lines.find((line) => line.label === "Spark")).toBeUndefined()
+    expect(result.lines.find((line) => line.label === "Spark Weekly")).toEqual(expect.objectContaining({
+      used: 7,
+      periodDurationMs: 604800000,
+    }))
   })
 })
