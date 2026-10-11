@@ -24,6 +24,15 @@ import {
   prepareHourlyUpsert,
   type AllowanceTokenRow,
 } from "./allowance-tokens";
+import {
+  CODEX_TOKEN_EVENTS_SCHEMA,
+  insertCodexTokenEvents,
+  listCodexEventCursors,
+  listCodexEventProviderIds,
+  saveCodexEventCursors,
+  type CodexEventCursor,
+  type CodexTokenEventInsert,
+} from "./codex-token-events";
 
 type UsageRecordRow = {
   id: string;
@@ -184,6 +193,7 @@ export class SqliteStorage implements Storage {
       );
     `);
     this.db.exec(TOKEN_HOURLY_SCHEMA);
+    this.db.exec(CODEX_TOKEN_EVENTS_SCHEMA);
     this.migrateCodexInstancesToProviderAccounts();
   }
 
@@ -663,6 +673,7 @@ export class SqliteStorage implements Storage {
     const db = this.requireDb();
     db.query("DELETE FROM usage_records WHERE provider_id = ?").run(providerId);
     db.query("DELETE FROM token_hourly WHERE provider_id = ?").run(providerId);
+    db.query("DELETE FROM codex_token_events WHERE provider_id = ?").run(providerId);
   }
 
   async deleteLocalLogUsageRecords(providerIds: ProviderId[], tool: string): Promise<void> {
@@ -831,6 +842,22 @@ export class SqliteStorage implements Storage {
   // Allowance only: daily rows, with hourly rows replacing any provider/tool/day that has them.
   async listAllowanceTokenRows(from: string): Promise<AllowanceTokenRow[]> {
     return listAllowanceRows(this.requireDb(), from);
+  }
+
+  async upsertCodexTokenEvents(events: CodexTokenEventInsert[]): Promise<void> {
+    insertCodexTokenEvents(this.requireDb(), events);
+  }
+
+  async listCodexEventProviderIds(from: string): Promise<string[]> {
+    return listCodexEventProviderIds(this.requireDb(), from);
+  }
+
+  async listCodexEventCursors(): Promise<CodexEventCursor[]> {
+    return listCodexEventCursors(this.requireDb());
+  }
+
+  async saveCodexEventCursors(cursors: CodexEventCursor[]): Promise<void> {
+    saveCodexEventCursors(this.requireDb(), cursors);
   }
 
   async insertProbeFailure(providerId: string, failedAt: string, message: string): Promise<void> {

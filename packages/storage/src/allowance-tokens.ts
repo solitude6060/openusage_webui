@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import type { UsageRecord } from "../../core/src/types";
+import { listCodexTokenEventReadings } from "./codex-token-events";
 
 const HOUR_MS = 3600000;
 
@@ -134,8 +135,22 @@ export function listAllowanceRows(db: Database, from: string): AllowanceTokenRow
   }>;
   const rows: AllowanceTokenRow[] = [];
   const covered = new Set<string>();
+  const eventHours = new Map<string, { providerId: string; startedAt: string; tokens: number }>();
+  const eventDays = new Set<string>();
+  for (const event of listCodexTokenEventReadings(db, hourlyFrom)) {
+    const time = Date.parse(event.observedAt);
+    if (!Number.isFinite(time) || event.tokens <= 0) continue;
+    const startedAt = new Date(Math.floor(time / HOUR_MS) * HOUR_MS).toISOString();
+    const key = JSON.stringify([event.providerId, startedAt]);
+    const current = eventHours.get(key);
+    if (current) current.tokens += event.tokens;
+    else eventHours.set(key, { providerId: event.providerId, startedAt, tokens: event.tokens });
+    eventDays.add(dayKey(event.providerId, "ccusage", hourDay("ccusage", startedAt)));
+  }
   for (const hour of hours) {
-    covered.add(dayKey(hour.provider_id, hour.tool, hourDay(hour.tool, hour.hour_start)));
+    const day = dayKey(hour.provider_id, hour.tool, hourDay(hour.tool, hour.hour_start));
+    if (hour.tool === "ccusage" && eventDays.has(day)) continue;
+    covered.add(day);
     rows.push({
       providerId: hour.provider_id,
       model: hour.model,
@@ -143,6 +158,17 @@ export function listAllowanceRows(db: Database, from: string): AllowanceTokenRow
       costUsd: hour.cost_usd == null ? null : Number(hour.cost_usd),
       startedAt: hour.hour_start,
       bucketEnd: new Date(Date.parse(hour.hour_start) + HOUR_MS).toISOString(),
+    });
+  }
+  for (const day of eventDays) covered.add(day);
+  for (const hour of eventHours.values()) {
+    rows.push({
+      providerId: hour.providerId,
+      model: "All Models",
+      tokens: hour.tokens,
+      costUsd: null,
+      startedAt: hour.startedAt,
+      bucketEnd: new Date(Date.parse(hour.startedAt) + HOUR_MS).toISOString(),
     });
   }
   for (const { tool, day, ...row } of listDailyTokenRows(db, from)) {
