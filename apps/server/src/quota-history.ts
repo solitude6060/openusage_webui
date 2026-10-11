@@ -128,8 +128,13 @@ export async function loadAllowanceEstimates(
   const codexHomes = accounts
     .filter((account) => account.providerId === "codex")
     .map((account) => ({ id: account.id, homePath: account.homePath }));
-  // The symlink account has no tokens of its own. The real directory can use its own meter.
-  const sharedProviderIds = new Set(codexSessionTokenDuplicateIds(codexHomes));
+  // A symlink account with session-event rows has its own hourly tokens.
+  const eventProviderIds = new Set(
+    await storage.listCodexEventProviderIds(new Date(historyStart).toISOString()),
+  );
+  const sharedProviderIds = new Set(
+    codexSessionTokenDuplicateIds(codexHomes).filter((id) => !eventProviderIds.has(id)),
+  );
   const observations = await storage.listQuotaObservationsSince(new Date(historyStart).toISOString());
   // A UTC-midnight daily bucket starts before a window that opens later that same day.
   const tokenRows = await storage.listAllowanceTokenRows(
