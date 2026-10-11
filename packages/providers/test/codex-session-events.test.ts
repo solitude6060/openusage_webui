@@ -215,6 +215,48 @@ describe("Codex session event scan", () => {
     });
     expect(result.events.map((event) => event.providerId)).toEqual(["codex:family"]);
   });
+
+  test("assigns an event that has only the plan name learned in the same scan", () => {
+    const root = tempRoot();
+    const home = join(root, "codex");
+    mkdirSync(join(home, "sessions"), { recursive: true });
+    const lines = [
+      tokenLine({
+        timestamp: "2026-10-09T12:30:00.000Z",
+        plan: "prolite",
+        total: 100,
+        last: 100,
+        primaryMinutes: 10080,
+        primaryPercent: 12,
+        resetsAt: WEEKLY_RESET,
+        secondary: null,
+      }),
+      tokenLine({
+        timestamp: "2026-10-09T12:40:00.000Z",
+        plan: "prolite",
+        total: 150,
+        last: 50,
+        primaryMinutes: 1,
+        primaryPercent: 12,
+        resetsAt: WEEKLY_RESET,
+        secondary: null,
+      }),
+    ];
+    writeFileSync(join(home, "sessions", "rollout.jsonl"), `${lines.join("\n")}\n`);
+    const result = scanCodexSessionEvents({
+      accounts: [
+        { id: "codex:codex", homePath: home, shape: "weekly-primary", planType: null },
+        { id: "codex:family", homePath: join(root, "family"), shape: "five-hour-primary", planType: null },
+      ],
+      cursors: [],
+      storedMapKey: null,
+    });
+    expect(result.events.map((event) => ({ providerId: event.providerId, tokens: event.tokens }))).toEqual([
+      { providerId: "codex:codex", tokens: 100 },
+      { providerId: "codex:codex", tokens: 50 },
+    ]);
+    expect(result.unmapped).toBe(0);
+  });
 });
 
 describe("meter shape from quota observations", () => {
