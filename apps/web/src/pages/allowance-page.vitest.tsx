@@ -90,7 +90,7 @@ describe("Allowance stated cap label", () => {
 
     const cursorLimit = await screen.findByText(new RegExp(`Included Dollar Limit ${escapeRegExp(formatMoney(400))}`));
     expect(cursorLimit).not.toHaveTextContent("Stated Cap");
-    expect(screen.getByText("The estimate scales the combined pool percent, whose denominator differs from this dollar limit.")).toBeInTheDocument();
+    expect(screen.getByText("On individual plans the percent is Cursor's combined pool percent; its denominator differs from this dollar limit.")).toBeInTheDocument();
     expect(screen.getByText(new RegExp(`Stated Cap ${escapeRegExp(formatMoney(50))}`))).toBeInTheDocument();
     expect(screen.getAllByText(/Included Dollar Limit/)).toHaveLength(1);
     await waitFor(() => expect(screen.queryByText("Loading...")).not.toBeInTheDocument());
@@ -115,7 +115,7 @@ describe("Allowance stated cap label", () => {
 
     const cursorLimit = await screen.findByText(new RegExp(`Included Dollar Limit ${escapeRegExp(formatMoney(400))}`));
     expect(cursorLimit).not.toHaveTextContent("Stated Cap");
-    expect(screen.getByText("The estimate scales the combined pool percent, whose denominator differs from this dollar limit.")).toBeInTheDocument();
+    expect(screen.getByText("On individual plans the percent is Cursor's combined pool percent; its denominator differs from this dollar limit.")).toBeInTheDocument();
     expect(screen.queryByText(/Stated Cap/)).not.toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText("Loading...")).not.toBeInTheDocument());
   });
