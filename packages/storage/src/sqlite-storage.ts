@@ -15,6 +15,7 @@ import type {
 } from "../../core/src/types";
 import { isMultiAccountProviderId, providerIdFromAccountId } from "../../core/src/types";
 import type { Storage } from "./storage";
+import { codexSessionAccountGroups } from "../../providers/src/codex-session-ownership";
 import type { QuotaLimitUnit, QuotaObservation } from "../../providers/src/quota-observations";
 import {
   TOKEN_HOURLY_SCHEMA,
@@ -841,7 +842,11 @@ export class SqliteStorage implements Storage {
 
   // Allowance only: daily rows, with hourly rows replacing any provider/tool/day that has them.
   async listAllowanceTokenRows(from: string): Promise<AllowanceTokenRow[]> {
-    return listAllowanceRows(this.requireDb(), from);
+    const accounts = await this.listProviderAccounts("codex");
+    const groups = codexSessionAccountGroups(
+      accounts.map((account) => ({ id: account.id, homePath: account.homePath })),
+    );
+    return listAllowanceRows(this.requireDb(), from, groups);
   }
 
   async upsertCodexTokenEvents(events: CodexTokenEventInsert[]): Promise<void> {

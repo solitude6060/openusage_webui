@@ -65,6 +65,15 @@ export function codexSharedSessionAccountIds(accounts: CodexSessionHome[]): stri
   return ids.sort((left, right) => left.localeCompare(right));
 }
 
+export function codexSessionAccountGroups(accounts: CodexSessionHome[]): string[][] {
+  const groups: string[][] = [];
+  for (const group of sessionGroups(accounts).values()) {
+    if (group.length < 2) continue;
+    groups.push(group.map((home) => home.id).sort((left, right) => left.localeCompare(right)));
+  }
+  return groups.sort((left, right) => (left[0] ?? "").localeCompare(right[0] ?? ""));
+}
+
 export function codexSessionTokenDuplicateIds(accounts: CodexSessionHome[]): string[] {
   const owners = codexSessionTokenOwnerIds(accounts);
   return accounts

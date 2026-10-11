@@ -47,10 +47,12 @@ analysis, section 4.2. Per completed cycle there, the medians are 2.75M tokens p
    shape does not pick one account, the plan name recorded for an account is used. The
    scanner never reads `creator_account_id`. Events that match no account are counted in
    the error log and not stored. Quota observations are not written from these events.
-5. When an account has event rows on a local day, Allowance uses the hourly sums of those
-   events for that day instead of that account's ccusage daily row. Other days keep the
-   daily row. An account that has event rows in the Allowance range is not marked
-   `shared-log`. Deleting a provider's usage also deletes its event rows.
+5. Accounts that share one real sessions directory are one group. When any account in the
+   group has event rows on a local day, Allowance uses each account's hourly event sums
+   for that day and leaves out every account's ccusage row for that day. A day with no
+   event in the group keeps the daily row. An account that has event rows in the
+   Allowance range is not marked `shared-log`. Deleting a provider's usage also deletes
+   its event rows.
 
 ## Consequences
 

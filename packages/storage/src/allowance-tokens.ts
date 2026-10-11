@@ -118,7 +118,12 @@ function hourDay(tool: string, hourStart: string): string {
 const dayKey = (providerId: string, tool: string | null, day: string) => JSON.stringify([providerId, tool, day]);
 
 // Daily rows, except that a provider/tool/day with hourly rows is read from those rows instead.
-export function listAllowanceRows(db: Database, from: string): AllowanceTokenRow[] {
+// sessionGroups lists account ids that share one real sessions directory.
+export function listAllowanceRows(
+  db: Database,
+  from: string,
+  sessionGroups: readonly (readonly string[])[] = [],
+): AllowanceTokenRow[] {
   // A day label is a UTC midnight, but a local day can start up to 14 hours earlier.
   const hourlyFrom = new Date(Date.parse(from) - 24 * HOUR_MS).toISOString();
   const hours = db.query(`
@@ -137,6 +142,10 @@ export function listAllowanceRows(db: Database, from: string): AllowanceTokenRow
   const covered = new Set<string>();
   const eventHours = new Map<string, { providerId: string; startedAt: string; tokens: number }>();
   const eventDays = new Set<string>();
+  const groupMembers = new Map<string, readonly string[]>();
+  for (const group of sessionGroups) {
+    for (const id of group) groupMembers.set(id, group);
+  }
   for (const event of listCodexTokenEventReadings(db, hourlyFrom)) {
     const time = Date.parse(event.observedAt);
     if (!Number.isFinite(time) || event.tokens <= 0) continue;
@@ -145,7 +154,9 @@ export function listAllowanceRows(db: Database, from: string): AllowanceTokenRow
     const current = eventHours.get(key);
     if (current) current.tokens += event.tokens;
     else eventHours.set(key, { providerId: event.providerId, startedAt, tokens: event.tokens });
-    eventDays.add(dayKey(event.providerId, "ccusage", hourDay("ccusage", startedAt)));
+    const localDay = hourDay("ccusage", startedAt);
+    const members = groupMembers.get(event.providerId) ?? [event.providerId];
+    for (const id of members) eventDays.add(dayKey(id, "ccusage", localDay));
   }
   for (const hour of hours) {
     const day = dayKey(hour.provider_id, hour.tool, hourDay(hour.tool, hour.hour_start));
