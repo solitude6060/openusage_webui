@@ -70,7 +70,7 @@ export interface AllowanceCycleSummary {
 export function buildAllowanceCycleSummaries(
   observations: AllowanceObservation[],
   tokenRows: AllowanceTokenRow[],
-  _sharedProviderIds: ReadonlySet<string>,
+  sharedProviderIds: ReadonlySet<string>,
   now: Date,
 ): AllowanceCycleSummary[] {
   const nowMs = now.getTime();
@@ -81,7 +81,7 @@ export function buildAllowanceCycleSummaries(
     const bounded = boundedCycles(points);
     const cycles = bounded
       .filter((cycle) => cycle.end <= nowMs)
-      .map((cycle) => measureCycle(cycle, rows))
+      .map((cycle) => measureCycle(cycle, rows, sharedProviderIds.has(window.providerId)))
       .sort((left, right) => right.end.localeCompare(left.end));
     const open = bounded
       .filter((cycle) => cycle.start <= nowMs && nowMs < cycle.end)
@@ -111,7 +111,7 @@ interface UsageSide {
   rows: number;
 }
 
-function measureCycle(cycle: BoundedCycle, rows: AllowanceTokenRow[]): AllowanceCompletedCycle {
+function measureCycle(cycle: BoundedCycle, rows: AllowanceTokenRow[], shared: boolean): AllowanceCompletedCycle {
   const readings = cycle.points
     .filter((point) => point.at >= cycle.start && point.at < cycle.end)
     .sort((left, right) => left.at - right.at);
@@ -131,7 +131,7 @@ function measureCycle(cycle: BoundedCycle, rows: AllowanceTokenRow[]): Allowance
   const tokensHigh = inside.tokens + straddle.tokens;
   const apiCostLow = sideCost(inside);
   const apiCostHigh = combinedCost(inside, straddle);
-  const exclusion = cycleExclusion(meterFell, tokensLow, endPercent, observationGap);
+  const exclusion = cycleExclusion(meterFell, shared, tokensLow, endPercent, observationGap);
   return {
     start: new Date(cycle.start).toISOString(),
     end: new Date(cycle.end).toISOString(),
@@ -224,11 +224,13 @@ function stats(values: number[]): AllowanceCycleStat | null {
 
 function cycleExclusion(
   meterFell: boolean,
+  shared: boolean,
   tokensLow: number,
   endPercent: number,
   observationGap: boolean,
 ): AllowanceCycleExclusion | null {
   if (meterFell) return "meter-fell";
+  if (shared) return "shared-log";
   if (tokensLow <= 0) return "no-tokens";
   if (endPercent < IMPLIED_MIN_PERCENT) return "below-min-percent";
   if (observationGap) return "observation-gap";
