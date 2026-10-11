@@ -114,3 +114,11 @@ R2-4 is a documentation sentence. It has no runtime check, so it landed as a doc
 | `bun run build:webui` | exit 0 |
 
 `CcusageProvider` child-process timeout and the Antigravity Cloud Code test both passed in this bun run. They were not changed. The Allowance label and note were checked by the page test. They were not clicked through in a browser. Playwright was unavailable, and the always-on service runs another checkout.
+
+## Review round 3
+
+Target `933d265`. Lanes: Grok Build `grok-4.7` high (REQUEST_CHANGES), AGY `gemini-3.8-flash-high` (APPROVE), Codex `gpt-6.1-sol` high via the second Codex home (REQUEST_CHANGES). R2-1, R2-3 and R2-4 confirmed resolved by all lanes.
+
+| Finding | Source | Severity | Disposition |
+|---|---|---|---|
+| R3-1 The note still said individual plans use the combined pool percent; an individual payload without `totalPercentUsed` falls back to spend divided by the limit (`plugins/cursor/plugin.js:1003`), and Team uses dollars | Grok, Codex | MEDIUM | Fixed in `f1d8f09` (test) and `47c4dda` (fix): the note now says the combined pool percent has a different denominator, and Team plans and plans without that percent use spend divided by the limit. `docs/providers/cursor.md` matches. Applied by the orchestrator (Claude Opus 5.5) as a wording-only change. |
