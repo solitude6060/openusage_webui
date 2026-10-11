@@ -8,12 +8,14 @@ import {
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BASELINE_LIMIT = 4;
 const CYCLE_MIN_PERCENT = 10;
+const EDGE_UNCERTAIN_RATIO = 1.25;
 
 export type AllowanceCycleExclusion =
   | "meter-fell"
   | "shared-log"
   | "no-tokens"
   | "below-min-percent"
+  | "edge-uncertain"
   | "observation-gap";
 
 export interface AllowanceCycleStat {
@@ -130,7 +132,7 @@ function measureCycle(cycle: BoundedCycle, rows: AllowanceTokenRow[], shared: bo
   const tokensHigh = inside.tokens + straddle.tokens;
   const apiCostLow = sideCost(inside);
   const apiCostHigh = combinedCost(inside, straddle);
-  const exclusion = cycleExclusion(meterFell, shared, tokensLow, endPercent, observationGap);
+  const exclusion = cycleExclusion(meterFell, shared, tokensLow, tokensHigh, endPercent, observationGap);
   return {
     start: new Date(cycle.start).toISOString(),
     end: new Date(cycle.end).toISOString(),
@@ -225,6 +227,7 @@ function cycleExclusion(
   meterFell: boolean,
   shared: boolean,
   tokensLow: number,
+  tokensHigh: number,
   endPercent: number,
   observationGap: boolean,
 ): AllowanceCycleExclusion | null {
@@ -232,6 +235,7 @@ function cycleExclusion(
   if (shared) return "shared-log";
   if (tokensLow <= 0) return "no-tokens";
   if (endPercent < CYCLE_MIN_PERCENT) return "below-min-percent";
+  if (tokensHigh > tokensLow * EDGE_UNCERTAIN_RATIO) return "edge-uncertain";
   if (observationGap) return "observation-gap";
   return null;
 }

@@ -140,6 +140,7 @@ export type AllowanceCycleExclusion =
   | "shared-log"
   | "no-tokens"
   | "below-min-percent"
+  | "edge-uncertain"
   | "observation-gap";
 
 export interface AllowanceCycleStat {
