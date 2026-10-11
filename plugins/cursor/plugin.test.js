@@ -1375,6 +1375,48 @@ describe("cursor plugin", () => {
     expect(apiLine.format).toEqual({ kind: "percent" })
   })
 
+  it("keeps the pool percent when included spend disagrees and labels that spend", async () => {
+    const ctx = makeCtx()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            billingCycleEnd: "1775234693029",
+            planUsage: {
+              totalSpend: 5000,
+              includedSpend: 5000,
+              remaining: 15000,
+              limit: 20000,
+              totalPercentUsed: 12.5,
+              autoPercentUsed: 4,
+              apiPercentUsed: 80,
+            },
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const totalLine = result.lines.find((line) => line.label === "Total usage")
+    const spendLine = result.lines.find((line) => line.label === "Included Spend")
+    const spendPercent = (5000 / 20000) * 100
+
+    expect(totalLine).toBeTruthy()
+    expect(totalLine.format).toEqual({ kind: "percent" })
+    expect(totalLine.used).toBe(12.5)
+    expect(totalLine.used).not.toBe(spendPercent)
+    expect(totalLine.limitValue).toBe(200)
+    expect(totalLine.usedValue).toBe(50)
+    expect(result.lines.find((line) => line.label === "Auto usage").used).toBe(4)
+    expect(result.lines.find((line) => line.label === "API usage").used).toBe(80)
+    expect(spendLine).toEqual({ type: "text", label: "Included Spend", value: "$50.00 of $200.00" })
+  })
+
   it("falls back to computed percent when totalPercentUsed is not finite", async () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
