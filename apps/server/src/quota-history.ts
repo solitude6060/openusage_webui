@@ -17,6 +17,10 @@ import {
   type AllowanceSpan,
 } from "../../../packages/providers/src/allowance-estimate";
 import {
+  buildAllowanceCycleSummaries,
+  type AllowanceCycleSummary,
+} from "../../../packages/providers/src/allowance-cycles";
+import {
   buildQuotaWindowViews,
   previousResetCutoff,
   type QuotaWindowView,
@@ -27,6 +31,7 @@ const TOKEN_LOOKBACK_MS = 70 * 24 * 60 * 60 * 1000;
 const FAILURE_LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000;
 const ALLOWANCE_BASELINE_MS = 40 * 24 * 60 * 60 * 1000;
 const ALLOWANCE_PERIOD_HISTORY_MS = 100 * 24 * 60 * 60 * 1000;
+const ALLOWANCE_CYCLE_HISTORY_MS = 120 * 24 * 60 * 60 * 1000;
 
 export { isAllowanceDays };
 export type { AllowanceDays };
@@ -139,5 +144,26 @@ export async function loadAllowanceEstimates(
     span: allowanceSpanId(span),
     ...(span.kind === "days" ? { days: span.days } : {}),
     estimates: buildAllowanceEstimates(observations, tokenRows, sharedProviderIds, span, now),
+  };
+}
+
+export async function loadAllowanceCycleSummaries(
+  storage: SqliteStorage,
+  now = new Date(),
+): Promise<{ span: "cycles"; summaries: AllowanceCycleSummary[] }> {
+  const historyStart = now.getTime() - ALLOWANCE_CYCLE_HISTORY_MS;
+  const accounts = await storage.listProviderAccounts();
+  const codexHomes = accounts
+    .filter((account) => account.providerId === "codex")
+    .map((account) => ({ id: account.id, homePath: account.homePath }));
+  // The symlink account has no tokens of its own. The real directory can use its own meter.
+  const sharedProviderIds = new Set(codexSessionTokenDuplicateIds(codexHomes));
+  const observations = await storage.listQuotaObservationsSince(new Date(historyStart).toISOString());
+  const tokenRows = await storage.listAllowanceTokenRows(
+    new Date(historyStart - 24 * 60 * 60 * 1000).toISOString(),
+  );
+  return {
+    span: "cycles",
+    summaries: buildAllowanceCycleSummaries(observations, tokenRows, sharedProviderIds, now),
   };
 }
