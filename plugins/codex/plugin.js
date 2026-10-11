@@ -803,16 +803,14 @@
 
       const headerPrimary = readPercent(resp.headers["x-codex-primary-used-percent"])
       const headerSecondary = readPercent(resp.headers["x-codex-secondary-used-percent"])
-      const sessionPercent = headerPrimary !== null
-        ? headerPrimary
-        : primaryWindow && typeof primaryWindow.used_percent === "number"
-          ? primaryWindow.used_percent
-          : null
-      const weeklyPercent = headerSecondary !== null
-        ? headerSecondary
-        : secondaryWindow && typeof secondaryWindow.used_percent === "number"
-          ? secondaryWindow.used_percent
-          : null
+      // Body percent wins. Headers fill a slot only when that window omits used_percent
+      // (upstream a4cba27: a stale header was overriding a fresh window).
+      const sessionPercent = primaryWindow && typeof primaryWindow.used_percent === "number"
+        ? primaryWindow.used_percent
+        : headerPrimary
+      const weeklyPercent = secondaryWindow && typeof secondaryWindow.used_percent === "number"
+        ? secondaryWindow.used_percent
+        : headerSecondary
 
       if (sessionPercent !== null) {
         lines.push(ctx.line.progress({
