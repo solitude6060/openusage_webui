@@ -80,7 +80,10 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
       expect(records[0]?.raw).toMatchObject({
         pluginId: "cursor",
         plan: "Pro",
-        lines: [{ type: "progress", label: "Total usage", used: 50, limit: 100 }],
+        lines: [
+          { type: "progress", label: "Total usage", used: 50, limit: 100 },
+          { type: "text", label: "Included Spend", value: "$12.00 of $24.00" },
+        ],
       });
     });
   });
