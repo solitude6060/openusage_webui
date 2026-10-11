@@ -221,8 +221,8 @@ Allowance 頁用你這段時間的實際 token，除以同一個額度表移動�
 - 百分比沒有移動、區間中途往下掉，或這段沒有 token 紀錄時，不算出配額。正向移動不到 1 個百分點仍可粗估
 - 每次百分比變動都會保留，包含不到 1 個百分點的變動。下次正常啟動時，也會從已存的快照補回舊版省略的變動，保留既有紀錄
 - 兩個 Codex 家目錄共用同一份 session 時，用量記在真實目錄那個帳號，只換算那個帳號自己的額度表。另一個帳號不換算
-- 官方有給絕對上限時會標成 Stated Cap
-- Cursor 的 Total usage 百分比來自 `planUsage.totalPercentUsed`，是合併 pool（用量池）的讀數。Auto usage 是 Cursor 自家模型（包含 Grok 與 Composer）的 pool，API usage 是其他模型的 pool。Included Spend 是方案內含的美元花費與上限，計算方式是已用金額除以這個上限。這三個百分比和 Included Spend 的百分比可以是四個不同的數字。Stated Cap 顯示 Included Spend 的美元上限。Allowance 仍用 Total usage 的百分比來換算 token 與 API 金額
+- 官方有給絕對上限時會標成 Stated Cap。Cursor 的美元上限標成 Included Dollar Limit
+- Cursor 的 Total usage 百分比來自 `planUsage.totalPercentUsed`，是合併 pool（用量池）的讀數。Auto usage 是 Cursor 自家模型（包含 Grok 與 Composer）的 pool，API usage 是其他模型的 pool。Included Spend 顯示方案內含的美元花費與上限（$已用金額 of $上限），分子是方案內含金額，不含 bonus。Cursor 官方網站會把這筆內含金額除以上限，顯示為內含用量百分比。畫面上的三個 pool 百分比和官網的內含花費百分比是不同分母的讀數。Allowance 仍用 Total usage 的百分比來換算 token 與 API 金額。Allowance 頁把這個美元上限標成 Included Dollar Limit，並註明換算用的是合併 pool 百分比，其分母和這個美元上限不同
 - 同一段用量若有記下 API 價格，會用同一個百分比把這段費用換算成整包的 API 費用，標成 API Value。這段實際費用標成 API Cost。少了價格的紀錄不估金額
 - Codex 優先保留 ccusage 提供的模型費用，包含明確的 0。整天總額若只剩一個模型尚未定價，可將可確認的餘額歸給該模型；其餘已知模型才依 OpenAI 標準短上下文單價估價。多個未知模型無法拆分時，保持未知。單日合計看不出哪些請求用了長上下文或 Fast mode
 - Cursor 的非數字費用保持未知，明確數字 0 則保留。API Value 為 0 時仍會顯示
