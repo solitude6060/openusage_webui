@@ -76,7 +76,7 @@ The percent comes from that window's `used_percent`. The response headers `x-cod
 
 Other plan identifiers keep a readable name. Underscores become spaces.
 
-Readings saved earlier as a 7-day Session are shown as Weekly in Allowance and Quotas, together with newer Weekly readings. The original rows remain in the database. A 5-hour Session stays a Session.
+Readings saved earlier as a 7-day Session are shown as Weekly in Allowance and Quotas, together with newer Weekly readings. The original rows remain in the database. A 5-hour Session stays a Session. A newer 5-hour Session on the same account leaves the Weekly series visible. Its previous reading is the latest 7-day Session before the reset. The previous 5-hour Session is the latest Session row with another period.
 
 The example above is the common shape: a 5-hour primary window and a 7-day secondary window.
 

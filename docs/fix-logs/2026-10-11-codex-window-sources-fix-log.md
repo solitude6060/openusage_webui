@@ -8,8 +8,9 @@
 | Role | Client / model / effort |
 |------|-------------------------|
 | Implementer | Grok Build, `grok-4.7`, `xhigh` (plan routing) |
+| Review round 1 fixes | Grok Build, `grok-4.7`, `xhigh` |
 
-Triple-review was not run. This change is local and has not been pushed.
+Review round 1 is recorded below. A follow-up review has not been run. This change is local and has not been pushed.
 
 ## What changed
 
@@ -41,5 +42,35 @@ The known `CcusageProvider` timeout flake and the Antigravity Cloud Code test di
 ## Limits
 
 - A Codex Session whose stored period is 5 hours stays Session, including when its reset time is about a week away. The existing Allowance rule still treats that series as a long window when it is the only long window for the account.
-- The quota view's previous-window lookup reads the latest stored Session row before the cutoff and uses it when that row's period is 7 days. Allowance reads every row, so an older 7-day Session still joins the Weekly series there.
+- Quotas keeps the latest stored row for each period. A 7-day Codex Session is read as Weekly when the account also has a newer 5-hour Session. The previous Weekly reading is the latest 7-day Session before the cutoff. The previous 5-hour Session is the latest Session row with another period.
 - `code_review_rate_limit` stays the Reviews line. The plan does not change it.
+
+## Review round 1
+
+Reviewed target `86149f5`. Grok APPROVE, AGY APPROVE, Codex REQUEST_CHANGES.
+
+| Finding | Source | Severity | Verified | Disposition |
+|---|---|---|---|---|
+| W1-1 Same account with a legacy 7-day Session row then a genuine 5-hour Session: storage latest-per-raw-key hides the legacy row, an unchanged Weekly reading is deduplicated against it and not stored, Quotas shows only Session until the next change | Codex (reproduced in-memory) | MEDIUM | code path confirmed: quota-history.ts:54, latest is per raw window_key before aliasing | fix: choose latest per aliased window (period-aware), regression test on one account |
+| W1-2 Previous-week lookup `latestQuotaObservationBeforeReset(..., "session")` takes the newest Session (5-hour) and drops it, missing an older 7-day Session | Codex, Grok (LOW) | MEDIUM | yes: quota-history.ts:133-138 | fix: legacy lookup restricted to period_ms = 7 days before ORDER/LIMIT; genuine Session previous lookup excludes 7-day rows; same-account mixed test |
+| Grok LOW: same-class duplicate windows keep the first even without percent | Grok | LOW | matches upstream candidates.first | no change |
+| Grok LOW: non-Spark additional limits kept | Grok | LOW | plan contract | no change |
+
+W1-1 and W1-2 are fixed. The two LOW findings stay as recorded. Stored rows are not rewritten.
+
+| Commit | Change |
+|--------|--------|
+| `e8ad234` test | Quotas must keep Weekly when a 5-hour Session arrives after a 7-day Session on the same account. |
+| `71b514f` fix | The latest-window query keeps one row per period. The existing alias and collapse then keep that Weekly series. |
+| `905d774` test | The previous Weekly percent must come from the older 7-day Session. In that fixture the 5-hour Session has no previous window. |
+| `4efdd9f` fix | The legacy lookup requires a 7-day period before the row limit. The 5-hour Session lookup excludes those rows. |
+
+Checks after `4efdd9f`, before this note:
+
+| Command | Result |
+|---------|--------|
+| `bun run test -- --run` | 69 files, 1314 passed |
+| `bun test packages/storage/test packages/providers/test apps/server/test apps/web/src` | 59 files, 492 passed, 0 failed |
+| `bun run build:webui` | passed (web `tsc` + Vite, server bundle) |
+
+The known `CcusageProvider` timeout flake and the Antigravity Cloud Code test that reaches a running language server did not fail in this run.
