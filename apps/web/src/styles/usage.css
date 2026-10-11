@@ -254,3 +254,64 @@
   line-height: 1.35;
   color: var(--muted);
 }
+
+.allowance-cycle-block {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.allowance-cycle-block h5 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.allowance-cycle-cards {
+  display: none;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (max-width: 640px) {
+  .allowance-cycle-table {
+    display: none;
+  }
+
+  .allowance-cycle-cards {
+    display: grid;
+    gap: 8px;
+  }
+
+  .allowance-cycle-card {
+    display: grid;
+    gap: 6px;
+    padding: 12px;
+    background: var(--surface-muted);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+
+  .allowance-cycle-card div {
+    display: grid;
+    grid-template-columns: 108px minmax(0, 1fr);
+    gap: 8px;
+    align-items: baseline;
+  }
+
+  .allowance-cycle-card span {
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .allowance-cycle-card strong {
+    min-width: 0;
+    color: var(--ink-secondary);
+    font-weight: 500;
+    overflow-wrap: anywhere;
+  }
+}

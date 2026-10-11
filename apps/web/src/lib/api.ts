@@ -133,7 +133,64 @@ export async function getQuotaDashboard(): Promise<QuotaDashboard> {
   return request("/api/usage/quotas");
 }
 
-export type AllowanceRange = "1" | "3" | "5" | "7" | "30" | "month" | "period" | "previous";
+export type AllowanceRange = "1" | "3" | "5" | "7" | "30" | "month" | "period" | "previous" | "cycles";
+
+export type AllowanceCycleExclusion =
+  | "meter-fell"
+  | "shared-log"
+  | "no-tokens"
+  | "below-min-percent"
+  | "observation-gap";
+
+export interface AllowanceCycleStat {
+  median: number;
+  min: number;
+  max: number;
+  n: number;
+}
+
+export interface AllowanceCompletedCycle {
+  start: string;
+  end: string;
+  lengthMs: number;
+  endPercent: number;
+  tokensLow: number;
+  tokensHigh: number;
+  apiCostLow: number | null;
+  apiCostHigh: number | null;
+  allowanceLow: number | null;
+  allowanceHigh: number | null;
+  apiDollarsLow: number | null;
+  apiDollarsHigh: number | null;
+  included: boolean;
+  exclusion: AllowanceCycleExclusion | null;
+}
+
+export interface AllowanceCycleCurrent {
+  start: string;
+  end: string;
+  lengthMs: number;
+  usedPercent: number | null;
+  tokens: number;
+  apiCost: number | null;
+  elapsedFraction: number;
+  remainingTokens: number | null;
+  remainingApiCost: number | null;
+  projectedEndPercent: number | null;
+  projectionReliable: boolean;
+}
+
+export interface AllowanceCycleSummary {
+  providerId: string;
+  windowKey: string;
+  windowLabel: string;
+  baseline: {
+    tokens: AllowanceCycleStat | null;
+    apiDollars: AllowanceCycleStat | null;
+  };
+  current: AllowanceCycleCurrent | null;
+  cycles: AllowanceCompletedCycle[];
+}
 
 export interface AllowanceEstimate {
   providerId: string;
@@ -155,12 +212,11 @@ export interface AllowanceEstimate {
   reason: "ok" | "shared-log" | "no-movement" | "meter-fell" | "no-tokens" | "unaligned";
 }
 
-export async function getAllowance(range: AllowanceRange): Promise<{
-  span: string;
-  days?: number;
-  estimates: AllowanceEstimate[];
-}> {
-  const named = range === "month" || range === "period" || range === "previous";
+export async function getAllowance(range: AllowanceRange): Promise<
+  | { span: string; days?: number; estimates: AllowanceEstimate[] }
+  | { span: "cycles"; summaries: AllowanceCycleSummary[] }
+> {
+  const named = range === "month" || range === "period" || range === "previous" || range === "cycles";
   return request(`/api/usage/allowance?${named ? `span=${range}` : `days=${range}`}`);
 }
 
