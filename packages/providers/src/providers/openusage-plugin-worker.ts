@@ -8,7 +8,7 @@ self.onmessage = (event: MessageEvent<{ options: OpenUsagePluginWorkerOptions }>
   const provider = new OpenUsagePluginProvider(event.data.options);
   void provider.refreshInThread().then(
     (records) => {
-      self.postMessage({ ok: true, records });
+      self.postMessage({ ok: true, records, codexEventResult: provider.takeCodexEventResult() });
     },
     (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);

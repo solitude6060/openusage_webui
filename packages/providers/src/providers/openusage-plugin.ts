@@ -41,6 +41,11 @@ import { aggregateGrokHourlyRecords, aggregateGrokSessionRecords, grokSpendLines
 import { runPluginCcusageBlocks } from "./ccusage-blocks";
 import { scanPiSessionUsage } from "./pi-session-usage";
 import {
+  scanCodexEventsForRefresh,
+  type CodexEventScanInput,
+  type CodexEventScanResult,
+} from "../codex-session-events";
+import {
   CursorUsageCollector,
   normalizeCcusageDailyRecords,
   normalizeCcusageHourlyBlocks,
@@ -81,6 +86,7 @@ export interface OpenUsagePluginProviderOptions {
   defaultEnabled?: boolean;
   recordPiSessionTokens?: boolean;
   piSessionAccounts?: ProviderAccount[];
+  codexEventScan?: CodexEventScanInput | null;
 }
 
 interface LoadedPlugin {
@@ -115,6 +121,8 @@ export class OpenUsagePluginProvider implements UsageProvider {
   private readonly pluginDataDir: string;
   private readonly homeDir: string;
   private readonly useDefaultRuntime: boolean;
+  private codexEventScan: CodexEventScanInput | null = null;
+  private codexEventResult: CodexEventScanResult | null = null;
 
   constructor(options: OpenUsagePluginProviderOptions) {
     this.id = options.providerId;
@@ -146,6 +154,23 @@ export class OpenUsagePluginProvider implements UsageProvider {
       && options.gitHubTokenRunner === undefined
       && options.lsDiscover === undefined
       && options.now === undefined;
+    this.codexEventScan = options.codexEventScan ?? null;
+  }
+
+  setCodexEventScan(input: CodexEventScanInput | null): void {
+    this.codexEventScan = input;
+  }
+
+  takeCodexEventResult(): CodexEventScanResult | null {
+    const result = this.codexEventResult;
+    this.codexEventResult = null;
+    return result;
+  }
+
+  codexHomePath(): string | null {
+    if (this.pluginId !== "codex") return null;
+    const configured = this.env.CODEX_HOME?.trim();
+    return configured || join(this.homeDir, ".codex");
   }
 
   async detect(): Promise<boolean> {
@@ -163,8 +188,11 @@ export class OpenUsagePluginProvider implements UsageProvider {
   }
 
   async refresh(): Promise<UsageRecord[]> {
+    this.codexEventResult = null;
     if (this.useDefaultRuntime) {
-      return refreshOpenUsagePluginInWorker(this.workerOptions());
+      const refreshed = await refreshOpenUsagePluginInWorker(this.workerOptions());
+      this.codexEventResult = refreshed.codexEventResult;
+      return refreshed.records;
     }
     return this.refreshInThread();
   }
@@ -236,6 +264,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
       ...(piSessionOwnership === undefined ? {} : { piSessionOwnership }),
     };
 
+    this.captureCodexSessionEvents(snapshot.lines, startedAt);
     return [
       {
         id: createHash("sha256")
@@ -252,6 +281,22 @@ export class OpenUsagePluginProvider implements UsageProvider {
     ];
   }
 
+  private captureCodexSessionEvents(lines: unknown[], startedAt: string): void {
+    if (this.pluginId !== "codex" || !this.codexEventScan) {
+      this.codexEventResult = null;
+      return;
+    }
+    try {
+      this.codexEventResult = scanCodexEventsForRefresh(this.id, lines, startedAt, this.codexEventScan);
+    } catch (error) {
+      this.codexEventResult = null;
+      const code = error && typeof error === "object" && "code" in error && typeof error.code === "string"
+        ? error.code
+        : "UNKNOWN";
+      console.error(JSON.stringify({ event: "codex_session_scan_failed", code }));
+    }
+  }
+
   private workerOptions(): OpenUsagePluginWorkerOptions {
     return {
       providerId: this.id,
@@ -265,6 +310,7 @@ export class OpenUsagePluginProvider implements UsageProvider {
       recordCcusageTokens: this.recordCcusageTokens,
       recordPiSessionTokens: this.piSessionTokensEnabled,
       piSessionAccounts: this.piSessionAccounts,
+      codexEventScan: this.codexEventScan,
     };
   }
 

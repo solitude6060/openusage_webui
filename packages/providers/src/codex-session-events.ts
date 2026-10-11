@@ -1,5 +1,6 @@
 import { closeSync, lstatSync, openSync, readdirSync, readSync, realpathSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { observationsFromLines } from "./quota-observations";
 
 export type CodexMeterShape = "weekly-primary" | "five-hour-primary";
 
@@ -84,6 +85,25 @@ export function meterShapeFromObservations(rows: CodexShapeObservation[]): Codex
   if (sessionMs != null && sessionMs < DAY_MS && weeklyMs != null && weeklyMs >= DAY_MS) return "five-hour-primary";
   if (sessionMs != null && sessionMs >= DAY_MS && (weeklyMs == null || weeklyMs < DAY_MS)) return "weekly-primary";
   return null;
+}
+
+export function scanCodexEventsForRefresh(
+  providerId: string,
+  lines: unknown[],
+  startedAt: string,
+  input: CodexEventScanInput,
+): CodexEventScanResult {
+  const shape = meterShapeFromObservations(observationsFromLines(providerId, lines, startedAt).map((row) => ({
+    windowKey: row.windowKey,
+    periodMs: row.periodMs,
+    present: row.present,
+    observedAt: row.observedAt,
+    resetsAt: row.resetsAt,
+  })));
+  const accounts = input.accounts.map((account) => (
+    account.id === providerId && shape ? { ...account, shape } : account
+  ));
+  return scanCodexSessionEvents({ ...input, accounts });
 }
 
 export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventScanResult {
