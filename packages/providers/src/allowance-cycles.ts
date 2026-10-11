@@ -5,6 +5,7 @@ import {
   type AllowanceObservation,
   type AllowanceTokenRow,
 } from "./allowance-estimate";
+import { aliasCodexSevenDaySessions } from "./quota-observations";
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BASELINE_LIMIT = 4;
@@ -84,9 +85,10 @@ export function buildAllowanceCycleSummaries(
   history?: AllowanceCycleHistory,
 ): AllowanceCycleSummary[] {
   const nowMs = now.getTime();
+  const windows = aliasCodexSevenDaySessions(observations);
   const summaries: AllowanceCycleSummary[] = [];
-  for (const window of chooseWindows(observations)) {
-    const points = meterPoints(observations, window).filter((point) => point.at <= nowMs);
+  for (const window of chooseWindows(windows)) {
+    const points = meterPoints(windows, window).filter((point) => point.at <= nowMs);
     const rows = tokenRows.filter((row) => row.providerId === window.providerId && row.tokens > 0);
     const bounded = boundedCycles(points);
     const cycles = bounded
