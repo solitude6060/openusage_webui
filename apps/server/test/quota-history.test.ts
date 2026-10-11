@@ -392,6 +392,66 @@ test("keeps Weekly visible when a 5-hour Session follows a 7-day Session on the 
   storage.close();
 });
 
+test("uses the older 7-day Session as the previous Weekly window on a mixed account", async () => {
+  const storage = new SqliteStorage();
+  await storage.init();
+  const week = 7 * 24 * 60 * 60 * 1000;
+  const fiveHours = 5 * 60 * 60 * 1000;
+  await storage.insertQuotaObservations([
+    {
+      providerId: "codex:codex",
+      observedAt: "2026-09-26T00:00:00.000Z",
+      windowKey: "session",
+      windowLabel: "Session",
+      periodMs: week,
+      resetsAt: "2026-09-27T00:00:00.000Z",
+      present: true,
+      usedPercent: 80,
+      limitValue: null,
+      limitUnit: null,
+      usedValue: null,
+    },
+    {
+      providerId: "codex:codex",
+      observedAt: "2026-09-28T03:00:00.000Z",
+      windowKey: "session",
+      windowLabel: "Session",
+      periodMs: fiveHours,
+      resetsAt: "2026-09-28T05:00:00.000Z",
+      present: true,
+      usedPercent: 12,
+      limitValue: null,
+      limitUnit: null,
+      usedValue: null,
+    },
+    {
+      providerId: "codex:codex",
+      observedAt: "2026-10-03T00:00:00.000Z",
+      windowKey: "weekly",
+      windowLabel: "Weekly",
+      periodMs: week,
+      resetsAt: "2026-10-04T00:00:00.000Z",
+      present: true,
+      usedPercent: 40,
+      limitValue: null,
+      limitUnit: null,
+      usedValue: null,
+    },
+  ]);
+
+  const dashboard = await loadQuotaDashboard(storage);
+  const windows = dashboard.windows.filter((window) => window.providerId === "codex:codex");
+  const weekly = windows.find((window) => window.windowKey === "weekly");
+  const session = windows.find((window) => window.windowKey === "session");
+  expect(weekly).toEqual(expect.objectContaining({ usedPercent: 40 }));
+  expect(weekly?.previous).toEqual(expect.objectContaining({ usedPercent: 80 }));
+  expect(session).toEqual(expect.objectContaining({ usedPercent: 12, previous: null }));
+
+  const stored = await storage.listQuotaObservationsSince("2026-01-01T00:00:00.000Z");
+  expect(stored.find((row) => row.usedPercent === 80)?.windowKey).toBe("session");
+  storage.close();
+});
+
 function observation(observedAt: string, usedPercent: number, periodMs: number, resetsAt: string) {
   return {
     providerId: "grok",
