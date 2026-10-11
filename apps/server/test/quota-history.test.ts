@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequestHandler } from "../src/index";
@@ -258,6 +258,108 @@ test("allowance aligns mid-hour readings to the hour boundaries that sit between
   ]);
   storage.close();
 });
+
+test("allowance span=cycles returns summaries for the last 120 days", async () => {
+  const storage = new SqliteStorage();
+  await storage.init();
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+  const week = 7 * day;
+  const recentReset = now - 110 * day;
+  const oldReset = now - 130 * day;
+  await storage.insertQuotaObservations([
+    cycleObservation("grok", recentReset, week),
+    cycleObservation("claude-code", oldReset, week),
+  ]);
+  await storage.upsertUsageRecords([
+    cycleTokens("grok", recentReset - 3 * day, 400, 4),
+    cycleTokens("claude-code", oldReset - 3 * day, 400, 4),
+  ]);
+
+  const handle = createRequestHandler(storage, { host: "127.0.0.1", port: 6736 }, undefined, []);
+  const response = await handle(new Request("http://127.0.0.1:6736/api/usage/allowance?span=cycles"));
+  expect(response.status).toBe(200);
+  const body = await response.json() as {
+    span: string;
+    summaries: Array<{ providerId: string; cycles: Array<{ included: boolean; endPercent: number }> }>;
+  };
+  expect(body.span).toBe("cycles");
+  expect(body.summaries.map((item) => item.providerId)).toEqual(["grok"]);
+  expect(body.summaries[0]?.cycles[0]).toEqual(expect.objectContaining({ included: true, endPercent: 40 }));
+  storage.close();
+});
+
+test("allowance span=cycles excludes the duplicate Codex session account", async () => {
+  const storage = new SqliteStorage();
+  await storage.init();
+  const homeRoot = mkdtempSync(join(tmpdir(), "openusage-codex-cycle-"));
+  try {
+    const codexHome = join(homeRoot, "codex");
+    const familyHome = join(homeRoot, "family");
+    mkdirSync(join(codexHome, "sessions"), { recursive: true });
+    mkdirSync(familyHome, { recursive: true });
+    symlinkSync(join(codexHome, "sessions"), join(familyHome, "sessions"));
+    await storage.upsertProviderAccount({
+      id: "codex:codex", providerId: "codex", label: "Codex", homePath: codexHome, enabled: true, sortOrder: 0,
+    });
+    await storage.upsertProviderAccount({
+      id: "codex:family", providerId: "codex", label: "Family", homePath: familyHome, enabled: true, sortOrder: 1,
+    });
+    const reset = Date.now() - 3 * 24 * 60 * 60 * 1000;
+    const week = 7 * 24 * 60 * 60 * 1000;
+    await storage.insertQuotaObservations([
+      cycleObservation("codex:codex", reset, week),
+      cycleObservation("codex:family", reset, week),
+    ]);
+    await storage.upsertUsageRecords([
+      cycleTokens("codex:codex", reset - 3 * 24 * 60 * 60 * 1000, 200, 2),
+      cycleTokens("codex:family", reset - 3 * 24 * 60 * 60 * 1000, 200, 2),
+    ]);
+
+    const handle = createRequestHandler(storage, { host: "127.0.0.1", port: 6736 }, undefined, []);
+    const response = await handle(new Request("http://127.0.0.1:6736/api/usage/allowance?span=cycles"));
+    expect(response.status).toBe(200);
+    const body = await response.json() as {
+      summaries: Array<{ providerId: string; cycles: Array<{ included: boolean; exclusion: string | null }> }>;
+    };
+    const byId = new Map(body.summaries.map((item) => [item.providerId, item]));
+    expect(byId.get("codex:family")?.cycles[0]?.exclusion).toBe("shared-log");
+    expect(byId.get("codex:codex")?.cycles[0]?.included).toBe(true);
+  } finally {
+    storage.close();
+    rmSync(homeRoot, { recursive: true, force: true });
+  }
+});
+
+function cycleObservation(providerId: string, resetMs: number, periodMs: number) {
+  return {
+    providerId,
+    observedAt: new Date(resetMs - 12 * 60 * 60 * 1000).toISOString(),
+    windowKey: "weekly",
+    windowLabel: "Weekly",
+    periodMs,
+    resetsAt: new Date(resetMs).toISOString(),
+    present: true,
+    usedPercent: 40,
+    limitValue: null,
+    limitUnit: null,
+    usedValue: null,
+  };
+}
+
+function cycleTokens(providerId: string, startedMs: number, totalTokens: number, costUsd: number) {
+  const startedAt = new Date(startedMs).toISOString();
+  return {
+    id: `cycle-${providerId}-${startedAt}`,
+    providerId,
+    tool: "Grok Session",
+    model: "model",
+    totalTokens,
+    costUsd,
+    startedAt,
+    source: "plugin" as const,
+  };
+}
 
 function observation(observedAt: string, usedPercent: number, periodMs: number, resetsAt: string) {
   return {
