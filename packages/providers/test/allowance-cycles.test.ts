@@ -149,4 +149,43 @@ describe("allowance cycle exclusion", () => {
       apiDollarsHigh: null,
     }));
   });
+
+  test("excludes an end percent below 20 and keeps a cycle that ends at 20", () => {
+    const summaries = buildAllowanceCycleSummaries(
+      [
+        observation("2026-09-30T12:00:00.000Z", 20, "2026-10-01T00:00:00.000Z"),
+        observation("2026-10-07T12:00:00.000Z", 19, "2026-10-08T00:00:00.000Z"),
+      ],
+      [
+        bucket("2026-09-26T00:00:00.000Z", 100, { costUsd: 1 }),
+        bucket("2026-10-03T00:00:00.000Z", 100, { costUsd: 1 }),
+      ],
+      new Set(),
+      new Date("2026-10-09T00:00:00.000Z"),
+    );
+
+    const cycles = summaries[0]?.cycles ?? [];
+    expect(cycles.find((cycle) => cycle.end === "2026-10-01T00:00:00.000Z")).toEqual(
+      expect.objectContaining({ included: true, exclusion: null, endPercent: 20 }),
+    );
+    expect(cycles.find((cycle) => cycle.end === "2026-10-08T00:00:00.000Z")).toEqual(
+      expect.objectContaining({ included: false, exclusion: "below-min-percent", endPercent: 19 }),
+    );
+  });
+
+  test("excludes a cycle with no tokens fully inside", () => {
+    const summaries = buildAllowanceCycleSummaries(
+      [observation("2026-10-07T12:00:00.000Z", 50, "2026-10-08T00:00:00.000Z")],
+      [bucket("2026-10-07T12:00:00.000Z", 25, { costUsd: 1 })],
+      new Set(),
+      new Date("2026-10-09T00:00:00.000Z"),
+    );
+
+    expect(summaries[0]?.cycles[0]).toEqual(expect.objectContaining({
+      tokensLow: 0,
+      tokensHigh: 25,
+      included: false,
+      exclusion: "no-tokens",
+    }));
+  });
 });
