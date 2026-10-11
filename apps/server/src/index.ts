@@ -9,8 +9,9 @@ import {
   SqliteStorage,
 } from "../../../packages/storage/src/index";
 import { parseAllowanceSpan } from "../../../packages/providers/src/allowance-estimate";
-import { createManualUsageRecord, getProviders } from "../../../packages/providers/src/index";
+import { createManualUsageRecord, getProviders, OpenUsagePluginProvider } from "../../../packages/providers/src/index";
 import type { UsageProvider } from "../../../packages/providers/src/index";
+import { attachCodexEventScan, saveCodexEventScan } from "./codex-event-refresh";
 import {
   asProvidersRef,
   assertCodexCompatAccountId,
@@ -491,11 +492,16 @@ async function runProviderRefresh(
     let detected = false;
     try {
       detected = await provider.detect();
+      if (provider instanceof OpenUsagePluginProvider) await attachCodexEventScan(storage, provider);
       const records = await provider.refresh();
       const current = (await storage.listProviderStatus()).find((status) => status.providerId === provider.id);
       if (!providersRef.current.includes(provider) || (existing && !current)) continue;
       await storage.upsertUsageRecords(records, { replaceScopes: true });
       await recordQuotaFromRefresh(storage, provider.id, records);
+      if (provider instanceof OpenUsagePluginProvider) {
+        const codexEvents = provider.takeCodexEventResult();
+        if (codexEvents) await saveCodexEventScan(storage, codexEvents);
+      }
       await storage.upsertProviderStatus({
         providerId: provider.id,
         name: provider.name,

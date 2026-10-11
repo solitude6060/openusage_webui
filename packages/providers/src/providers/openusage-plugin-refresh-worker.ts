@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { ProviderAccount, ProviderId, UsageRecord } from "../../../core/src/types";
+import type { CodexEventScanInput, CodexEventScanResult } from "../codex-session-events";
 
 // A hung plugin blocks only this worker. 120s matches the server idle timeout,
 // which is longer than the 33s Cursor refresh measured on 2026-10-10.
@@ -18,15 +19,20 @@ export interface OpenUsagePluginWorkerOptions {
   recordCcusageTokens: boolean;
   recordPiSessionTokens?: boolean;
   piSessionAccounts?: ProviderAccount[];
+  codexEventScan?: CodexEventScanInput | null;
 }
 
-type WorkerResponse =
-  | { ok: true; records: UsageRecord[] }
-  | { ok: false; error: string };
+type WorkerSuccess = {
+  ok: true;
+  records: UsageRecord[];
+  codexEventResult: CodexEventScanResult | null;
+};
+
+type WorkerResponse = WorkerSuccess | { ok: false; error: string };
 
 export function refreshOpenUsagePluginInWorker(
   options: OpenUsagePluginWorkerOptions,
-): Promise<UsageRecord[]> {
+): Promise<{ records: UsageRecord[]; codexEventResult: CodexEventScanResult | null }> {
   const entryUrl = new URL(
     import.meta.url.endsWith(".ts") ? "./openusage-plugin-worker.ts" : "./openusage-plugin-worker.js",
     import.meta.url,
@@ -53,7 +59,7 @@ export function refreshOpenUsagePluginInWorker(
     worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
       const data = event.data;
       if (isWorkerSuccess(data)) {
-        finish(() => resolve(data.records));
+        finish(() => resolve({ records: data.records, codexEventResult: data.codexEventResult }));
         return;
       }
       const message = isWorkerFailure(data) ? data.error : "OpenUsage plugin refresh failed.";
@@ -70,10 +76,13 @@ export function refreshOpenUsagePluginInWorker(
   });
 }
 
-function isWorkerSuccess(value: unknown): value is { ok: true; records: UsageRecord[] } {
+function isWorkerSuccess(value: unknown): value is WorkerSuccess {
   if (!value || typeof value !== "object") return false;
-  const record = value as { ok?: unknown; records?: unknown };
-  return record.ok === true && Array.isArray(record.records);
+  const record = value as { ok?: unknown; records?: unknown; codexEventResult?: unknown };
+  const result = record.codexEventResult;
+  return record.ok === true
+    && Array.isArray(record.records)
+    && (result === null || (Boolean(result) && typeof result === "object"));
 }
 
 function isWorkerFailure(value: unknown): value is { ok: false; error: string } {

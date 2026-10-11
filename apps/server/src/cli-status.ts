@@ -2,8 +2,9 @@ import {
   getDatabasePath,
   SqliteStorage,
 } from "../../../packages/storage/src/index";
-import { getProviders } from "../../../packages/providers/src/index";
+import { getProviders, OpenUsagePluginProvider } from "../../../packages/providers/src/index";
 import type { ProviderId, UsageRecord } from "../../../packages/core/src/types";
+import { attachCodexEventScan, saveCodexEventScan } from "./codex-event-refresh";
 
 const RESET = "\x1b[0m";
 const BOLD = "\x1b[1m";
@@ -84,8 +85,13 @@ async function main() {
       if (!(existing?.enabled ?? provider.defaultEnabled !== false)) continue;
       try {
         const detected = await provider.detect();
+        if (provider instanceof OpenUsagePluginProvider) await attachCodexEventScan(storage, provider);
         const records = await provider.refresh();
         await storage.upsertUsageRecords(records, { replaceScopes: true });
+        if (provider instanceof OpenUsagePluginProvider) {
+          const codexEvents = provider.takeCodexEventResult();
+          if (codexEvents) await saveCodexEventScan(storage, codexEvents);
+        }
         await storage.upsertProviderStatus({
           providerId: provider.id,
           name: provider.name,
