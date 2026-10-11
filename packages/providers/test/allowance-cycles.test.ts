@@ -281,6 +281,24 @@ describe("allowance current cycle", () => {
     });
   });
 
+  test("marks the open cycle unreliable when its meter falls", () => {
+    const summaries = buildAllowanceCycleSummaries(
+      [
+        observation("2026-10-02T00:00:00.000Z", 40, "2026-10-08T00:00:00.000Z"),
+        observation("2026-10-05T00:00:00.000Z", 25, "2026-10-08T00:00:00.000Z"),
+      ],
+      [bucket("2026-10-03T00:00:00.000Z", 100, { costUsd: 1 })],
+      new Set(),
+      new Date("2026-10-06T00:00:00.000Z"),
+    );
+
+    expect(summaries[0]?.current).toEqual(expect.objectContaining({
+      usedPercent: 25,
+      meterFell: true,
+      projectionReliable: false,
+    }));
+  });
+
   test("marks the projection unreliable during the first day", () => {
     const summaries = buildAllowanceCycleSummaries(
       [

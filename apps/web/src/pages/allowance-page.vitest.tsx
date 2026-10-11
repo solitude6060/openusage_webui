@@ -71,6 +71,7 @@ describe("Subscription period", () => {
                 remainingApiCost: 8,
                 projectedEndPercent: 40,
                 projectionReliable: false,
+                meterFell: true,
               },
               cycles: [
                 {
@@ -123,12 +124,14 @@ describe("Subscription period", () => {
 
     expect(await screen.findByRole("heading", { name: "Baseline" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Current Cycle" })).toBeInTheDocument();
-    expect(screen.getAllByText("Meter Fell")).toHaveLength(2);
+    expect(screen.getAllByText("Meter Fell")).toHaveLength(3);
+    expect(screen.getByRole("heading", { name: "Current Cycle" }).closest("section")).toHaveTextContent("Meter Fell");
     expect(screen.getAllByText("Below 10 Percent")).toHaveLength(2);
     expect(screen.getByText("Unreliable")).toBeInTheDocument();
     const details = screen.getByText("How This Is Calculated").closest("details");
     expect(details).toHaveTextContent("last four included periods");
     expect(details).toHaveTextContent("more than an hour before its stated reset");
+    expect(details).toHaveTextContent("the meter fell during this period");
     expect(details).not.toHaveTextContent("Daily totals cannot be split inside a day");
     expect(getAllowance).toHaveBeenCalledWith("cycles");
   });
