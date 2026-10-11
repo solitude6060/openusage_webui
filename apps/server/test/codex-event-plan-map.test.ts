@@ -50,3 +50,41 @@ test("an invalid Codex plan map is empty and does not stop the scan", async () =
   expect(scan?.accounts[0]?.planType).toBeNull();
   expect(errors.join("\n")).toContain("codex_event_plan_types_invalid");
 });
+
+test("a non-object Codex plan map is empty and does not stop the scan", async () => {
+  for (const raw of ["[]", "null", "\"plus\""]) {
+    previousDataDir = process.env.OPENUSAGE_WEBUI_DIR;
+    dataDir = mkdtempSync(join(tmpdir(), "openusage-codex-plan-"));
+    process.env.OPENUSAGE_WEBUI_DIR = dataDir;
+    const storage = new SqliteStorage();
+    await storage.init();
+    await storage.setAppMeta("codex_event_plan_types", raw);
+    let scan: CodexEventScanInput | null = null;
+    const provider = {
+      id: "codex:codex",
+      codexHomePath: () => "/home/user/codex",
+      setCodexEventScan(input: CodexEventScanInput | null) {
+        scan = input;
+      },
+    } as unknown as OpenUsagePluginProvider;
+    const errors: string[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map((arg) => String(arg)).join(" "));
+    };
+    let thrown: unknown = null;
+    try {
+      await attachCodexEventScan(storage, provider);
+    } catch (error) {
+      thrown = error;
+    } finally {
+      console.error = original;
+      storage.close();
+    }
+    expect(thrown).toBeNull();
+    expect(scan?.accounts[0]?.planType).toBeNull();
+    expect(errors.join("\n")).toContain("codex_event_plan_types_invalid");
+    rmSync(dataDir, { recursive: true, force: true });
+    dataDir = "";
+  }
+});
