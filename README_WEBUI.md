@@ -145,11 +145,11 @@ Claude Code and Codex use the original `plugins/claude/plugin.js` and `plugins/c
 
 Claude reads `CLAUDE_CONFIG_DIR/.credentials.json` when `CLAUDE_CONFIG_DIR` is set, otherwise `~/.claude/.credentials.json`.
 
-Codex reads `CODEX_HOME/auth.json` when `CODEX_HOME` is set, otherwise `~/.config/codex/auth.json` and `~/.codex/auth.json`. When two Codex homes resolve to the same `sessions` directory, the Tokens page stores those rows once, on the account whose `sessions` path is the real directory. The Allowance page does not turn that shared session log into a per-account token allowance.
+Codex reads `CODEX_HOME/auth.json` when `CODEX_HOME` is set, otherwise `~/.config/codex/auth.json` and `~/.codex/auth.json`. When two Codex homes resolve to the same `sessions` directory, the Tokens page stores those rows once, on the account whose `sessions` path is the real directory. Allowance reads Codex session events for each account, including an account whose `sessions` directory is a link, and does not mix in the other account's tokens.
 
 The original plugins may refresh OAuth tokens and write updated credentials back to the same file source. Browser cookies are not used.
 
-Allowance measures between hour boundaries where hourly token data exists (Claude, Cursor and Grok) and between day boundaries otherwise (Codex, and older days that have no hourly data). Hourly data is stored separately and read only by Allowance; the Tokens, Sessions and Dashboard totals still use daily rows. On a Claude card, days measured hourly list one `All Models` row instead of per-model rows.
+Allowance measures between hour boundaries where hourly token data exists (Claude, Cursor, Grok, and Codex days that have session events) and between day boundaries otherwise. Hourly data is stored separately and read only by Allowance; the Tokens, Sessions and Dashboard totals still use daily rows. On a Claude card, and for Codex days measured from session events, days measured hourly list one `All Models` row instead of per-model rows.
 
 ### Usage From Pi
 

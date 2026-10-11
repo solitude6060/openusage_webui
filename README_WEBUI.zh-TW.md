@@ -190,11 +190,11 @@ CODEX_HOME/auth.json
 ~/.codex/auth.json
 ```
 
-多個 Codex 家目錄若解析到同一個 `sessions` 目錄，Tokens 頁只保留該目錄本體那個帳號的用量。配額卡仍依各帳號分開顯示。Allowance 頁不會把這份共用 session 用量換算成各帳號的 token 配額。
+多個 Codex 家目錄若解析到同一個 `sessions` 目錄，Tokens 頁只保留該目錄本體那個帳號的用量。配額卡仍依各帳號分開顯示。Allowance 改讀 session 事件：週額度只出現在 Session 窗口的帳號，和同時有 5 小時 Session 與 Weekly 窗口的帳號，各自計算自己的用量。`sessions` 目錄是連結的帳號只要有事件也會換算，而且不會把另一個帳號的 token 算進來。
 
 原本 plugin 可能會 refresh OAuth token，並把更新後的 credential 寫回同一個檔案來源。WebUI 不使用 browser cookies。
 
-Allowance 在有每小時 token 資料時（Claude、Cursor、Grok）對齊到整點，其餘（Codex，以及沒有每小時資料的舊日期）仍對齊到日界。每小時資料另外存放，只有 Allowance 讀取；Tokens、Sessions、Dashboard 的合計仍用每日紀錄。Claude 卡片上，以每小時資料測量的日子只列一行 `All Models`，不分模型。
+Allowance 在有每小時 token 資料時（Claude、Cursor、Grok，以及有 Codex session 事件的日子）對齊到整點，沒有那些事件的日子仍對齊到日界。每小時資料另外存放，只有 Allowance 讀取；Tokens、Sessions、Dashboard 的合計仍用每日紀錄。Claude 卡片上，以及以 Codex session 事件測量的日子，只列一行 `All Models`，不分模型。
 
 ### Pi 的用量
 
