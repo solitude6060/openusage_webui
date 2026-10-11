@@ -363,12 +363,25 @@
     return readNumber(resp.headers["x-codex-credits-balance"])
   }
 
-  function formatCodexPlan(ctx, planType) {
+  function formatCodexPlan(_ctx, planType) {
     const rawPlan = typeof planType === "string" ? planType.trim() : ""
     if (!rawPlan) return null
-    if (rawPlan.toLowerCase() === "prolite") return "Pro 5x"
-    if (rawPlan.toLowerCase() === "pro") return "Pro 20x"
-    return ctx.fmt.planLabel(rawPlan) || null
+    switch (rawPlan.toLowerCase()) {
+      case "prolite":
+        return "Pro 100"
+      case "pro":
+        return "Pro 200"
+      case "promax":
+        return "Pro 500"
+      case "self_serve_business_prolite":
+        return "Business Premium"
+      default:
+        return rawPlan
+          .split("_")
+          .filter(function (word) { return word.length > 0 })
+          .map(function (word) { return word.charAt(0).toUpperCase() + word.slice(1) })
+          .join(" ") || null
+    }
   }
 
   function getResetsAtIso(ctx, nowSec, window) {
