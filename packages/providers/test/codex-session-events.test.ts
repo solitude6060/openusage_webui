@@ -260,6 +260,29 @@ describe("Codex session event scan", () => {
 });
 
 describe("meter shape from quota observations", () => {
+  test("a long weekly line and a long session line are both weekly-primary", () => {
+    const week = 7 * 24 * 60 * 60 * 1000;
+    const row = (windowKey: string, periodMs: number) => ({
+      windowKey,
+      periodMs,
+      present: true,
+      observedAt: "2026-10-09T00:00:00.000Z",
+      resetsAt: "2026-10-16T00:00:00.000Z",
+    });
+    expect(meterShapeFromObservations([row("weekly", week)])).toBe("weekly-primary");
+    expect(meterShapeFromObservations([row("session", week)])).toBe("weekly-primary");
+    expect(meterShapeFromObservations([
+      {
+        windowKey: "session",
+        periodMs: 5 * 60 * 60 * 1000,
+        present: true,
+        observedAt: "2026-10-09T12:00:00.000Z",
+        resetsAt: "2026-10-09T17:00:00.000Z",
+      },
+      row("weekly", week),
+    ])).toBe("five-hour-primary");
+  });
+
   test("a 7-day session is weekly-primary and a 5-hour session plus weekly is the other account", () => {
     expect(meterShapeFromObservations([
       {
