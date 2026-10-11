@@ -105,3 +105,33 @@ Checks after `7aa9c9d`, before this note:
 | `bun run build:webui` | passed (`tsc`, Vite, server bundle), exit 0 |
 
 The known `CcusageProvider` timeout flake and the Antigravity Cloud Code test that reaches a running language server did not fail in this run. This session does not push.
+
+## Review round 2
+
+Reviewed target `614d445`. Grok and Codex returned REQUEST_CHANGES. AGY returned APPROVE. E1-1 through E1-6 stayed fixed. E2-1 and E2-2 are fixed.
+
+| Finding | Source | Severity | Verified | Disposition |
+|---|---|---|---|---|
+| E2-1 A remap rescan with a directory or file read failure still replaces all accounts' events and saves the new mapKey; old cursors stay, so lost history never returns | Grok, Codex (reproduced) | HIGH | yes: codex-session-events.ts:179,228,252,268; codex-event-refresh.ts:45,55 | fix: mark the scan complete only when every directory listing and file read succeeded; on an incomplete rescan do not replace events, cursors or mapKey (next round retries the full rescan); an empty but readable sessions dir still clears; regression test with a read failure then recovery |
+| E2-2 readPlanTypes throws on valid non-object JSON ([], null, string) | Grok, AGY | LOW | yes | fix: log and treat as empty map |
+
+A rescan replaces stored events only when every sessions directory listing and every session file read succeeded. If a listing or a file read fails, the refresh leaves the stored events, file cursors, recorded plans, and mapping key unchanged. The next refresh still has the previous mapping key and rereads the history. An empty sessions directory that can be read still clears the stored events.
+
+A stored plan map that is an array, `null`, or a string is logged as `codex_event_plan_types_invalid` and read as an empty map. The Codex refresh still attaches the event scan.
+
+| Commit | Change |
+|--------|--------|
+| `620e994` test | A file that cannot be read during a shape change must keep all 300 tokens on the original account, and a sessions directory that cannot be listed must keep them too. After the read succeeds, the 300 tokens move to the new account. An empty readable sessions directory still clears. |
+| `2a3c2eb` fix | An incomplete rescan does not replace events, cursors, or the mapping key. |
+| `b534aa2` test | An array, null, or string plan map must not stop the scan. |
+| `37964cb` fix | Those values are logged and read as an empty plan map. |
+
+Checks after `37964cb`, before this note:
+
+| Command | Result |
+|---------|--------|
+| `bun run test -- --run` | 69 files, 1301 passed, exit 0 |
+| `bun test packages/storage/test packages/providers/test apps/server/test apps/web/src` | 68 files, 505 passed, 1 failed, exit 1 |
+| `bun run build:webui` | passed (`tsc`, Vite, server bundle), exit 0 |
+
+The one failure is `CcusageProvider > default command runner cleans up child processes on timeout`. The same test passed when run alone (1 pass, exit 0). The Antigravity Cloud Code test that reaches a running language server did not fail in this run. This session does not push.
