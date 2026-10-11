@@ -417,7 +417,9 @@ function formatMoneySpan(low: number | null, high: number | null): string {
 
 function formatSpan(low: number | null, high: number | null, format: (value: number) => string): string {
   if (low == null && high == null) return "—";
-  if (low == null || high == null || low === high) return format((low ?? high) as number);
+  if (low != null && high != null && low === high) return format(low);
+  if (low == null) return `Unknown–${format(high as number)}`;
+  if (high == null) return `${format(low)}–Unknown`;
   return `${format(low)}–${format(high)}`;
 }
 
