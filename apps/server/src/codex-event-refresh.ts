@@ -76,7 +76,16 @@ function shapeFor(
 
 function readPlanTypes(raw: string | null): Record<string, string> {
   if (!raw) return {};
-  const parsed = JSON.parse(raw) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "codex_event_plan_types_invalid",
+      code: error instanceof SyntaxError ? "SYNTAX" : "UNKNOWN",
+    }));
+    return {};
+  }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("codex_event_plan_types is not an object.");
   }
