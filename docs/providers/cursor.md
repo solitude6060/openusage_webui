@@ -46,7 +46,7 @@ Cursor reports pool percents and an included dollar amount for the same billing 
 
 Cursor staff wrote on 2026-08-13 that `totalPercentUsed`, `autoPercentUsed`, and `apiPercentUsed` follow an internal metric of their own, and that the usage sentence uses `includedSpend / limit`. Current Cursor docs describe the two monthly pools and show each as a percentage on the Spending tab. Upstream OpenUsage treats the included dollar amount as the older cap, used when the pool percents are absent.
 
-A local quotas read on 2026-10-11 returned four different figures for Total usage, Auto usage, API usage, and included spend divided by `limit`. The quotas payload has no per-pool dollar size, so the weights inside `totalPercentUsed` stay uncalculated here. A public forum post on 2026-09-30 matched `(Cursor Models dollars + Other Models dollars) / (Cursor Models pool + Other Models pool)` on another account. This app has not checked that formula against its own snapshot.
+A local quotas read on 2026-10-11 returned four different figures for Total usage, Auto usage, API usage, and included spend divided by `limit`. The quotas payload has no per-pool dollar size, so the weights inside `totalPercentUsed` stay uncalculated here.
 
 Allowance continues to scale tokens and API dollars by the Total usage percent. On that page the Cursor dollar limit is labeled Included Dollar Limit and remains `planUsage.limit`.
 

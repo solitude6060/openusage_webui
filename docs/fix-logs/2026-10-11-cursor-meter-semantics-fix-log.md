@@ -22,7 +22,7 @@ Cursor's current period payload carries two readings with different denominators
 
 `totalPercentUsed` is the Total usage percent Allowance already stores. `limit` is the Stated Cap. They are different denominators, so spend divided by `limit` was not substituted for the percent.
 
-A read-only `GET /api/usage/quotas` on 2026-10-11 returned four different figures for the Cursor account: Total usage `usedPercent` 8.8245 with `usedValue` 273.56 and `limitValue` 400 (included spend is 68.39% of that limit), Auto usage 5.7797, API usage 100. The quotas payload has no per-pool dollar size, so the weights inside `totalPercentUsed` stay uncalculated for this account. A public forum reconstruction on 2026-09-30 (thread 172012) matched `(Cursor Models dollars + Other Models dollars) / (the two pool sizes)` on another account. That formula was not checked against this snapshot.
+A read-only `GET /api/usage/quotas` on 2026-10-11 returned four different figures for the Cursor account: Total usage `usedPercent` 8.8245 with `usedValue` 273.56 and `limitValue` 400 (included spend is 68.39% of that limit), Auto usage 5.7797, API usage 100. The quotas payload has no per-pool dollar size, so the weights inside `totalPercentUsed` stay uncalculated for this account.
 
 ## Decision
 
