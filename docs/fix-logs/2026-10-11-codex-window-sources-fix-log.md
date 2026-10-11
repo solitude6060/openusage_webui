@@ -74,3 +74,7 @@ Checks after `4efdd9f`, before this note:
 | `bun run build:webui` | passed (web `tsc` + Vite, server bundle) |
 
 The known `CcusageProvider` timeout flake and the Antigravity Cloud Code test that reaches a running language server did not fail in this run.
+
+## Review round 2
+
+Target `1d986db`. Grok Build `grok-4.7` high, AGY `gemini-3.8-flash-high`, Codex `gpt-6.1-sol` high (second Codex home, quota fallback from the first home; same family as no implementer here): all APPROVE. W1-1 and W1-2 confirmed resolved. Codex LOW, deferred: for non-Codex providers, two readings with the same `observed_at` in different periods can change which one the latest-per-period query returns; no current provider writes such pairs.
