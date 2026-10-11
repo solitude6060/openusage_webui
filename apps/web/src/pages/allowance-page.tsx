@@ -109,7 +109,7 @@ export function AllowancePage({
                   A subscription period runs from one reset to the next. The baseline is the median of the last four included periods. The lowest, the highest, and how many periods that median used sit beside it, for tokens and for API dollars.
                 </p>
                 <p className="settings-help muted">
-                  The current period shows the latest meter reading, the tokens and API dollars fully inside it so far, and what remains of the baseline. The projected end percent is that reading divided by how much of the period has passed. Unreliable means the period is less than a day old, or one of the last four periods ended more than an hour before its stated reset.
+                  The current period shows the latest meter reading, the tokens and API dollars fully inside it so far, and what remains of the baseline. The projected end percent is that reading divided by how much of the period has passed. Unreliable means the period is less than a day old, the meter fell during this period, or one of the last four periods ended more than an hour before its stated reset.
                 </p>
               </>
             ) : (
@@ -323,6 +323,7 @@ function CurrentCycle({ current }: { current: NonNullable<AllowanceCycleSummary[
       <p className="allowance-figure">
         {current.usedPercent == null ? "—" : formatPercent(current.usedPercent)}
         <span className="allowance-unit"> used</span>
+        {current.meterFell ? <> · <span>Meter Fell</span></> : null}
       </p>
       <p className="allowance-meta">
         So Far {formatCompactTokenCount(current.tokens)} tokens

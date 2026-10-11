@@ -278,6 +278,7 @@ describe("allowance current cycle", () => {
       remainingApiCost: 8,
       projectedEndPercent: 40,
       projectionReliable: true,
+      meterFell: false,
     });
   });
 

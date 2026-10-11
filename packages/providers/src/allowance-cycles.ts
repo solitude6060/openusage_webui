@@ -56,6 +56,7 @@ export interface AllowanceCycleCurrent {
   remainingApiCost: number | null;
   projectedEndPercent: number | null;
   projectionReliable: boolean;
+  meterFell: boolean;
 }
 
 export interface AllowanceCycleSummary {
@@ -186,6 +187,8 @@ function currentCycle(
     .filter((point) => point.at >= cycle.start && point.at <= nowMs)
     .sort((left, right) => left.at - right.at);
   const usedPercent = readings.at(-1)?.usedPercent ?? null;
+  const meterFell = readings.some((point, index) =>
+    index > 0 && point.usedPercent < readings[index - 1]!.usedPercent);
   const usage = usageInside(rows, cycle.start, nowMs);
   const lengthMs = cycle.end - cycle.start;
   const elapsedFraction = lengthMs > 0 ? (nowMs - cycle.start) / lengthMs : 0;
@@ -205,7 +208,8 @@ function currentCycle(
     remainingTokens: scaleRemaining(baseline.tokens?.median ?? null, usedPercent),
     remainingApiCost: scaleRemaining(baseline.apiDollars?.median ?? null, usedPercent),
     projectedEndPercent: elapsedFraction > 0 && usedPercent != null ? usedPercent / elapsedFraction : null,
-    projectionReliable: nowMs - cycle.start >= DAY_MS && !restarted,
+    projectionReliable: nowMs - cycle.start >= DAY_MS && !restarted && !meterFell,
+    meterFell,
   };
 }
 

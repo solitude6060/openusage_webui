@@ -180,6 +180,7 @@ export interface AllowanceCycleCurrent {
   remainingApiCost: number | null;
   projectedEndPercent: number | null;
   projectionReliable: boolean;
+  meterFell: boolean;
 }
 
 export interface AllowanceCycleSummary {
