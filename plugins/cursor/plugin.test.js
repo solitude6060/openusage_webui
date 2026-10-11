@@ -1483,6 +1483,64 @@ describe("cursor plugin", () => {
     expect(spendLine).toEqual({ type: "text", label: "Included Spend", value: "$80.00 of $200.00" })
   })
 
+  it("uses limit minus remaining when included spend is missing", async () => {
+    const ctx = makeCtx()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            billingCycleEnd: "1775234693029",
+            planUsage: {
+              remaining: 12000,
+              limit: 20000,
+              totalPercentUsed: 12.5,
+            },
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const spendLine = result.lines.find((line) => line.label === "Included Spend")
+
+    expect(spendLine).toEqual({ type: "text", label: "Included Spend", value: "$80.00 of $200.00" })
+  })
+
+  it("omits included spend when included spend and remaining are both missing", async () => {
+    const ctx = makeCtx()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            billingCycleEnd: "1775234693029",
+            planUsage: {
+              totalSpend: 5000,
+              limit: 20000,
+              totalPercentUsed: 12.5,
+            },
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const totalLine = result.lines.find((line) => line.label === "Total usage")
+
+    expect(totalLine.used).toBe(12.5)
+    expect(totalLine.usedValue).toBe(50)
+    expect(result.lines.find((line) => line.label === "Included Spend")).toBeUndefined()
+  })
+
   it("falls back to computed percent when totalPercentUsed is not finite", async () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
