@@ -138,6 +138,7 @@ export type AllowanceRange = "1" | "3" | "5" | "7" | "30" | "month" | "period" |
 export type AllowanceCycleExclusion =
   | "meter-fell"
   | "shared-log"
+  | "history-truncated"
   | "no-tokens"
   | "below-min-percent"
   | "edge-uncertain"

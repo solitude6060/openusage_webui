@@ -164,6 +164,9 @@ export async function loadAllowanceCycleSummaries(
   );
   return {
     span: "cycles",
-    summaries: buildAllowanceCycleSummaries(observations, tokenRows, sharedProviderIds, now),
+    summaries: buildAllowanceCycleSummaries(observations, tokenRows, sharedProviderIds, now, {
+      observationStartMs: historyStart,
+      tokenStartMs: historyStart - 24 * 60 * 60 * 1000,
+    }),
   };
 }

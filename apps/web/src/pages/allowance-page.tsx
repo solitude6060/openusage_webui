@@ -423,6 +423,7 @@ function formatSpan(low: number | null, high: number | null, format: (value: num
 function cycleReasonLabel(reason: AllowanceCycleExclusion | null): string {
   if (reason === "meter-fell") return "Meter Fell";
   if (reason === "shared-log") return "Shared Session Log";
+  if (reason === "history-truncated") return "History Truncated";
   if (reason === "no-tokens") return "No Tokens";
   if (reason === "below-min-percent") return "Below 10 Percent";
   if (reason === "edge-uncertain") return "Edge Uncertain";

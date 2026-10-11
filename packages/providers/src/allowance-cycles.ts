@@ -13,6 +13,7 @@ const EDGE_UNCERTAIN_RATIO = 1.25;
 export type AllowanceCycleExclusion =
   | "meter-fell"
   | "shared-log"
+  | "history-truncated"
   | "no-tokens"
   | "below-min-percent"
   | "edge-uncertain"
@@ -68,11 +69,17 @@ export interface AllowanceCycleSummary {
   cycles: AllowanceCompletedCycle[];
 }
 
+export interface AllowanceCycleHistory {
+  observationStartMs: number;
+  tokenStartMs: number;
+}
+
 export function buildAllowanceCycleSummaries(
   observations: AllowanceObservation[],
   tokenRows: AllowanceTokenRow[],
   sharedProviderIds: ReadonlySet<string>,
   now: Date,
+  history?: AllowanceCycleHistory,
 ): AllowanceCycleSummary[] {
   const nowMs = now.getTime();
   const summaries: AllowanceCycleSummary[] = [];
@@ -82,7 +89,7 @@ export function buildAllowanceCycleSummaries(
     const bounded = boundedCycles(points);
     const cycles = bounded
       .filter((cycle) => cycle.end <= nowMs)
-      .map((cycle) => measureCycle(cycle, rows, sharedProviderIds.has(window.providerId)))
+      .map((cycle) => measureCycle(cycle, rows, sharedProviderIds.has(window.providerId), history))
       .sort((left, right) => right.end.localeCompare(left.end));
     const open = bounded
       .filter((cycle) => cycle.start <= nowMs && nowMs < cycle.end)
@@ -112,7 +119,12 @@ interface UsageSide {
   rows: number;
 }
 
-function measureCycle(cycle: BoundedCycle, rows: AllowanceTokenRow[], shared: boolean): AllowanceCompletedCycle {
+function measureCycle(
+  cycle: BoundedCycle,
+  rows: AllowanceTokenRow[],
+  shared: boolean,
+  history: AllowanceCycleHistory | undefined,
+): AllowanceCompletedCycle {
   const readings = cycle.points
     .filter((point) => point.at >= cycle.start && point.at < cycle.end)
     .sort((left, right) => left.at - right.at);
@@ -132,7 +144,10 @@ function measureCycle(cycle: BoundedCycle, rows: AllowanceTokenRow[], shared: bo
   const tokensHigh = inside.tokens + straddle.tokens;
   const apiCostLow = sideCost(inside);
   const apiCostHigh = combinedCost(inside, straddle);
-  const exclusion = cycleExclusion(meterFell, shared, tokensLow, tokensHigh, endPercent, observationGap);
+  const truncated = history != null && (
+    cycle.start < history.observationStartMs || cycle.start < history.tokenStartMs
+  );
+  const exclusion = cycleExclusion(meterFell, shared, truncated, tokensLow, tokensHigh, endPercent, observationGap);
   return {
     start: new Date(cycle.start).toISOString(),
     end: new Date(cycle.end).toISOString(),
@@ -226,6 +241,7 @@ function stats(values: number[]): AllowanceCycleStat | null {
 function cycleExclusion(
   meterFell: boolean,
   shared: boolean,
+  historyTruncated: boolean,
   tokensLow: number,
   tokensHigh: number,
   endPercent: number,
@@ -233,6 +249,7 @@ function cycleExclusion(
 ): AllowanceCycleExclusion | null {
   if (meterFell) return "meter-fell";
   if (shared) return "shared-log";
+  if (historyTruncated) return "history-truncated";
   if (tokensLow <= 0) return "no-tokens";
   if (endPercent < CYCLE_MIN_PERCENT) return "below-min-percent";
   if (tokensHigh > tokensLow * EDGE_UNCERTAIN_RATIO) return "edge-uncertain";
