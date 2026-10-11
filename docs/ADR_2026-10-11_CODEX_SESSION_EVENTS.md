@@ -37,8 +37,9 @@ analysis, section 4.2. Per completed cycle there, the medians are 2.75M tokens p
 2. A refresh cursor table `codex_event_cursors` stores the session file path, modified time,
    byte offset, and the last cumulative total. It exists so the next refresh can resume.
    The recorded plan name for each account is stored in `app_meta` under
-   `codex_event_plan_types`. A value that is not valid JSON is read as an empty map
-   and logged. Neither store holds prompt text or an account id.
+   `codex_event_plan_types`. A value that is not valid JSON, or that is JSON but
+   not an object, is read as an empty map and logged. Neither store holds prompt
+   text or an account id.
 3. The scanner reads `*.jsonl` under the real `sessions` directory of each configured Codex
    home. A directory reached through a symlink is read once. Only `token_count` events are
    kept. An event whose cumulative `total_token_usage` did not change since the previous

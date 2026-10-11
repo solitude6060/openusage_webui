@@ -91,7 +91,11 @@ function readPlanTypes(raw: string | null): Record<string, string> {
     return {};
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("codex_event_plan_types is not an object.");
+    console.error(JSON.stringify({
+      event: "codex_event_plan_types_invalid",
+      code: "NOT_OBJECT",
+    }));
+    return {};
   }
   const plans: Record<string, string> = {};
   for (const [id, plan] of Object.entries(parsed)) {
