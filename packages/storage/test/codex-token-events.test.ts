@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SqliteStorage } from "../src/index";
@@ -141,6 +141,52 @@ describe("codex_token_events", () => {
       expect.objectContaining({ providerId: "codex:codex", model: "gpt-5.6-sol", tokens: 50 }),
       expect.objectContaining({ providerId: "codex:codex", model: "All Models", tokens: 100 }),
     ]));
+    storage.close();
+  });
+
+  test("drops the real account's mixed daily row when only the linked account has events", async () => {
+    const storage = await open();
+    const codexHome = join(dataDir, "codex");
+    const familyHome = join(dataDir, "family");
+    mkdirSync(join(codexHome, "sessions"), { recursive: true });
+    mkdirSync(familyHome, { recursive: true });
+    symlinkSync(join(codexHome, "sessions"), join(familyHome, "sessions"));
+    await storage.upsertProviderAccount({
+      id: "codex:codex",
+      providerId: "codex",
+      label: "Codex",
+      homePath: codexHome,
+      enabled: true,
+      sortOrder: 0,
+    });
+    await storage.upsertProviderAccount({
+      id: "codex:family",
+      providerId: "codex",
+      label: "Codex Family",
+      homePath: familyHome,
+      enabled: true,
+      sortOrder: 1,
+    });
+    await storage.upsertUsageRecords([{
+      id: "mixed-daily",
+      providerId: "codex:codex",
+      tool: "ccusage",
+      model: "gpt-5.6-sol",
+      totalTokens: 50,
+      startedAt: "2026-10-09T00:00:00.000Z",
+      source: "local-log",
+    }]);
+    await storage.upsertCodexTokenEvents?.([plus]);
+
+    const rows = (await storage.listAllowanceTokenRows(FROM)).filter((row) => row.providerId.startsWith("codex"));
+    expect(rows).toEqual([{
+      providerId: "codex:family",
+      model: "All Models",
+      tokens: 40,
+      costUsd: null,
+      startedAt: "2026-10-09T12:00:00.000Z",
+      bucketEnd: "2026-10-09T13:00:00.000Z",
+    }]);
     storage.close();
   });
 });
