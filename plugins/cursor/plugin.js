@@ -1056,11 +1056,13 @@
       if (hasPlanUsageLimit && pu.limit > 0) {
         const includedCents = Number.isFinite(pu.includedSpend)
           ? pu.includedSpend
-          : pu.limit - (pu.remaining ?? 0)
-        lines.push(ctx.line.text({
-          label: "Included Spend",
-          value: formatUsdFromCents(includedCents) + " of " + formatUsdFromCents(pu.limit),
-        }))
+          : (Number.isFinite(pu.remaining) ? pu.limit - pu.remaining : null)
+        if (includedCents != null) {
+          lines.push(ctx.line.text({
+            label: "Included Spend",
+            value: formatUsdFromCents(includedCents) + " of " + formatUsdFromCents(pu.limit),
+          }))
+        }
       }
     }
 
