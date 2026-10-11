@@ -85,8 +85,8 @@ describe("Subscription period", () => {
                   apiCostHigh: 16.5,
                   allowanceLow: 250,
                   allowanceHigh: 412.5,
-                  apiDollarsLow: 25,
-                  apiDollarsHigh: 41.25,
+                  apiDollarsLow: 4,
+                  apiDollarsHigh: null,
                   included: false,
                   exclusion: "meter-fell",
                 },
@@ -127,6 +127,8 @@ describe("Subscription period", () => {
     expect(screen.getAllByText("Meter Fell")).toHaveLength(3);
     expect(screen.getByRole("heading", { name: "Current Cycle" }).closest("section")).toHaveTextContent("Meter Fell");
     expect(screen.getAllByText("Below 10 Percent")).toHaveLength(2);
+    expect(screen.getAllByText("$4.00–Unknown")).toHaveLength(2);
+    expect(screen.getAllByText("$11.00")).toHaveLength(2);
     expect(screen.getByText("Unreliable")).toBeInTheDocument();
     const details = screen.getByText("How This Is Calculated").closest("details");
     expect(details).toHaveTextContent("last four included periods");
