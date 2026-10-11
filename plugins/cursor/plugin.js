@@ -1051,6 +1051,14 @@
         limitUnit: hasPlanUsageLimit && pu.limit > 0 ? "usd" : undefined,
         usedValue: hasPlanUsageLimit && pu.limit > 0 ? ctx.fmt.dollars(planUsed) : undefined,
       }))
+
+      // Dollar amount against planUsage.limit. Total usage percent stays totalPercentUsed.
+      if (hasPlanUsageLimit && pu.limit > 0) {
+        lines.push(ctx.line.text({
+          label: "Included Spend",
+          value: formatUsdFromCents(planUsed) + " of " + formatUsdFromCents(pu.limit),
+        }))
+      }
     }
 
     if (typeof pu.autoPercentUsed === "number" && Number.isFinite(pu.autoPercentUsed)) {

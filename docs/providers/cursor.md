@@ -17,9 +17,10 @@
 | Metric | Source field | Scope | Format | Notes |
 |---|---|---|---|---|
 | Credits | `GetCreditGrantsBalance` + `/api/auth/stripe.customerBalance` | overview | dollars | Combined total: active grant total + Stripe prepaid balance (negative `customerBalance`). Used stays based on grant usage. |
-| Total usage | `planUsage.totalPercentUsed` | overview | percent (individual) / dollars (team) | Falls back to computed `(limit - remaining) / limit * 100` when `totalPercentUsed` is not finite. Free/individual payloads observed on 2026-03-06 may omit `limit`; plugin uses `totalPercentUsed` directly in that case. Team accounts use dollars format and still require `limit`. |
-| Auto usage | `planUsage.autoPercentUsed` | detail | percent | Omitted when field is missing or non-finite |
-| API usage | `planUsage.apiPercentUsed` | detail | percent | Omitted when field is missing or non-finite |
+| Total usage | `planUsage.totalPercentUsed` | overview | percent (individual) / dollars (team) | Individual accounts use Cursor's combined pool percent. Spend divided by `limit` is Included Spend, a separate reading. Falls back to computed `(limit - remaining) / limit * 100` only when `totalPercentUsed` is not finite. Free/individual payloads observed on 2026-03-06 may omit `limit`; plugin uses `totalPercentUsed` directly in that case. Team accounts use dollars format and still require `limit`. |
+| Included Spend | `planUsage.totalSpend` and `planUsage.limit` | overview | dollars | Individual accounts with a `limit`. `totalSpend` when present, otherwise `limit - remaining`. Shown as `$X.XX of $Y.YY`. This is the included dollar amount. Its percent of `limit` can differ from Total usage, Auto usage, and API usage. |
+| Auto usage | `planUsage.autoPercentUsed` | overview | percent | Cursor Models pool (Cursor's own models, including Grok and Composer). Omitted when the field is missing or non-finite. `limit` is the Included Spend denominator. |
+| API usage | `planUsage.apiPercentUsed` | overview | percent | Other Models pool (third-party models). Omitted when the field is missing or non-finite. `limit` is the Included Spend denominator. |
 | Requests | `/api/usage` (enterprise) | overview | count | Enterprise accounts only; unchanged from previous behavior |
 | On-demand | `spendLimitUsage` | detail | dollars | Only when individual or pooled limit > 0 |
 | Last 7 Days | `get-filtered-usage-events` | detail | text | Soft-fail. Sum of event API price + call count + tokens for the last 7 days, followed by top models. Kept in detail with model rows (not promoted to the card summary). |
@@ -32,7 +33,22 @@
 
 **Enterprise flow** remains request-based via the REST `/api/usage` endpoint -- unchanged.
 
-**Team detection**: an account is treated as "team" when `planName` is `"Team"`, or `spendLimitUsage.limitType` is `"team"`, or `spendLimitUsage.pooledLimit` is greater than `0`. Team accounts display Total usage in dollars; individual accounts display it as a percentage. When `planUsage.limit` is present, that dollar limit is stored with the quota observation. The Allowance page shows it as Stated Cap next to the token estimate. Event prices (`chargedCents`, otherwise `tokenUsage.totalCents`) are stored on the daily token rows. The same events are also grouped by UTC hour into a separate `token_hourly` table that only the Allowance page reads, so its measured span can start and end at hour boundaries. Allowance scales that recorded API price by the same percent movement and shows it as API Value.
+**Team detection**: an account is treated as "team" when `planName` is `"Team"`, or `spendLimitUsage.limitType` is `"team"`, or `spendLimitUsage.pooledLimit` is greater than `0`. Team accounts display Total usage in dollars; individual accounts display it as a percentage. When `planUsage.limit` is present, that dollar limit is stored with the quota observation. The Allowance page shows it as Stated Cap next to the token estimate. Stated Cap is this included dollar limit. The Total usage percent uses its own denominator. Event prices (`chargedCents`, otherwise `tokenUsage.totalCents`) are stored on the daily token rows. The same events are also grouped by UTC hour into a separate `token_hourly` table that only the Allowance page reads, so its measured span can start and end at hour boundaries. Allowance scales that recorded API price by the Total usage percent and shows it as API Value.
+
+## What The Percent Means
+
+Cursor reports pool percents and an included dollar amount for the same billing cycle. The readings use different denominators.
+
+- **Auto usage** is `autoPercentUsed`, the Cursor Models pool (Cursor's own models, including Grok and Composer).
+- **API usage** is `apiPercentUsed`, the Other Models pool (third-party models at their API price).
+- **Total usage** on an individual account is `totalPercentUsed`, Cursor's combined pool percent. Upstream OpenUsage uses this structured percentage for Total Usage when Cursor supplies it.
+- **Included Spend** is the dollar amount. `limit` is the plan's included dollar amount, in cents. Spend prefers `totalSpend` (included spend plus bonus spend); otherwise it is `limit - remaining`. Cursor's sentence "You've used N% of your included usage" uses included spend divided by `limit`.
+
+Cursor staff wrote on 2026-08-13 that `totalPercentUsed`, `autoPercentUsed`, and `apiPercentUsed` follow an internal metric of their own, and that the usage sentence uses `includedSpend / limit`. Current Cursor docs describe the two monthly pools and show each as a percentage on the Spending tab. Upstream OpenUsage treats the included dollar amount as the older cap, used when the pool percents are absent.
+
+A local quotas read on 2026-10-11 returned four different figures for Total usage, Auto usage, API usage, and included spend divided by `limit`. The quotas payload has no per-pool dollar size, so the weights inside `totalPercentUsed` stay uncalculated here. A public forum post on 2026-09-30 matched `(Cursor Models dollars + Other Models dollars) / (Cursor Models pool + Other Models pool)` on another account. This app has not checked that formula against its own snapshot.
+
+Allowance continues to scale tokens and API dollars by the Total usage percent. Stated Cap remains `planUsage.limit`, the included dollar amount.
 
 ## Endpoints
 
@@ -68,9 +84,9 @@ Returns current billing cycle spend, limits, and percentage used.
     "limit": 40000,                       // cents — plan included amount
     "remainingBonus": false,              // true when bonus credits still available
     "bonusTooltip": "...",
-    "autoPercentUsed": 0,                 // auto-mode usage %
-    "apiPercentUsed": 46.444,             // API/manual usage %
-    "totalPercentUsed": 15.48             // combined %
+    "autoPercentUsed": 0,                 // Cursor Models pool %
+    "apiPercentUsed": 46.444,             // Other Models pool %
+    "totalPercentUsed": 15.48             // combined pool %; not totalSpend / limit
   },
   "spendLimitUsage": {                    // on-demand budget (after plan exhausted)
     "totalSpend": 0,                      // cents
