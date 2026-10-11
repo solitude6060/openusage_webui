@@ -78,3 +78,40 @@ Recorded on this branch after `f225c9d`. The following doc-only commit `84e1ff9`
 | `bun run build:webui` | passed (web `tsc` + Vite, server bundle) |
 
 The bun failure is `CcusageProvider > default command runner cleans up child processes on timeout`: after the 200 ms wait the marker file was still present. A second run of that file passed 12 tests and failed the same one. It was not changed here. The Antigravity Cloud Code test that reaches a running language server did not fail in this run.
+
+## Review round 1
+
+Reviewed at `34667a5`. Grok and Codex requested changes. One finding was verified.
+
+| Finding | Source | Severity | Verified | Disposition |
+|---|---|---|---|---|
+| N1-1 shapeFor (apps/server/src/codex-event-refresh.ts:69-78) classifies raw latest observations; with period-aware latest rows an account can carry a 7-day Session and a 5-hour Session (same timestamp, unordered) or a stale Session after a Weekly tombstone, giving a wrong or null shape and unassigned/misassigned events | Grok, Codex (both reproduced) | MEDIUM | yes: listLatestQuotaObservations per (provider, window, period) since #55 | fix: classify `collapseQuotaWindows(aliasCodexSevenDaySessions(rows))` in shapeFor; tests: same-timestamp 7-day + 5-hour Session → five-hour-primary; 7-day Session alone → weekly-primary; legacy Session superseded by a Weekly tombstone → null |
+
+`shapeFor` sent each account's latest quota rows to the classifier with no alias and no newest-row collapse. `listLatestQuotaObservations` keeps one row per provider, window, and period, so one Codex account can hold a 7-day Session and a 5-hour Session from the same time. The classifier keeps a single Session row. The new test received `weekly-primary` for that pair. A 7-day Session with no shorter Session was already `weekly-primary`.
+
+A refresh that drops every quota window writes a newer Weekly absence and leaves the old 7-day Session present. The stored rows in the new test were that pair. The scan still returned `weekly-primary`.
+
+`shapeFor` now classifies `collapseQuotaWindows(aliasCodexSevenDaySessions(rows))`. The 7-day Session is read as Weekly and the 5-hour Session stays Session, so the pair is `five-hour-primary`. The newer Weekly absence replaces the older Session, so the shape is null and that account is left out of event assignment.
+
+The I3 note above says the refresh scan needed no change because it classifies the plugin lines of the account being refreshed. That path is unchanged. This round covers the stored rows used for the other accounts.
+
+| Commit | Change |
+|--------|--------|
+| `c7fe3e7` | test: a same-time 7-day Session and 5-hour Session must be five-hour-primary; a 7-day Session alone stays weekly-primary |
+| `349312b` | fix: alias a stored 7-day Session before classification |
+| `e9874ed` | test: a Weekly absence after that Session must clear the shape |
+| `c3a00d9` | fix: keep the newest row of each window after the alias |
+
+`README_WEBUI.md`, `README_WEBUI.zh-TW.md`, `docs/USER_GUIDE_WEBUI.zh-TW.md`, and `docs/providers/codex.md` now say a saved 7-day Session counts as Weekly for this choice, and a later reading with no Weekly window clears that shape.
+
+### Checks
+
+Recorded on this branch after `c3a00d9`.
+
+| Command | Result |
+|---------|--------|
+| `bun run test -- --run` | 69 files, 1322 passed, 0 failed |
+| `bun test packages/storage/test packages/providers/test apps/server/test apps/web/src` | 74 files, 544 tests, 544 passed, 0 failed |
+| `bun run build:webui` | passed (web `tsc` + Vite, server bundle) |
+
+`CcusageProvider > default command runner cleans up child processes on timeout` passed in this run. The Antigravity Cloud Code test that reaches a running language server did not fail. Neither was changed. Nothing was pushed.
