@@ -34,15 +34,23 @@ window:
   of buckets fully inside (`low`), straddling tokens/cost (`high` = low + straddle),
   allowance per full meter `low / (end% / 100)` and the high counterpart, API dollars per full
   meter likewise (null when any in-cycle row has null cost), and `included` with `exclusion`
-  reason. Reasons: `meter-fell` (a reading drops inside the cycle), `shared-log` (provider in
-  `sharedProviderIds`), `no-tokens`, `below-min-percent` (end % < 20, reuse the existing
-  `IMPLIED_MIN_PERCENT` value), `observation-gap` (no reading in the last 24 h before the cycle end).
+  reason. Reasons, in order: `meter-fell` (a reading drops inside the cycle), `shared-log`
+  (provider in `sharedProviderIds`), `history-truncated` (cycle start is before the observation
+  load start or the token load start; the loader passes the 120-day observation start and the
+  token start one day earlier), `no-tokens`, `below-min-percent` (end % < 10, constant
+  `CYCLE_MIN_PERCENT` on the cycle summary; `IMPLIED_MIN_PERCENT` stays 20), `edge-uncertain`
+  (`tokensHigh` > 1.25 × `tokensLow`), `observation-gap` (no reading in the last 24 h before the
+  cycle end).
 - Baseline over the last 4 included cycles: median, min, max, n for tokens per full meter and API
-  dollars per full meter.
+  dollars per full meter. The median uses the low side, the buckets fully inside the cycle.
 - Current (open) cycle: used % (latest reading), tokens and API cost since cycle start, elapsed
   fraction, remaining = (100 − used%) / 100 × baseline median, projected end % = used% /
-  elapsed fraction, `projectionReliable` false when elapsed < 1 day or the provider restarted early
-  in any of the last 4 cycles.
+  elapsed fraction, `meterFell` when a reading drops, `projectionReliable` false when elapsed < 1
+  day, the meter fell, or a cycle ended more than 1 hour before its stated reset in any of the
+  last 4 completed cycles. A reset less than or equal to 1 hour early is not an early restart.
+- A summary is omitted when it has no open cycle and no included cycle, and when every reading is
+  0%. The page shows one-sided API dollars as the known amount and `Unknown`, and says that the
+  baseline median uses only usage fully inside each period.
 
 S2. Route: `GET /api/usage/allowance?span=cycles` returns `{ span: "cycles", summaries }`, loaded in
 `apps/server/src/quota-history.ts` with `storage.listAllowanceTokenRows` (same rows and
@@ -65,9 +73,9 @@ Codex event import, Cursor meter semantics (separate plans), five-hour windows, 
 ## Acceptance
 
 - Unit tests on fixtures: early restart ends the cycle at the restart; meter fall excludes the
-  cycle; a straddling daily bucket yields low < high; end % below 20 excluded; the open cycle is
-  not in the baseline; median of 4 with one excluded uses the remaining included cycles; shared
-  provider excluded with `shared-log`.
+  cycle; a straddling daily bucket yields low < high; end % below 10 excluded and 17% included;
+  the open cycle is not in the baseline; median of 4 with one excluded uses the remaining included
+  cycles; shared provider excluded with `shared-log`.
 - Fixture mirroring the gap analysis Grok cycles (7.52 / 13.05 / 16.88 M per 1%) gives median
   13.05 M per 1%, n = 3.
 - API test for `span=cycles`; page test renders a card with baseline, current cycle and a reason.
