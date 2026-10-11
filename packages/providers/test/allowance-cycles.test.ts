@@ -212,3 +212,77 @@ describe("allowance cycle exclusion", () => {
     );
   });
 });
+
+describe("allowance current cycle", () => {
+  test("keeps the open cycle out of the baseline and projects the end percent", () => {
+    const summaries = buildAllowanceCycleSummaries(
+      [
+        observation("2026-09-30T12:00:00.000Z", 50, "2026-10-01T00:00:00.000Z"),
+        observation("2026-10-02T00:00:00.000Z", 10, "2026-10-08T00:00:00.000Z"),
+        observation("2026-10-04T00:00:00.000Z", 20, "2026-10-08T00:00:00.000Z"),
+      ],
+      [
+        bucket("2026-09-26T00:00:00.000Z", 500, { costUsd: 5 }),
+        bucket("2026-09-30T12:00:00.000Z", 50, { costUsd: 1 }),
+        bucket("2026-10-02T00:00:00.000Z", 200, { costUsd: 4 }),
+        bucket("2026-10-04T00:00:00.000Z", 999, { costUsd: 9 }),
+      ],
+      new Set(),
+      new Date("2026-10-04T12:00:00.000Z"),
+    );
+
+    const summary = summaries[0];
+    expect(summary?.cycles.map((cycle) => cycle.end)).toEqual(["2026-10-01T00:00:00.000Z"]);
+    expect(summary?.baseline.tokens).toEqual({ median: 1000, min: 1000, max: 1000, n: 1 });
+    expect(summary?.baseline.apiDollars).toEqual({ median: 10, min: 10, max: 10, n: 1 });
+    expect(summary?.current).toEqual({
+      start: "2026-10-01T00:00:00.000Z",
+      end: "2026-10-08T00:00:00.000Z",
+      lengthMs: WEEK_MS,
+      usedPercent: 20,
+      tokens: 200,
+      apiCost: 4,
+      elapsedFraction: 0.5,
+      remainingTokens: 800,
+      remainingApiCost: 8,
+      projectedEndPercent: 40,
+      projectionReliable: true,
+    });
+  });
+
+  test("marks the projection unreliable during the first day", () => {
+    const summaries = buildAllowanceCycleSummaries(
+      [
+        observation("2026-09-30T12:00:00.000Z", 50, "2026-10-01T00:00:00.000Z"),
+        observation("2026-10-01T06:00:00.000Z", 4, "2026-10-08T00:00:00.000Z"),
+      ],
+      [bucket("2026-09-26T00:00:00.000Z", 500, { costUsd: 5 })],
+      new Set(),
+      new Date("2026-10-01T12:00:00.000Z"),
+    );
+
+    expect(summaries[0]?.current).toEqual(expect.objectContaining({
+      usedPercent: 4,
+      elapsedFraction: 0.5 / 7,
+      projectedEndPercent: 56,
+      projectionReliable: false,
+    }));
+  });
+
+  test("marks the projection unreliable when one of the last four cycles restarted early", () => {
+    const summaries = buildAllowanceCycleSummaries(
+      [
+        observation("2026-10-08T00:00:00.000Z", 30, "2026-10-14T00:00:00.000Z"),
+        observation("2026-10-10T00:00:00.000Z", 40, "2026-10-14T00:00:00.000Z"),
+        observation("2026-10-12T00:00:00.000Z", 15, "2026-10-17T12:00:00.000Z"),
+      ],
+      [bucket("2026-10-08T00:00:00.000Z", 100, { costUsd: 1 })],
+      new Set(),
+      new Date("2026-10-14T12:00:00.000Z"),
+    );
+
+    const current = summaries[0]?.current;
+    expect(current?.projectionReliable).toBe(false);
+    expect((current?.elapsedFraction ?? 0) * (current?.lengthMs ?? 0)).toBeGreaterThanOrEqual(DAY_MS);
+  });
+});
