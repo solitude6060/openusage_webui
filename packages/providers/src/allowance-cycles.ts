@@ -7,6 +7,8 @@ import {
 } from "./allowance-estimate";
 import { IMPLIED_MIN_PERCENT } from "./quota-view";
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 export type AllowanceCycleExclusion =
   | "meter-fell"
   | "shared-log"
@@ -75,16 +77,21 @@ export function buildAllowanceCycleSummaries(
   for (const window of chooseWindows(observations)) {
     const points = meterPoints(observations, window).filter((point) => point.at <= nowMs);
     const rows = tokenRows.filter((row) => row.providerId === window.providerId && row.tokens > 0);
-    const cycles = boundedCycles(points)
+    const bounded = boundedCycles(points);
+    const cycles = bounded
       .filter((cycle) => cycle.end <= nowMs)
       .map((cycle) => measureCycle(cycle, rows))
       .sort((left, right) => right.end.localeCompare(left.end));
+    const open = bounded
+      .filter((cycle) => cycle.start <= nowMs && nowMs < cycle.end)
+      .sort((left, right) => right.start - left.start)[0] ?? null;
+    const baseline = baselineFrom(cycles);
     summaries.push({
       providerId: window.providerId,
       windowKey: window.windowKey,
       windowLabel: window.windowLabel,
-      baseline: { tokens: null, apiDollars: null },
-      current: null,
+      baseline,
+      current: open ? currentCycle(open, rows, nowMs, baseline, bounded.filter((cycle) => cycle.end <= nowMs)) : null,
       cycles,
     });
   }
@@ -92,7 +99,7 @@ export function buildAllowanceCycleSummaries(
 }
 
 interface BoundedCycle {
-  points: Array<{ at: number; usedPercent: number }>;
+  points: Array<{ at: number; usedPercent: number; resetsAt: string }>;
   start: number;
   end: number;
 }
@@ -110,6 +117,8 @@ function measureCycle(cycle: BoundedCycle, rows: AllowanceTokenRow[]): Allowance
   const endPercent = readings.reduce((max, point) => Math.max(max, point.usedPercent), 0);
   const meterFell = readings.some((point, index) =>
     index > 0 && point.usedPercent < readings[index - 1]!.usedPercent);
+  const latest = readings.at(-1)?.at;
+  const observationGap = latest == null || cycle.end - latest > DAY_MS;
   const inside = emptySide();
   const straddle = emptySide();
   for (const row of rows) {
@@ -121,7 +130,7 @@ function measureCycle(cycle: BoundedCycle, rows: AllowanceTokenRow[]): Allowance
   const tokensHigh = inside.tokens + straddle.tokens;
   const apiCostLow = sideCost(inside);
   const apiCostHigh = combinedCost(inside, straddle);
-  const exclusion = cycleExclusion(meterFell, tokensLow, endPercent);
+  const exclusion = cycleExclusion(meterFell, tokensLow, endPercent, observationGap);
   return {
     start: new Date(cycle.start).toISOString(),
     end: new Date(cycle.end).toISOString(),
@@ -140,10 +149,88 @@ function measureCycle(cycle: BoundedCycle, rows: AllowanceTokenRow[]): Allowance
   };
 }
 
-function cycleExclusion(meterFell: boolean, tokensLow: number, endPercent: number): AllowanceCycleExclusion | null {
+function baselineFrom(cycles: AllowanceCompletedCycle[]): AllowanceCycleSummary["baseline"] {
+  const sample = cycles.filter((cycle) => cycle.included).slice(0, 1);
+  return {
+    tokens: stats(presentNumbers(sample.map((cycle) => cycle.allowanceLow))),
+    apiDollars: stats(presentNumbers(sample.map((cycle) => cycle.apiDollarsLow))),
+  };
+}
+
+function currentCycle(
+  cycle: BoundedCycle,
+  rows: AllowanceTokenRow[],
+  nowMs: number,
+  baseline: AllowanceCycleSummary["baseline"],
+  completed: BoundedCycle[],
+): AllowanceCycleCurrent {
+  const readings = cycle.points
+    .filter((point) => point.at >= cycle.start && point.at <= nowMs)
+    .sort((left, right) => left.at - right.at);
+  const usedPercent = readings.at(-1)?.usedPercent ?? null;
+  const usage = usageInside(rows, cycle.start, nowMs);
+  const lengthMs = cycle.end - cycle.start;
+  const elapsedFraction = lengthMs > 0 ? (nowMs - cycle.start) / lengthMs : 0;
+  const restarted = completed
+    .slice()
+    .sort((left, right) => right.end - left.end)
+    .slice(0, 4)
+    .some(restartedEarly);
+  return {
+    start: new Date(cycle.start).toISOString(),
+    end: new Date(cycle.end).toISOString(),
+    lengthMs,
+    usedPercent,
+    tokens: usage.tokens,
+    apiCost: usage.cost,
+    elapsedFraction,
+    remainingTokens: scaleRemaining(baseline.tokens?.median ?? null, usedPercent),
+    remainingApiCost: scaleRemaining(baseline.apiDollars?.median ?? null, usedPercent),
+    projectedEndPercent: elapsedFraction > 0 && usedPercent != null ? usedPercent / elapsedFraction : null,
+    projectionReliable: nowMs - cycle.start >= DAY_MS && !restarted,
+  };
+}
+
+function usageInside(rows: AllowanceTokenRow[], from: number, to: number): { tokens: number; cost: number | null } {
+  const side = emptySide();
+  for (const row of rows) {
+    if (bucketPlace(row, from, to) === "inside") addRow(side, row);
+  }
+  return { tokens: side.tokens, cost: sideCost(side) };
+}
+
+function restartedEarly(cycle: BoundedCycle): boolean {
+  const stated = Math.max(...cycle.points.map((point) => Date.parse(point.resetsAt)));
+  return Number.isFinite(stated) && cycle.end < stated;
+}
+
+function scaleRemaining(median: number | null, usedPercent: number | null): number | null {
+  if (median == null || usedPercent == null) return null;
+  return ((100 - usedPercent) / 100) * median;
+}
+
+function presentNumbers(values: Array<number | null>): number[] {
+  return values.filter((value): value is number => value != null);
+}
+
+function stats(values: number[]): AllowanceCycleStat | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+  return { median, min: sorted[0]!, max: sorted[sorted.length - 1]!, n: sorted.length };
+}
+
+function cycleExclusion(
+  meterFell: boolean,
+  tokensLow: number,
+  endPercent: number,
+  observationGap: boolean,
+): AllowanceCycleExclusion | null {
   if (meterFell) return "meter-fell";
   if (tokensLow <= 0) return "no-tokens";
   if (endPercent < IMPLIED_MIN_PERCENT) return "below-min-percent";
+  if (observationGap) return "observation-gap";
   return null;
 }
 
