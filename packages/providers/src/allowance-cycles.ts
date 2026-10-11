@@ -5,10 +5,9 @@ import {
   type AllowanceObservation,
   type AllowanceTokenRow,
 } from "./allowance-estimate";
-import { IMPLIED_MIN_PERCENT } from "./quota-view";
-
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BASELINE_LIMIT = 4;
+const CYCLE_MIN_PERCENT = 10;
 
 export type AllowanceCycleExclusion =
   | "meter-fell"
@@ -232,7 +231,7 @@ function cycleExclusion(
   if (meterFell) return "meter-fell";
   if (shared) return "shared-log";
   if (tokensLow <= 0) return "no-tokens";
-  if (endPercent < IMPLIED_MIN_PERCENT) return "below-min-percent";
+  if (endPercent < CYCLE_MIN_PERCENT) return "below-min-percent";
   if (observationGap) return "observation-gap";
   return null;
 }

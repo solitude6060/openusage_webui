@@ -424,7 +424,7 @@ function cycleReasonLabel(reason: AllowanceCycleExclusion | null): string {
   if (reason === "meter-fell") return "Meter Fell";
   if (reason === "shared-log") return "Shared Session Log";
   if (reason === "no-tokens") return "No Tokens";
-  if (reason === "below-min-percent") return "Below 20 Percent";
+  if (reason === "below-min-percent") return "Below 10 Percent";
   if (reason === "observation-gap") return "Observation Gap";
   return "Included";
 }
