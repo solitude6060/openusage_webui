@@ -424,16 +424,80 @@
     })
   }
 
-  // Period durations in milliseconds. The usage payload's limit_window_seconds
-  // wins; these defaults cover responses that only send a percent header.
-  var PERIOD_SESSION_MS = 5 * 60 * 60 * 1000    // 5 hours
-  var PERIOD_WEEKLY_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+  // Period durations in milliseconds. Upstream exactKind matches these values
+  // exactly (5h = 18000000, 7d = 604800000). Any other duration keeps the slot.
+  var PERIOD_SESSION_MS = 5 * 60 * 60 * 1000
+  var PERIOD_WEEKLY_MS = 7 * 24 * 60 * 60 * 1000
 
-  function periodFromWindow(window, fallback) {
-    if (window && typeof window.limit_window_seconds === "number" && window.limit_window_seconds > 0) {
-      return window.limit_window_seconds * 1000
+  function readWindowPeriodMs(window) {
+    if (!window || typeof window.limit_window_seconds !== "number" || !(window.limit_window_seconds > 0)) {
+      return null
     }
-    return fallback
+    return window.limit_window_seconds * 1000
+  }
+
+  function exactWindowKind(window) {
+    var periodMs = readWindowPeriodMs(window)
+    if (periodMs === PERIOD_SESSION_MS) return "session"
+    if (periodMs === PERIOD_WEEKLY_MS) return "weekly"
+    return null
+  }
+
+  // A missing window still counts when its header has a percent, so headers can
+  // fill a slot. Body used_percent wins over that header.
+  function windowCandidate(windowValue, headerPercent, fallbackKind) {
+    var hasWindow = !!windowValue && typeof windowValue === "object"
+    if (!hasWindow && headerPercent === null) return null
+    var window = hasWindow ? windowValue : {}
+    var bodyPercent = typeof window.used_percent === "number" ? window.used_percent : null
+    return {
+      window: window,
+      usedPercent: bodyPercent !== null ? bodyPercent : headerPercent,
+      fallbackKind: fallbackKind,
+    }
+  }
+
+  function classifiedWindowLine(ctx, nowSec, kind, label, candidates) {
+    var exact = null
+    var fallback = null
+    for (var i = 0; i < candidates.length; i++) {
+      var candidate = candidates[i]
+      var kindOf = exactWindowKind(candidate.window)
+      if (exact === null && kindOf === kind) exact = candidate
+      if (fallback === null && kindOf === null && candidate.fallbackKind === kind) fallback = candidate
+    }
+    var chosen = exact || fallback
+    if (!chosen || chosen.usedPercent === null) return null
+    var periodMs = readWindowPeriodMs(chosen.window)
+    return ctx.line.progress({
+      label: label,
+      used: chosen.usedPercent,
+      limit: 100,
+      format: { kind: "percent" },
+      resetsAt: getResetsAtIso(ctx, nowSec, chosen.window),
+      periodDurationMs: periodMs !== null
+        ? periodMs
+        : (kind === "session" ? PERIOD_SESSION_MS : PERIOD_WEEKLY_MS),
+    })
+  }
+
+  function classifiedWindowLines(ctx, nowSec, rateLimit, labels, headerPercents) {
+    var headers = headerPercents || {}
+    var primaryHeader = headers.primary == null ? null : headers.primary
+    var secondaryHeader = headers.secondary == null ? null : headers.secondary
+    var primary = rateLimit && rateLimit.primary_window ? rateLimit.primary_window : null
+    var secondary = rateLimit && rateLimit.secondary_window ? rateLimit.secondary_window : null
+    var candidates = []
+    var primaryCandidate = windowCandidate(primary, primaryHeader, "session")
+    var secondaryCandidate = windowCandidate(secondary, secondaryHeader, "weekly")
+    if (primaryCandidate) candidates.push(primaryCandidate)
+    if (secondaryCandidate) candidates.push(secondaryCandidate)
+    var lines = []
+    var sessionLine = classifiedWindowLine(ctx, nowSec, "session", labels.session, candidates)
+    var weeklyLine = classifiedWindowLine(ctx, nowSec, "weekly", labels.weekly, candidates)
+    if (sessionLine) lines.push(sessionLine)
+    if (weeklyLine) lines.push(weeklyLine)
+    return lines
   }
 
   function queryTokenUsage(ctx) {
@@ -794,8 +858,6 @@
       const lines = []
       const nowSec = Math.floor(Date.now() / 1000)
       const rateLimit = data.rate_limit || null
-      const primaryWindow = rateLimit && rateLimit.primary_window ? rateLimit.primary_window : null
-      const secondaryWindow = rateLimit && rateLimit.secondary_window ? rateLimit.secondary_window : null
       const reviewWindow =
         data.code_review_rate_limit && data.code_review_rate_limit.primary_window
           ? data.code_review_rate_limit.primary_window
@@ -803,35 +865,14 @@
 
       const headerPrimary = readPercent(resp.headers["x-codex-primary-used-percent"])
       const headerSecondary = readPercent(resp.headers["x-codex-secondary-used-percent"])
-      // Body percent wins. Headers fill a slot only when that window omits used_percent
-      // (upstream a4cba27: a stale header was overriding a fresh window).
-      const sessionPercent = primaryWindow && typeof primaryWindow.used_percent === "number"
-        ? primaryWindow.used_percent
-        : headerPrimary
-      const weeklyPercent = secondaryWindow && typeof secondaryWindow.used_percent === "number"
-        ? secondaryWindow.used_percent
-        : headerSecondary
-
-      if (sessionPercent !== null) {
-        lines.push(ctx.line.progress({
-          label: "Session",
-          used: sessionPercent,
-          limit: 100,
-          format: { kind: "percent" },
-          resetsAt: getResetsAtIso(ctx, nowSec, primaryWindow),
-          periodDurationMs: periodFromWindow(primaryWindow, PERIOD_SESSION_MS)
-        }))
-      }
-      if (weeklyPercent !== null) {
-        lines.push(ctx.line.progress({
-          label: "Weekly",
-          used: weeklyPercent,
-          limit: 100,
-          format: { kind: "percent" },
-          resetsAt: getResetsAtIso(ctx, nowSec, secondaryWindow),
-          periodDurationMs: periodFromWindow(secondaryWindow, PERIOD_WEEKLY_MS)
-        }))
-      }
+      const windowLines = classifiedWindowLines(
+        ctx,
+        nowSec,
+        rateLimit,
+        { session: "Session", weekly: "Weekly" },
+        { primary: headerPrimary, secondary: headerSecondary },
+      )
+      for (let i = 0; i < windowLines.length; i++) lines.push(windowLines[i])
 
       if (Array.isArray(data.additional_rate_limits)) {
         for (const entry of data.additional_rate_limits) {
@@ -839,31 +880,14 @@
           const name = typeof entry.limit_name === "string" ? entry.limit_name : ""
           let shortName = name.replace(/^GPT-[\d.]+-Codex-/, "")
           if (!shortName) shortName = name || "Model"
-          const rl = entry.rate_limit
-          if (rl.primary_window && typeof rl.primary_window.used_percent === "number") {
-            lines.push(ctx.line.progress({
-              label: shortName,
-              used: rl.primary_window.used_percent,
-              limit: 100,
-              format: { kind: "percent" },
-              resetsAt: getResetsAtIso(ctx, nowSec, rl.primary_window),
-              periodDurationMs: typeof rl.primary_window.limit_window_seconds === "number"
-                ? rl.primary_window.limit_window_seconds * 1000
-                : PERIOD_SESSION_MS
-            }))
-          }
-          if (rl.secondary_window && typeof rl.secondary_window.used_percent === "number") {
-            lines.push(ctx.line.progress({
-              label: shortName + " Weekly",
-              used: rl.secondary_window.used_percent,
-              limit: 100,
-              format: { kind: "percent" },
-              resetsAt: getResetsAtIso(ctx, nowSec, rl.secondary_window),
-              periodDurationMs: typeof rl.secondary_window.limit_window_seconds === "number"
-                ? rl.secondary_window.limit_window_seconds * 1000
-                : PERIOD_WEEKLY_MS
-            }))
-          }
+          const extraLines = classifiedWindowLines(
+            ctx,
+            nowSec,
+            entry.rate_limit,
+            { session: shortName, weekly: shortName + " Weekly" },
+            null,
+          )
+          for (let i = 0; i < extraLines.length; i++) lines.push(extraLines[i])
         }
       }
 
