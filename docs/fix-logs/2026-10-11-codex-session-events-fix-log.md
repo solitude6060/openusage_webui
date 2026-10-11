@@ -57,3 +57,51 @@ The scan covered 4,174 session files and 205,460 kept events in total, of which 
 `81dd6b8` feat(server): store Codex session events on refresh
 
 The documentation update is the commit that adds this file.
+
+## Review round 1
+
+Reviewed target `8560153`. Grok, AGY, and Codex each returned REQUEST_CHANGES. E1-1 through E1-6 are fixed. The two LOW groups below stay as recorded.
+
+| Finding | Source | Severity | Verified | Disposition |
+|---|---|---|---|---|
+| E1-1 Day where only the linked (symlink) account has events: its event hours are added AND the real-directory account's mixed ccusage daily row stays → double count | Grok, AGY (reproduced) | HIGH | yes: allowance-tokens.ts:148,174 covered keyed per account | fix: treat accounts sharing one real sessions directory as a group; on a day where any group member has events, drop the group's ccusage daily rows; test where only the linked account has events |
+| E1-2 Remap (shape/plan change) rescans with INSERT OR IGNORE keyed by provider_id → same event stored under two accounts; unassignable events keep stale rows | Codex (reproduced) | HIGH | yes: codex-token-events.ts unique key includes provider_id | fix: on a mapping change, atomically replace the event rows for the rescanned scope (or key by account-independent event identity and update the owner); test swapping shapes |
+| E1-3 Plan learned in a round is not used to assign that round's unassigned events, and the saved mapKey prevents a later rescan | Grok, Codex | MEDIUM | yes: codex-session-events.ts:110-164 | fix: re-assign unassigned events with learned plans in the same round (or save the input mapKey so the next round rescans); test |
+| E1-4 eventDays uses the UTC-hour-truncated time for the local day; wrong in UTC+05:30 etc. | Codex (reproduced) | MEDIUM | yes: allowance-tokens.ts:143-148 | fix: local day from the event's own timestamp; test with TZ=Asia/Kolkata around midnight |
+| E1-5 meterShapeFromObservations needs a >=1 day "session"; after the parallel Codex window fix the 7-day meter is "weekly" only → null shape | AGY, known integration | MEDIUM | yes: codex-session-events.ts:76-88 | fix now: weekly-primary when there is a >=1 day window (session or weekly) and no sub-day session; test both labelings |
+| E1-6 readPlanTypes throws on invalid JSON in settings | AGY | LOW | yes | fix: treat as empty map and log |
+| AGY LOW: recursive walk each refresh; plan change disables learning | AGY | LOW | partly | defer, record in fix log |
+| Grok LOW: cursor/plan map kept after deleting account usage; replay in another file with new timestamp bypasses unique key | Grok | LOW | plausible | defer, record in fix log |
+
+Accounts that share one real sessions directory are one group. On a local day where any member has events, Allowance leaves out every member's ccusage row for that day and keeps each account's own event hours. The local day is the event's own timestamp in the server time zone. The hour bucket remains the UTC hour that contains the event.
+
+When the account shape or recorded plan changes, the scan deletes the stored event rows for those accounts and inserts the new assignment in one write. An event the new mapping cannot assign is removed. A later refresh with the same mapping still inserts only new bytes.
+
+A plan learned from a shaped event in the same scan is applied to the other events in that scan before the file cursor moves on. A meter is weekly-primary when it has a window of at least one day, on the session line or the weekly line, and no shorter session. A five-hour session plus a weekly line stays the other shape. A stored plan map that is not valid JSON is logged and read as an empty map.
+
+Each refresh still walks the session tree and stats every file. A history that contains more than one plan name for an account still does not record a learned plan. Deleting an account's usage still leaves the file cursor and the plan map. A replay written into another file with a new timestamp can still pass the unique key. Those items are unchanged.
+
+| Commit | Change |
+|--------|--------|
+| `bccb3a2` test | A day with events only on the linked account must hide the real account's mixed ccusage row. |
+| `6787f69` fix | Accounts that share one sessions directory are a group. Any member's events that day drop the group's ccusage rows. |
+| `1c24870` test | Swapping shapes must leave the event on the new account only, and a later unassignable rescan must drop it. |
+| `6ec05f4` fix | A mapping change replaces the scanned accounts' event rows in one write. |
+| `cfde9ff` test | A plan learned in one scan must assign that scan's event that has only the plan name. |
+| `ee1fd8b` fix | Unassigned events are assigned again after the same scan learns a plan. |
+| `53fb889` test | In Asia/Kolkata, an event at 00:15 must replace that local day's ccusage row. |
+| `c6a249a` fix | The local day comes from the event's own timestamp. |
+| `cfe043e` test | A 7-day Weekly line and a 7-day Session line are both weekly-primary. A 5-hour Session plus Weekly stays the other shape. |
+| `37a98d6` fix | weekly-primary is any window of at least one day when there is no shorter session. |
+| `6f8d988` test | An invalid plan map must not stop the scan. |
+| `7aa9c9d` fix | Invalid JSON is logged and read as an empty plan map. |
+
+Checks after `7aa9c9d`, before this note:
+
+| Command | Result |
+|---------|--------|
+| `bun run test -- --run` | 69 files, 1301 passed, exit 0 |
+| `bun test packages/storage/test packages/providers/test apps/server/test apps/web/src` | 67 files, 502 passed, 0 failed, exit 0 |
+| `bun run build:webui` | passed (`tsc`, Vite, server bundle), exit 0 |
+
+The known `CcusageProvider` timeout flake and the Antigravity Cloud Code test that reaches a running language server did not fail in this run. This session does not push.
