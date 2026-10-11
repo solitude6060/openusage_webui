@@ -5,7 +5,7 @@ import {
   type CodexEventScanResult,
   type CodexMeterShape,
 } from "../../../packages/providers/src/codex-session-events";
-import { aliasCodexSevenDaySessions } from "../../../packages/providers/src/quota-observations";
+import { aliasCodexSevenDaySessions, collapseQuotaWindows } from "../../../packages/providers/src/quota-observations";
 
 const PLAN_TYPES_KEY = "codex_event_plan_types";
 const MAP_KEY = "codex_event_map_key";
@@ -66,9 +66,9 @@ function shapeFor(
   observations: Awaited<ReturnType<SqliteStorage["listLatestQuotaObservations"]>>,
   providerId: string,
 ): CodexMeterShape | null {
-  const rows = aliasCodexSevenDaySessions(
+  const rows = collapseQuotaWindows(aliasCodexSevenDaySessions(
     observations.filter((row) => row.providerId === providerId),
-  );
+  ));
   return meterShapeFromObservations(rows);
 }
 
