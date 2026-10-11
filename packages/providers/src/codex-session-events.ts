@@ -112,6 +112,7 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
   const rescan = inputKey !== input.storedMapKey;
   const cursors = new Map((rescan ? [] : input.cursors).map((cursor) => [cursor.path, cursor]));
   const events: CodexTokenEventDraft[] = [];
+  const pending: ParsedEvent[] = [];
   const nextCursors: CodexEventCursor[] = [];
   const learned = new Map<string, Set<string>>();
   let filesRead = 0;
@@ -131,7 +132,7 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
       for (const event of parsed.events) {
         const providerId = assignAccount(event.shape, event.planType, input.accounts);
         if (!providerId) {
-          unmapped += 1;
+          pending.push(event);
           continue;
         }
         if (event.shape && event.planType) {
@@ -158,6 +159,14 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
     ...account,
     planType: planById.get(account.id) ?? account.planType,
   }));
+  for (const event of pending) {
+    const providerId = assignAccount(event.shape, event.planType, recorded);
+    if (!providerId) {
+      unmapped += 1;
+      continue;
+    }
+    events.push({ ...event.draft, providerId });
+  }
   return {
     events,
     cursors: nextCursors,

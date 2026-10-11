@@ -44,9 +44,11 @@ analysis, section 4.2. Per completed cycle there, the medians are 2.75M tokens p
    worker, after a successful probe, and the server writes the rows.
 4. An event is assigned to the one account whose quota observations report the same weekly
    window shape (weekly primary only, or 5-hour primary plus weekly secondary). If the
-   shape does not pick one account, the plan name recorded for an account is used. The
-   scanner never reads `creator_account_id`. Events that match no account are counted in
-   the error log and not stored. Quota observations are not written from these events.
+   shape does not pick one account, the plan name recorded for an account is used. A plan
+   learned from a shaped event in that same scan is used to assign the scan's other events
+   before the file cursor moves on. The scanner never reads `creator_account_id`. Events
+   that match no account are counted in the error log and not stored. Quota observations
+   are not written from these events.
 5. Accounts that share one real sessions directory are one group. When any account in the
    group has event rows on a local day, Allowance uses each account's hourly event sums
    for that day and leaves out every account's ccusage row for that day. A day with no
