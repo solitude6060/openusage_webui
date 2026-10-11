@@ -48,3 +48,22 @@ describe("allowance cycle boundaries", () => {
     ]);
   });
 });
+
+describe("allowance cycle exclusion", () => {
+  test("excludes a cycle whose meter falls", () => {
+    const summaries = buildAllowanceCycleSummaries(
+      [
+        observation("2026-10-02T00:00:00.000Z", 10, "2026-10-08T00:00:00.000Z"),
+        observation("2026-10-05T00:00:00.000Z", 40, "2026-10-08T00:00:00.000Z"),
+        observation("2026-10-07T12:00:00.000Z", 25, "2026-10-08T00:00:00.000Z"),
+      ],
+      [],
+      new Set(),
+      new Date("2026-10-09T00:00:00.000Z"),
+    );
+
+    expect(summaries.flatMap((item) => item.cycles)).toEqual([
+      expect.objectContaining({ included: false, exclusion: "meter-fell", endPercent: 40 }),
+    ]);
+  });
+});
