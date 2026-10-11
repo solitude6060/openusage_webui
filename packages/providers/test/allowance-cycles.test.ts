@@ -189,6 +189,37 @@ describe("allowance cycle exclusion", () => {
     }));
   });
 
+  test("excludes a cycle when straddling usage exceeds 25 percent of the inside usage", () => {
+    const cycles = [
+      { reset: "2026-09-10T00:00:00.000Z", straddle: 7 },
+      { reset: "2026-09-24T00:00:00.000Z", straddle: 25 },
+      { reset: "2026-10-08T00:00:00.000Z", straddle: 26 },
+    ];
+    const observations = cycles.map((cycle) =>
+      observation(new Date(Date.parse(cycle.reset) - 12 * 60 * 60 * 1000).toISOString(), 50, cycle.reset),
+    );
+    const rows = cycles.flatMap((cycle) => [
+      bucket(new Date(Date.parse(cycle.reset) - 3 * DAY_MS).toISOString(), 100, { costUsd: 1 }),
+      bucket(new Date(Date.parse(cycle.reset) - 12 * 60 * 60 * 1000).toISOString(), cycle.straddle, { costUsd: 1 }),
+    ]);
+    const found = buildAllowanceCycleSummaries(
+      observations,
+      rows,
+      new Set(),
+      new Date("2026-10-09T00:00:00.000Z"),
+    )[0]?.cycles ?? [];
+
+    expect(found.find((cycle) => cycle.end === "2026-09-10T00:00:00.000Z")).toEqual(
+      expect.objectContaining({ included: true, exclusion: null, tokensLow: 100, tokensHigh: 107 }),
+    );
+    expect(found.find((cycle) => cycle.end === "2026-09-24T00:00:00.000Z")).toEqual(
+      expect.objectContaining({ included: true, exclusion: null, tokensLow: 100, tokensHigh: 125 }),
+    );
+    expect(found.find((cycle) => cycle.end === "2026-10-08T00:00:00.000Z")).toEqual(
+      expect.objectContaining({ included: false, exclusion: "edge-uncertain", tokensLow: 100, tokensHigh: 126 }),
+    );
+  });
+
   test("excludes a cycle with no reading in its last day", () => {
     const summaries = buildAllowanceCycleSummaries(
       [
