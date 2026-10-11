@@ -5,6 +5,7 @@ import {
   type AllowanceObservation,
   type AllowanceTokenRow,
 } from "./allowance-estimate";
+import { IMPLIED_MIN_PERCENT } from "./quota-view";
 
 export type AllowanceCycleExclusion =
   | "meter-fell"
@@ -120,6 +121,7 @@ function measureCycle(cycle: BoundedCycle, rows: AllowanceTokenRow[]): Allowance
   const tokensHigh = inside.tokens + straddle.tokens;
   const apiCostLow = sideCost(inside);
   const apiCostHigh = combinedCost(inside, straddle);
+  const exclusion = cycleExclusion(meterFell, tokensLow, endPercent);
   return {
     start: new Date(cycle.start).toISOString(),
     end: new Date(cycle.end).toISOString(),
@@ -133,9 +135,16 @@ function measureCycle(cycle: BoundedCycle, rows: AllowanceTokenRow[]): Allowance
     allowanceHigh: perFullMeter(tokensHigh, endPercent),
     apiDollarsLow: perFullMeter(apiCostLow, endPercent),
     apiDollarsHigh: perFullMeter(apiCostHigh, endPercent),
-    included: !meterFell,
-    exclusion: meterFell ? "meter-fell" : null,
+    included: exclusion == null,
+    exclusion,
   };
+}
+
+function cycleExclusion(meterFell: boolean, tokensLow: number, endPercent: number): AllowanceCycleExclusion | null {
+  if (meterFell) return "meter-fell";
+  if (tokensLow <= 0) return "no-tokens";
+  if (endPercent < IMPLIED_MIN_PERCENT) return "below-min-percent";
+  return null;
 }
 
 function emptySide(): UsageSide {

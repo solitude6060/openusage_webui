@@ -1,7 +1,7 @@
 import type { QuotaObservation } from "./quota-observations";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const IMPLIED_MIN_PERCENT = 20;
+export const IMPLIED_MIN_PERCENT = 20;
 
 export interface QuotaTokenRow {
   providerId: string;
