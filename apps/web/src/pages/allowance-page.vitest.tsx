@@ -132,6 +132,7 @@ describe("Subscription period", () => {
     expect(screen.getByText("Unreliable")).toBeInTheDocument();
     const details = screen.getByText("How This Is Calculated").closest("details");
     expect(details).toHaveTextContent("last four included periods");
+    expect(details).toHaveTextContent("That median uses only the usage fully inside each period.");
     expect(details).toHaveTextContent("more than an hour before its stated reset");
     expect(details).toHaveTextContent("the meter fell during this period");
     expect(details).not.toHaveTextContent("Daily totals cannot be split inside a day");
