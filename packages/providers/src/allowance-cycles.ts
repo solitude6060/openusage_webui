@@ -175,6 +175,7 @@ function usableSummary(
 ): boolean {
   const included = summary.cycles.some((cycle) => cycle.included);
   if (summary.current == null && !included) return false;
+  if ((summary.current?.tokens ?? 0) > 0) return true;
   return !(points.length > 0 && points.every((point) => point.usedPercent === 0));
 }
 
