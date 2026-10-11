@@ -175,7 +175,7 @@ function AllowanceCycle({ cycle }: { cycle: AllowanceEstimate }) {
       </p>
       {isCursorAccount(cycle.providerId) && cycle.statedLimit != null ? (
         <p className="allowance-meta">
-          On individual plans the percent is Cursor's combined pool percent; its denominator differs from this dollar limit.
+          When Cursor reports its combined pool percent, that percent has a different denominator from this dollar limit. Team plans, and plans without that percent, use spend divided by this limit.
         </p>
       ) : null}
       {cycle.models.length > 0 ? (
