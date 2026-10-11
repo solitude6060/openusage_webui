@@ -351,7 +351,7 @@ test("allowance span=cycles excludes the duplicate Codex session account", async
       summaries: Array<{ providerId: string; cycles: Array<{ included: boolean; exclusion: string | null }> }>;
     };
     const byId = new Map(body.summaries.map((item) => [item.providerId, item]));
-    expect(byId.get("codex:family")?.cycles[0]?.exclusion).toBe("shared-log");
+    expect(byId.has("codex:family")).toBe(false);
     expect(byId.get("codex:codex")?.cycles[0]?.included).toBe(true);
   } finally {
     storage.close();

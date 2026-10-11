@@ -71,6 +71,7 @@ describe("allowance cycle exclusion", () => {
         observation("2026-10-02T00:00:00.000Z", 10, "2026-10-08T00:00:00.000Z"),
         observation("2026-10-05T00:00:00.000Z", 40, "2026-10-08T00:00:00.000Z"),
         observation("2026-10-07T12:00:00.000Z", 25, "2026-10-08T00:00:00.000Z"),
+        observation("2026-10-09T00:00:00.000Z", 12, "2026-10-15T00:00:00.000Z"),
       ],
       [],
       new Set(),
@@ -84,7 +85,10 @@ describe("allowance cycle exclusion", () => {
 
   test("counts a daily bucket that crosses either cycle edge in the high total only", () => {
     const summaries = buildAllowanceCycleSummaries(
-      [observation("2026-10-07T12:00:00.000Z", 50, "2026-10-08T00:00:00.000Z")],
+      [
+        observation("2026-10-07T12:00:00.000Z", 50, "2026-10-08T00:00:00.000Z"),
+        observation("2026-10-09T00:00:00.000Z", 12, "2026-10-15T00:00:00.000Z"),
+      ],
       [
         bucket("2026-09-20T00:00:00.000Z", 999, { costUsd: 99 }),
         bucket("2026-09-30T12:00:00.000Z", 40, { costUsd: 4 }),
@@ -175,7 +179,10 @@ describe("allowance cycle exclusion", () => {
 
   test("excludes a cycle with no tokens fully inside", () => {
     const summaries = buildAllowanceCycleSummaries(
-      [observation("2026-10-07T12:00:00.000Z", 50, "2026-10-08T00:00:00.000Z")],
+      [
+        observation("2026-10-07T12:00:00.000Z", 50, "2026-10-08T00:00:00.000Z"),
+        observation("2026-10-09T00:00:00.000Z", 12, "2026-10-15T00:00:00.000Z"),
+      ],
       [bucket("2026-10-07T12:00:00.000Z", 25, { costUsd: 1 })],
       new Set(),
       new Date("2026-10-09T00:00:00.000Z"),
@@ -481,7 +488,10 @@ describe("allowance cycle baseline", () => {
 
   test("excludes a provider whose session log is shared", () => {
     const summaries = buildAllowanceCycleSummaries(
-      [observation("2026-10-07T12:00:00.000Z", 50, "2026-10-08T00:00:00.000Z", "codex:family")],
+      [
+        observation("2026-10-07T12:00:00.000Z", 50, "2026-10-08T00:00:00.000Z", "codex:family"),
+        observation("2026-10-09T00:00:00.000Z", 12, "2026-10-15T00:00:00.000Z", "codex:family"),
+      ],
       [bucket("2026-10-03T00:00:00.000Z", 100, { costUsd: 2, providerId: "codex:family" })],
       new Set(["codex:family"]),
       new Date("2026-10-09T00:00:00.000Z"),
