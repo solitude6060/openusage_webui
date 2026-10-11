@@ -140,6 +140,10 @@ function useNarrowLayout(): boolean {
   return narrow;
 }
 
+function isCursorAccount(providerId: string): boolean {
+  return providerId === "cursor" || providerId.startsWith("cursor:");
+}
+
 function AllowanceCycle({ cycle }: { cycle: AllowanceEstimate }) {
   const allowance = cycle.estimatedAllowance;
   return (
@@ -166,10 +170,10 @@ function AllowanceCycle({ cycle }: { cycle: AllowanceEstimate }) {
         {cycle.apiCost != null ? ` · API Cost ${formatApiMoney(cycle.apiCost)}` : ""}
         {cycle.coarse ? " · Rough Estimate" : ""}
         {cycle.statedLimit != null
-          ? ` · ${cycle.providerId === "cursor" ? "Included Dollar Limit" : "Stated Cap"} ${formatLimit(cycle)}`
+          ? ` · ${isCursorAccount(cycle.providerId) ? "Included Dollar Limit" : "Stated Cap"} ${formatLimit(cycle)}`
           : ""}
       </p>
-      {cycle.providerId === "cursor" && cycle.statedLimit != null ? (
+      {isCursorAccount(cycle.providerId) && cycle.statedLimit != null ? (
         <p className="allowance-meta">
           The estimate scales the combined pool percent, whose denominator differs from this dollar limit.
         </p>
