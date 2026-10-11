@@ -293,7 +293,7 @@ describe("codex plugin", () => {
     const session = result.lines.find((line) => line.label === "Session")
     const weekly = result.lines.find((line) => line.label === "Weekly")
     expect(session).toEqual(expect.objectContaining({
-      used: 80,
+      used: 10,
       periodDurationMs: 604800000,
     }))
     expect(weekly).toEqual(expect.objectContaining({
@@ -2235,5 +2235,49 @@ describe("codex plugin", () => {
       String(call[0].url).includes("rate-limit-reset-credits"),
     )
     expect(hitResetEndpoint).toBe(false)
+  })
+
+  async function probeSignedIn(body, headers = {}) {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers,
+      bodyText: JSON.stringify(body),
+    })
+    const plugin = await loadPlugin()
+    return plugin.probe(ctx)
+  }
+
+  it("prefers a fresh window percent over a stale usage header", async () => {
+    const result = await probeSignedIn(
+      {
+        rate_limit: {
+          primary_window: { reset_after_seconds: 60, used_percent: 0 },
+          secondary_window: { reset_after_seconds: 120, used_percent: 7 },
+        },
+      },
+      {
+        "x-codex-primary-used-percent": "99",
+        "x-codex-secondary-used-percent": "99",
+      },
+    )
+    expect(result.lines.find((line) => line.label === "Session")).toEqual(expect.objectContaining({ used: 0 }))
+    expect(result.lines.find((line) => line.label === "Weekly")).toEqual(expect.objectContaining({ used: 7 }))
+  })
+
+  it("uses the usage header when the matching window has no percent", async () => {
+    const result = await probeSignedIn(
+      { rate_limit: {} },
+      {
+        "x-codex-primary-used-percent": "25",
+        "x-codex-secondary-used-percent": "50",
+      },
+    )
+    expect(result.lines.find((line) => line.label === "Session")).toEqual(expect.objectContaining({ used: 25 }))
+    expect(result.lines.find((line) => line.label === "Weekly")).toEqual(expect.objectContaining({ used: 50 }))
   })
 })
