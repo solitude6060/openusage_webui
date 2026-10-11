@@ -5,6 +5,7 @@ import {
   type AllowanceObservation,
   type AllowanceTokenRow,
 } from "./allowance-estimate";
+const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BASELINE_LIMIT = 4;
 const CYCLE_MIN_PERCENT = 10;
@@ -218,7 +219,7 @@ function usageInside(rows: AllowanceTokenRow[], from: number, to: number): { tok
 
 function restartedEarly(cycle: BoundedCycle): boolean {
   const stated = Math.max(...cycle.points.map((point) => Date.parse(point.resetsAt)));
-  return Number.isFinite(stated) && cycle.end < stated;
+  return Number.isFinite(stated) && stated - cycle.end > HOUR_MS;
 }
 
 function scaleRemaining(median: number | null, usedPercent: number | null): number | null {
