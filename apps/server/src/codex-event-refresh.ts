@@ -41,6 +41,10 @@ export async function saveCodexEventScan(
   storage: SqliteStorage,
   result: CodexEventScanResult,
 ): Promise<void> {
+  if (result.replaceProviderIds.length > 0 && !result.complete) {
+    console.error(JSON.stringify({ event: "codex_event_rescan_incomplete" }));
+    return;
+  }
   if (result.replaceProviderIds.length > 0) {
     await storage.replaceCodexTokenEvents(result.replaceProviderIds, result.events);
   } else {

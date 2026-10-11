@@ -45,6 +45,7 @@ export interface CodexEventScanResult {
   learnedPlans: Array<{ providerId: string; planType: string }>;
   unmapped: number;
   replaceProviderIds: string[];
+  complete: boolean;
 }
 
 export interface CodexShapeObservation {
@@ -60,18 +61,33 @@ const WEEKLY_MINUTES = 10080;
 const FIVE_HOUR_MINUTES = 300;
 
 export function codexSessionScanRoots(accounts: Array<{ homePath: string }>): string[] {
+  return sessionScanRoots(accounts).roots;
+}
+
+function sessionScanRoots(accounts: Array<{ homePath: string }>): { roots: string[]; complete: boolean } {
   const roots = new Set<string>();
+  let complete = true;
   for (const account of accounts) {
     const sessions = join(account.homePath, "sessions");
+    let stat;
     try {
-      const stat = lstatSync(sessions);
-      if (!stat.isDirectory() && !stat.isSymbolicLink()) continue;
-      roots.add(realpathSync(sessions));
-    } catch {
+      stat = lstatSync(sessions);
+    } catch (error) {
+      if (errorCode(error) !== "ENOENT") {
+        complete = false;
+        logReadFailure(error);
+      }
       continue;
     }
+    if (!stat.isDirectory() && !stat.isSymbolicLink()) continue;
+    try {
+      roots.add(realpathSync(sessions));
+    } catch (error) {
+      complete = false;
+      logReadFailure(error);
+    }
   }
-  return [...roots].sort();
+  return { roots: [...roots].sort(), complete };
 }
 
 export function meterShapeFromObservations(rows: CodexShapeObservation[]): CodexMeterShape | null {
@@ -119,17 +135,25 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
   const learned = new Map<string, Set<string>>();
   let filesRead = 0;
   let unmapped = 0;
+  const discovered = sessionScanRoots(input.accounts);
+  let complete = discovered.complete;
 
-  for (const root of codexSessionScanRoots(input.accounts)) {
-    for (const path of listJsonl(root)) {
+  for (const root of discovered.roots) {
+    const listed = listJsonl(root);
+    if (!listed.complete) complete = false;
+    for (const path of listed.files) {
       const read = readNewText(path, cursors.get(path) ?? null, rescan);
-      if (!read) {
+      if (read.failed) {
+        complete = false;
+        continue;
+      }
+      if (!read.slice) {
         const existing = cursors.get(path);
         if (existing) nextCursors.push(existing);
         continue;
       }
       filesRead += 1;
-      const parsed = parseTokenCounts(read.text, read.previousTotal);
+      const parsed = parseTokenCounts(read.slice.text, read.slice.previousTotal);
       unmapped += parsed.unmapped;
       for (const event of parsed.events) {
         const providerId = assignAccount(event.shape, event.planType, input.accounts);
@@ -146,8 +170,8 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
       }
       nextCursors.push({
         path,
-        mtimeMs: read.mtimeMs,
-        offset: read.nextOffset,
+        mtimeMs: read.slice.mtimeMs,
+        offset: read.slice.nextOffset,
         lastTotalTokens: parsed.lastTotal,
       });
     }
@@ -177,6 +201,7 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
     learnedPlans,
     unmapped,
     replaceProviderIds: rescan ? input.accounts.map((account) => account.id) : [],
+    complete,
   };
 }
 
@@ -221,52 +246,61 @@ interface ReadSlice {
   previousTotal: number | null;
 }
 
-function readNewText(path: string, cursor: CodexEventCursor | null, rescan: boolean): ReadSlice | null {
+function readNewText(
+  path: string,
+  cursor: CodexEventCursor | null,
+  rescan: boolean,
+): { failed: true } | { failed: false; slice: ReadSlice | null } {
   let stat;
   try {
     stat = statSync(path);
   } catch (error) {
-    console.error(JSON.stringify({ event: "codex_session_read_failed", code: errorCode(error) }));
-    return null;
+    logReadFailure(error);
+    return { failed: true };
   }
   const mtimeMs = Math.trunc(stat.mtimeMs);
   const size = stat.size;
-  if (!rescan && cursor && cursor.offset === size && cursor.mtimeMs === mtimeMs) return null;
+  if (!rescan && cursor && cursor.offset === size && cursor.mtimeMs === mtimeMs) return { failed: false, slice: null };
   const start = !rescan && cursor && size >= cursor.offset ? cursor.offset : 0;
   const previousTotal = start === 0 ? null : cursor?.lastTotalTokens ?? null;
   let fd: number | null = null;
   try {
     fd = openSync(path, "r");
     const length = size - start;
-    if (length <= 0) return { text: "", nextOffset: start, mtimeMs, previousTotal };
+    if (length <= 0) return { failed: false, slice: { text: "", nextOffset: start, mtimeMs, previousTotal } };
     const buffer = Buffer.alloc(length);
     const read = readSync(fd, buffer, 0, length, start);
     const slice = buffer.subarray(0, read);
     let end = slice.length;
     if (end === 0 || slice[end - 1] !== 0x0a) {
       const newline = slice.lastIndexOf(0x0a);
-      if (newline < 0) return { text: "", nextOffset: start, mtimeMs, previousTotal };
+      if (newline < 0) return { failed: false, slice: { text: "", nextOffset: start, mtimeMs, previousTotal } };
       end = newline + 1;
     }
-    return { text: slice.subarray(0, end).toString("utf8"), nextOffset: start + end, mtimeMs, previousTotal };
+    return {
+      failed: false,
+      slice: { text: slice.subarray(0, end).toString("utf8"), nextOffset: start + end, mtimeMs, previousTotal },
+    };
   } catch (error) {
-    console.error(JSON.stringify({ event: "codex_session_read_failed", code: errorCode(error) }));
-    return null;
+    logReadFailure(error);
+    return { failed: true };
   } finally {
     if (fd != null) closeSync(fd);
   }
 }
 
-function listJsonl(root: string): string[] {
+function listJsonl(root: string): { files: string[]; complete: boolean } {
   const files: string[] = [];
   const stack = [root];
+  let complete = true;
   while (stack.length > 0) {
     const dir = stack.pop()!;
     let names: string[];
     try {
       names = readdirSync(dir);
     } catch (error) {
-      console.error(JSON.stringify({ event: "codex_session_read_failed", code: errorCode(error) }));
+      complete = false;
+      logReadFailure(error);
       continue;
     }
     for (const name of names) {
@@ -275,7 +309,8 @@ function listJsonl(root: string): string[] {
       try {
         stat = lstatSync(path);
       } catch (error) {
-        console.error(JSON.stringify({ event: "codex_session_read_failed", code: errorCode(error) }));
+        complete = false;
+        logReadFailure(error);
         continue;
       }
       if (stat.isSymbolicLink()) continue;
@@ -284,7 +319,11 @@ function listJsonl(root: string): string[] {
     }
   }
   files.sort();
-  return files;
+  return { files, complete };
+}
+
+function logReadFailure(error: unknown): void {
+  console.error(JSON.stringify({ event: "codex_session_read_failed", code: errorCode(error) }));
 }
 
 interface ParsedEvent {

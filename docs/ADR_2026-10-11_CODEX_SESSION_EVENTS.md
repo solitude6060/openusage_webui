@@ -69,6 +69,10 @@ analysis, section 4.2. Per completed cycle there, the medians are 2.75M tokens p
   figure from them.
 - The first successful refresh reads the session history. Later refreshes read only the
   bytes appended since the cursor. A change in account shape or recorded plan rereads the
-  files and replaces the stored event rows for those accounts in one write. An event the
-  new mapping cannot assign is removed. The unique key still ignores a duplicate insert
-  of the same account, time, and cumulative total.
+  files and replaces the stored event rows for those accounts in one write. That
+  replacement is kept only when every sessions directory listing and session file read
+  succeeded. A failed reread leaves the stored events, file cursors, and mapping key in
+  place, so the next refresh rereads the history. An empty sessions directory that can be
+  read still clears the stored events. An event the new mapping cannot assign is removed.
+  The unique key still ignores a duplicate insert of the same account, time, and
+  cumulative total.
