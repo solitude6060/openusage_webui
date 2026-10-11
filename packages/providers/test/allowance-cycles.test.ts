@@ -286,3 +286,76 @@ describe("allowance current cycle", () => {
     expect((current?.elapsedFraction ?? 0) * (current?.lengthMs ?? 0)).toBeGreaterThanOrEqual(DAY_MS);
   });
 });
+
+describe("allowance cycle baseline", () => {
+  test("uses the last four included cycles when one recent cycle is excluded", () => {
+    const resets = [
+      "2026-09-13T00:00:00.000Z",
+      "2026-09-20T00:00:00.000Z",
+      "2026-09-27T00:00:00.000Z",
+      "2026-10-04T00:00:00.000Z",
+      "2026-10-11T00:00:00.000Z",
+      "2026-10-18T00:00:00.000Z",
+    ];
+    const includedTokens = [5, 10, 20, 30, 40];
+    const observations = resets.slice(0, 5).map((reset) =>
+      observation(new Date(Date.parse(reset) - 12 * 60 * 60 * 1000).toISOString(), 100, reset),
+    );
+    observations.push(
+      observation("2026-10-14T00:00:00.000Z", 10, resets[5]!),
+      observation("2026-10-16T00:00:00.000Z", 80, resets[5]!),
+      observation("2026-10-17T12:00:00.000Z", 30, resets[5]!),
+    );
+    const rows = includedTokens.map((tokens, index) =>
+      bucket(new Date(Date.parse(resets[index]!) - 3 * DAY_MS).toISOString(), tokens, { costUsd: 1 }),
+    );
+    rows.push(bucket("2026-10-15T00:00:00.000Z", 5000, { costUsd: 1 }));
+
+    const summary = buildAllowanceCycleSummaries(
+      observations,
+      rows,
+      new Set(),
+      new Date("2026-10-19T00:00:00.000Z"),
+    )[0];
+
+    expect(summary?.baseline.tokens).toEqual({ median: 25, min: 10, max: 40, n: 4 });
+  });
+
+  test("median of the Grok-sized cycles is 13.05 million tokens per percent", () => {
+    const cycles = [
+      { reset: "2026-09-13T00:00:00.000Z", percents: [30, 10], tokens: 9_000_000_000, cost: 900 },
+      { reset: "2026-09-20T00:00:00.000Z", percents: [100], tokens: 752_000_000, cost: 276 },
+      { reset: "2026-09-27T00:00:00.000Z", percents: [100], tokens: 1_305_000_000, cost: 463 },
+      { reset: "2026-10-04T00:00:00.000Z", percents: [100], tokens: 1_688_000_000, cost: 411 },
+    ];
+    const observations: AllowanceObservation[] = [];
+    const rows: AllowanceTokenRow[] = [];
+    for (const cycle of cycles) {
+      const resetMs = Date.parse(cycle.reset);
+      cycle.percents.forEach((percent, index) => {
+        observations.push(observation(new Date(resetMs - (12 - index) * 60 * 60 * 1000).toISOString(), percent, cycle.reset));
+      });
+      rows.push(bucket(new Date(resetMs - 3 * DAY_MS).toISOString(), cycle.tokens, { costUsd: cycle.cost }));
+    }
+    observations.push(observation("2026-10-08T00:00:00.000Z", 20, "2026-10-11T00:00:00.000Z"));
+    rows.push(bucket("2026-10-06T00:00:00.000Z", 50_000_000, { costUsd: 10 }));
+
+    const summary = buildAllowanceCycleSummaries(
+      observations,
+      rows,
+      new Set(),
+      new Date("2026-10-08T00:00:00.000Z"),
+    )[0];
+
+    expect(summary?.baseline.tokens).toEqual({
+      median: 1_305_000_000,
+      min: 752_000_000,
+      max: 1_688_000_000,
+      n: 3,
+    });
+    expect((summary?.baseline.tokens?.median ?? 0) / 100).toBe(13_050_000);
+    expect(summary?.baseline.apiDollars).toEqual({ median: 411, min: 276, max: 463, n: 3 });
+    expect(summary?.cycles.find((cycle) => cycle.end === "2026-09-13T00:00:00.000Z")?.exclusion).toBe("meter-fell");
+    expect(summary?.current).not.toBeNull();
+  });
+});
