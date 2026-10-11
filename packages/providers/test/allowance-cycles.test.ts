@@ -188,4 +188,27 @@ describe("allowance cycle exclusion", () => {
       exclusion: "no-tokens",
     }));
   });
+
+  test("excludes a cycle with no reading in its last day", () => {
+    const summaries = buildAllowanceCycleSummaries(
+      [
+        observation("2026-09-30T00:00:00.000Z", 40, "2026-10-01T00:00:00.000Z"),
+        observation("2026-10-06T23:59:00.000Z", 40, "2026-10-08T00:00:00.000Z"),
+      ],
+      [
+        bucket("2026-09-26T00:00:00.000Z", 80, { costUsd: 1 }),
+        bucket("2026-10-03T00:00:00.000Z", 80, { costUsd: 1 }),
+      ],
+      new Set(),
+      new Date("2026-10-09T00:00:00.000Z"),
+    );
+
+    const cycles = summaries[0]?.cycles ?? [];
+    expect(cycles.find((cycle) => cycle.end === "2026-10-01T00:00:00.000Z")).toEqual(
+      expect.objectContaining({ included: true, exclusion: null }),
+    );
+    expect(cycles.find((cycle) => cycle.end === "2026-10-08T00:00:00.000Z")).toEqual(
+      expect.objectContaining({ included: false, exclusion: "observation-gap" }),
+    );
+  });
 });
