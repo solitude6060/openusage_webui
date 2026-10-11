@@ -63,4 +63,6 @@ analysis, section 4.2. Per completed cycle there, the medians are 2.75M tokens p
   figure from them.
 - The first successful refresh reads the session history. Later refreshes read only the
   bytes appended since the cursor. A change in account shape or recorded plan rereads the
-  files; the unique key keeps that reread from inserting duplicates.
+  files and replaces the stored event rows for those accounts in one write. An event the
+  new mapping cannot assign is removed. The unique key still ignores a duplicate insert
+  of the same account, time, and cumulative total.

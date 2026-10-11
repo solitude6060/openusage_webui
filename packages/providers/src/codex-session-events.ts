@@ -44,6 +44,7 @@ export interface CodexEventScanResult {
   mapKey: string;
   learnedPlans: Array<{ providerId: string; planType: string }>;
   unmapped: number;
+  replaceProviderIds: string[];
 }
 
 export interface CodexShapeObservation {
@@ -164,6 +165,7 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
     mapKey: codexEventMapKey(recorded),
     learnedPlans,
     unmapped,
+    replaceProviderIds: rescan ? input.accounts.map((account) => account.id) : [],
   };
 }
 

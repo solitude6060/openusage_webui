@@ -41,7 +41,11 @@ export async function saveCodexEventScan(
   storage: SqliteStorage,
   result: CodexEventScanResult,
 ): Promise<void> {
-  await storage.upsertCodexTokenEvents(result.events);
+  if (result.replaceProviderIds.length > 0) {
+    await storage.replaceCodexTokenEvents(result.replaceProviderIds, result.events);
+  } else {
+    await storage.upsertCodexTokenEvents(result.events);
+  }
   await storage.saveCodexEventCursors(result.cursors);
   if (result.learnedPlans.length > 0) {
     const plans = readPlanTypes(await storage.getAppMeta(PLAN_TYPES_KEY));

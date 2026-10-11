@@ -28,6 +28,7 @@ import {
 import {
   CODEX_TOKEN_EVENTS_SCHEMA,
   insertCodexTokenEvents,
+  replaceCodexTokenEvents,
   listCodexEventCursors,
   listCodexEventProviderIds,
   saveCodexEventCursors,
@@ -851,6 +852,10 @@ export class SqliteStorage implements Storage {
 
   async upsertCodexTokenEvents(events: CodexTokenEventInsert[]): Promise<void> {
     insertCodexTokenEvents(this.requireDb(), events);
+  }
+
+  async replaceCodexTokenEvents(providerIds: string[], events: CodexTokenEventInsert[]): Promise<void> {
+    replaceCodexTokenEvents(this.requireDb(), providerIds, events);
   }
 
   async listCodexEventProviderIds(from: string): Promise<string[]> {

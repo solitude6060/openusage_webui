@@ -52,31 +52,54 @@ export interface CodexTokenEventReading {
   tokens: number;
 }
 
+const INSERT_CODEX_TOKEN_EVENT = `
+  INSERT OR IGNORE INTO codex_token_events (
+    provider_id, observed_at, tokens, input, cached_input, output,
+    plan_type, weekly_used_percent, weekly_resets_at, total_tokens
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`;
+
+function runCodexTokenEventInsert(
+  insert: { run: (...params: unknown[]) => unknown },
+  row: CodexTokenEventInsert,
+): void {
+  insert.run(
+    row.providerId,
+    row.observedAt,
+    row.tokens,
+    row.input,
+    row.cachedInput,
+    row.output,
+    row.planType,
+    row.weeklyUsedPercent,
+    row.weeklyResetsAt,
+    row.totalTokens,
+  );
+}
+
 export function insertCodexTokenEvents(db: Database, events: CodexTokenEventInsert[]): void {
   if (events.length === 0) return;
-  const insert = db.prepare(`
-    INSERT OR IGNORE INTO codex_token_events (
-      provider_id, observed_at, tokens, input, cached_input, output,
-      plan_type, weekly_used_percent, weekly_resets_at, total_tokens
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
+  const insert = db.prepare(INSERT_CODEX_TOKEN_EVENT);
   const write = db.transaction((rows: CodexTokenEventInsert[]) => {
-    for (const row of rows) {
-      insert.run(
-        row.providerId,
-        row.observedAt,
-        row.tokens,
-        row.input,
-        row.cachedInput,
-        row.output,
-        row.planType,
-        row.weeklyUsedPercent,
-        row.weeklyResetsAt,
-        row.totalTokens,
-      );
-    }
+    for (const row of rows) runCodexTokenEventInsert(insert, row);
   });
   write(events);
+}
+
+export function replaceCodexTokenEvents(
+  db: Database,
+  providerIds: string[],
+  events: CodexTokenEventInsert[],
+): void {
+  const insert = db.prepare(INSERT_CODEX_TOKEN_EVENT);
+  const write = db.transaction((ids: string[], rows: CodexTokenEventInsert[]) => {
+    if (ids.length > 0) {
+      const placeholders = ids.map(() => "?").join(", ");
+      db.query(`DELETE FROM codex_token_events WHERE provider_id IN (${placeholders})`).run(...ids);
+    }
+    for (const row of rows) runCodexTokenEventInsert(insert, row);
+  });
+  write(providerIds, events);
 }
 
 export function listCodexTokenEventReadings(db: Database, from: string): CodexTokenEventReading[] {
