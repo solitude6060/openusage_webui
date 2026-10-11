@@ -122,3 +122,7 @@ Target `933d265`. Lanes: Grok Build `grok-4.7` high (REQUEST_CHANGES), AGY `gemi
 | Finding | Source | Severity | Disposition |
 |---|---|---|---|
 | R3-1 The note still said individual plans use the combined pool percent; an individual payload without `totalPercentUsed` falls back to spend divided by the limit (`plugins/cursor/plugin.js:1003`), and Team uses dollars | Grok, Codex | MEDIUM | Fixed in `f1d8f09` (test) and `47c4dda` (fix): the note now says the combined pool percent has a different denominator, and Team plans and plans without that percent use spend divided by the limit. `docs/providers/cursor.md` matches. Applied by the orchestrator (Claude Opus 5.5) as a wording-only change. |
+
+## Review round 4
+
+Target `426acc6`. Grok Build `grok-4.7` high, AGY `gemini-3.8-flash-high`, Codex `gpt-6.1-sol` high (second Codex home): all APPROVE. R3-1 resolved. Grok LOW: `docs/USER_GUIDE_WEBUI.zh-TW.md:225` still carried the round-2 note wording; updated to match the page (documentation only, no code change).
