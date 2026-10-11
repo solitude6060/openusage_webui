@@ -300,6 +300,46 @@ describe("allowance current cycle", () => {
     }));
   });
 
+  test("keeps the projection reliable when a reset is at most one hour early", () => {
+    const jitter = buildAllowanceCycleSummaries(
+      [
+        observation("2026-10-07T12:00:00.000Z", 50, "2026-10-08T00:00:00.900Z"),
+        observation("2026-10-09T00:00:00.000Z", 20, "2026-10-15T00:00:00.000Z"),
+      ],
+      [bucket("2026-10-04T00:00:00.000Z", 100, { costUsd: 1 })],
+      new Set(),
+      new Date("2026-10-10T00:00:00.000Z"),
+    )[0];
+    expect(Date.parse(jitter?.cycles[0]?.end ?? "")).toBeLessThan(Date.parse("2026-10-08T00:00:00.900Z"));
+    expect(jitter?.current?.projectionReliable).toBe(true);
+
+    const exactHour = buildAllowanceCycleSummaries(
+      [
+        observation("2026-10-07T12:00:00.000Z", 50, "2026-10-08T01:00:00.000Z"),
+        observation("2026-10-09T00:00:00.000Z", 20, "2026-10-15T00:00:00.000Z"),
+      ],
+      [bucket("2026-10-04T00:00:00.000Z", 100, { costUsd: 1 })],
+      new Set(),
+      new Date("2026-10-10T00:00:00.000Z"),
+    )[0];
+    expect(Date.parse("2026-10-08T01:00:00.000Z") - Date.parse(exactHour?.cycles[0]?.end ?? "")).toBe(60 * 60 * 1000);
+    expect(exactHour?.current?.projectionReliable).toBe(true);
+  });
+
+  test("marks the projection unreliable when a cycle ends more than one hour early", () => {
+    const summaries = buildAllowanceCycleSummaries(
+      [
+        observation("2026-10-07T12:00:00.000Z", 50, "2026-10-08T01:00:00.001Z"),
+        observation("2026-10-09T00:00:00.000Z", 20, "2026-10-15T00:00:00.000Z"),
+      ],
+      [bucket("2026-10-04T00:00:00.000Z", 100, { costUsd: 1 })],
+      new Set(),
+      new Date("2026-10-10T00:00:00.000Z"),
+    );
+
+    expect(summaries[0]?.current?.projectionReliable).toBe(false);
+  });
+
   test("marks the projection unreliable when one of the last four cycles restarted early", () => {
     const summaries = buildAllowanceCycleSummaries(
       [
