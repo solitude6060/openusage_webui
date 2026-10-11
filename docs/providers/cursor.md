@@ -18,7 +18,7 @@
 |---|---|---|---|---|
 | Credits | `GetCreditGrantsBalance` + `/api/auth/stripe.customerBalance` | overview | dollars | Combined total: active grant total + Stripe prepaid balance (negative `customerBalance`). Used stays based on grant usage. |
 | Total usage | `planUsage.totalPercentUsed` | overview | percent (individual) / dollars (team) | Individual accounts use Cursor's combined pool percent. Spend divided by `limit` is Included Spend, a separate reading. Falls back to computed `(limit - remaining) / limit * 100` only when `totalPercentUsed` is not finite. Free/individual payloads observed on 2026-03-06 may omit `limit`; plugin uses `totalPercentUsed` directly in that case. Team accounts use dollars format and still require `limit`. |
-| Included Spend | `planUsage.totalSpend` and `planUsage.limit` | overview | dollars | Individual accounts with a `limit`. `totalSpend` when present, otherwise `limit - remaining`. Shown as `$X.XX of $Y.YY`. This is the included dollar amount. Its percent of `limit` can differ from Total usage, Auto usage, and API usage. |
+| Included Spend | `planUsage.includedSpend` and `planUsage.limit` | overview | dollars | Individual accounts with a `limit`. Numerator is finite `includedSpend`, otherwise `limit - remaining`. Shown as `$X.XX of $Y.YY`. Total usage `usedValue` still prefers `totalSpend`. This dollar amount can differ from Total usage, Auto usage, and API usage. |
 | Auto usage | `planUsage.autoPercentUsed` | overview | percent | Cursor Models pool (Cursor's own models, including Grok and Composer). Omitted when the field is missing or non-finite. `limit` is the Included Spend denominator. |
 | API usage | `planUsage.apiPercentUsed` | overview | percent | Other Models pool (third-party models). Omitted when the field is missing or non-finite. `limit` is the Included Spend denominator. |
 | Requests | `/api/usage` (enterprise) | overview | count | Enterprise accounts only; unchanged from previous behavior |
@@ -42,7 +42,7 @@ Cursor reports pool percents and an included dollar amount for the same billing 
 - **Auto usage** is `autoPercentUsed`, the Cursor Models pool (Cursor's own models, including Grok and Composer).
 - **API usage** is `apiPercentUsed`, the Other Models pool (third-party models at their API price).
 - **Total usage** on an individual account is `totalPercentUsed`, Cursor's combined pool percent. Upstream OpenUsage uses this structured percentage for Total Usage when Cursor supplies it.
-- **Included Spend** is the dollar amount. `limit` is the plan's included dollar amount, in cents. Spend prefers `totalSpend` (included spend plus bonus spend); otherwise it is `limit - remaining`. Cursor's sentence "You've used N% of your included usage" uses included spend divided by `limit`.
+- **Included Spend** is the dollar amount. `limit` is the plan's included dollar amount, in cents. The numerator is finite `includedSpend`; otherwise it is `limit - remaining`. `totalSpend` adds bonus and stays on Total usage `usedValue`. Cursor's sentence "You've used N% of your included usage" uses included spend divided by `limit`.
 
 Cursor staff wrote on 2026-08-13 that `totalPercentUsed`, `autoPercentUsed`, and `apiPercentUsed` follow an internal metric of their own, and that the usage sentence uses `includedSpend / limit`. Current Cursor docs describe the two monthly pools and show each as a percentage on the Spending tab. Upstream OpenUsage treats the included dollar amount as the older cap, used when the pool percents are absent.
 

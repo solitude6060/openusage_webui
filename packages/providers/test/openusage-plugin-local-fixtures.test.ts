@@ -63,7 +63,7 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
         request: requestByUrl({
           "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage": {
             enabled: true,
-            planUsage: { totalSpend: 1200, limit: 2400 },
+            planUsage: { totalSpend: 1200, includedSpend: 1200, limit: 2400 },
             billingCycleEnd: "1775234693029",
           },
           "https://api2.cursor.sh/aiserver.v1.DashboardService/GetPlanInfo": {

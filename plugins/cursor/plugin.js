@@ -1052,11 +1052,14 @@
         usedValue: hasPlanUsageLimit && pu.limit > 0 ? ctx.fmt.dollars(planUsed) : undefined,
       }))
 
-      // Dollar amount against planUsage.limit. Total usage percent stays totalPercentUsed.
+      // Included dollars only. totalSpend adds bonus and stays on Total usage usedValue.
       if (hasPlanUsageLimit && pu.limit > 0) {
+        const includedCents = Number.isFinite(pu.includedSpend)
+          ? pu.includedSpend
+          : pu.limit - (pu.remaining ?? 0)
         lines.push(ctx.line.text({
           label: "Included Spend",
-          value: formatUsdFromCents(planUsed) + " of " + formatUsdFromCents(pu.limit),
+          value: formatUsdFromCents(includedCents) + " of " + formatUsdFromCents(pu.limit),
         }))
       }
     }
