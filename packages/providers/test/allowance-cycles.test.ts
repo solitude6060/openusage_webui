@@ -150,11 +150,11 @@ describe("allowance cycle exclusion", () => {
     }));
   });
 
-  test("excludes an end percent below 20 and keeps a cycle that ends at 20", () => {
+  test("excludes an end percent below 10 and keeps a cycle that ends at 10", () => {
     const summaries = buildAllowanceCycleSummaries(
       [
-        observation("2026-09-30T12:00:00.000Z", 20, "2026-10-01T00:00:00.000Z"),
-        observation("2026-10-07T12:00:00.000Z", 19, "2026-10-08T00:00:00.000Z"),
+        observation("2026-09-30T12:00:00.000Z", 10, "2026-10-01T00:00:00.000Z"),
+        observation("2026-10-07T12:00:00.000Z", 9, "2026-10-08T00:00:00.000Z"),
       ],
       [
         bucket("2026-09-26T00:00:00.000Z", 100, { costUsd: 1 }),
@@ -166,10 +166,10 @@ describe("allowance cycle exclusion", () => {
 
     const cycles = summaries[0]?.cycles ?? [];
     expect(cycles.find((cycle) => cycle.end === "2026-10-01T00:00:00.000Z")).toEqual(
-      expect.objectContaining({ included: true, exclusion: null, endPercent: 20 }),
+      expect.objectContaining({ included: true, exclusion: null, endPercent: 10 }),
     );
     expect(cycles.find((cycle) => cycle.end === "2026-10-08T00:00:00.000Z")).toEqual(
-      expect.objectContaining({ included: false, exclusion: "below-min-percent", endPercent: 19 }),
+      expect.objectContaining({ included: false, exclusion: "below-min-percent", endPercent: 9 }),
     );
   });
 
@@ -326,7 +326,7 @@ describe("allowance cycle baseline", () => {
       { reset: "2026-09-13T00:00:00.000Z", percents: [30, 10], tokens: 9_000_000_000, cost: 900 },
       { reset: "2026-09-20T00:00:00.000Z", percents: [100], tokens: 752_000_000, cost: 276 },
       { reset: "2026-09-27T00:00:00.000Z", percents: [100], tokens: 1_305_000_000, cost: 463 },
-      { reset: "2026-10-04T00:00:00.000Z", percents: [100], tokens: 1_688_000_000, cost: 411 },
+      { reset: "2026-10-04T00:00:00.000Z", percents: [17], tokens: 286_960_000, cost: 411 * 17 / 100 },
     ];
     const observations: AllowanceObservation[] = [];
     const rows: AllowanceTokenRow[] = [];
@@ -347,12 +347,15 @@ describe("allowance cycle baseline", () => {
       new Date("2026-10-08T00:00:00.000Z"),
     )[0];
 
-    expect(summary?.baseline.tokens).toEqual({
+    expect(summary?.cycles.find((cycle) => cycle.end === "2026-10-04T00:00:00.000Z")).toEqual(
+      expect.objectContaining({ included: true, exclusion: null, endPercent: 17 }),
+    );
+    expect(summary?.baseline.tokens).toEqual(expect.objectContaining({
       median: 1_305_000_000,
       min: 752_000_000,
-      max: 1_688_000_000,
       n: 3,
-    });
+    }));
+    expect(summary?.baseline.tokens?.max).toBeCloseTo(1_688_000_000, 4);
     expect((summary?.baseline.tokens?.median ?? 0) / 100).toBe(13_050_000);
     expect(summary?.baseline.apiDollars).toEqual({ median: 411, min: 276, max: 463, n: 3 });
     expect(summary?.cycles.find((cycle) => cycle.end === "2026-09-13T00:00:00.000Z")?.exclusion).toBe("meter-fell");

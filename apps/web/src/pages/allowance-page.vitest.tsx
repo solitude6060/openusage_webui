@@ -89,6 +89,22 @@ describe("Subscription period", () => {
                   included: false,
                   exclusion: "meter-fell",
                 },
+                {
+                  start: "2026-09-20T00:00:00.000Z",
+                  end: "2026-09-27T00:00:00.000Z",
+                  lengthMs: 7 * 24 * 60 * 60 * 1000,
+                  endPercent: 9,
+                  tokensLow: 90,
+                  tokensHigh: 90,
+                  apiCostLow: 1,
+                  apiCostHigh: 1,
+                  allowanceLow: 1000,
+                  allowanceHigh: 1000,
+                  apiDollarsLow: 11,
+                  apiDollarsHigh: 11,
+                  included: false,
+                  exclusion: "below-min-percent",
+                },
               ],
             },
           ],
@@ -108,6 +124,7 @@ describe("Subscription period", () => {
     expect(await screen.findByRole("heading", { name: "Baseline" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Current Cycle" })).toBeInTheDocument();
     expect(screen.getAllByText("Meter Fell")).toHaveLength(2);
+    expect(screen.getAllByText("Below 10 Percent")).toHaveLength(2);
     expect(screen.getByText("Unreliable")).toBeInTheDocument();
     const details = screen.getByText("How This Is Calculated").closest("details");
     expect(details).toHaveTextContent("last four included periods");
