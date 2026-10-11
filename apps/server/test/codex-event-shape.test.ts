@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { attachCodexEventScan } from "../src/codex-event-refresh";
+import { recordQuotaFromRefresh } from "../src/quota-history";
 import type { OpenUsagePluginProvider } from "../../../packages/providers/src/index";
 import type { CodexEventScanInput, CodexMeterShape } from "../../../packages/providers/src/codex-session-events";
 import type { QuotaObservation } from "../../../packages/providers/src/quota-observations";
@@ -45,6 +46,34 @@ test("a stored 7-day Session beside a same-time 5-hour Session is five-hour-prim
   expect(shape).toBe("five-hour-primary");
 });
 
+test("a Weekly absence after a stored 7-day Session clears the event shape", async () => {
+  const shape = await shapeForRows([
+    observation({
+      windowKey: "session",
+      windowLabel: "Session",
+      periodMs: WEEK_MS,
+      observedAt: "2026-10-09T12:00:00.000Z",
+      resetsAt: "2026-10-16T12:00:00.000Z",
+      usedPercent: 40,
+    }),
+  ], async (storage) => {
+    await recordQuotaFromRefresh(storage, PROVIDER_ID, [{
+      id: "snap-no-window",
+      providerId: PROVIDER_ID,
+      tool: "OpenUsage Plugin Snapshot",
+      startedAt: "2026-10-10T00:00:00.000Z",
+      source: "api",
+      raw: { lines: [] },
+    }]);
+    const latest = await storage.listLatestQuotaObservations(PROVIDER_ID);
+    expect(latest).toEqual(expect.arrayContaining([
+      expect.objectContaining({ windowKey: "session", periodMs: WEEK_MS, present: true }),
+      expect.objectContaining({ windowKey: "weekly", present: false }),
+    ]));
+  });
+  expect(shape).toBeNull();
+});
+
 test("a stored 7-day Session with no shorter Session is weekly-primary", async () => {
   const shape = await shapeForRows([
     observation({
@@ -59,7 +88,10 @@ test("a stored 7-day Session with no shorter Session is weekly-primary", async (
   expect(shape).toBe("weekly-primary");
 });
 
-async function shapeForRows(rows: QuotaObservation[]): Promise<CodexMeterShape | null> {
+async function shapeForRows(
+  rows: QuotaObservation[],
+  prepare?: (storage: SqliteStorage) => Promise<void>,
+): Promise<CodexMeterShape | null> {
   previousDataDir = process.env.OPENUSAGE_WEBUI_DIR;
   dataDir = mkdtempSync(join(tmpdir(), "openusage-codex-shape-"));
   process.env.OPENUSAGE_WEBUI_DIR = dataDir;
@@ -75,6 +107,7 @@ async function shapeForRows(rows: QuotaObservation[]): Promise<CodexMeterShape |
     },
   } as unknown as OpenUsagePluginProvider;
   try {
+    if (prepare) await prepare(storage);
     await attachCodexEventScan(storage, provider);
   } finally {
     storage.close();
