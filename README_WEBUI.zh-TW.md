@@ -190,7 +190,7 @@ CODEX_HOME/auth.json
 ~/.codex/auth.json
 ```
 
-多個 Codex 家目錄若解析到同一個 `sessions` 目錄，Tokens 頁只保留該目錄本體那個帳號的用量。配額卡仍依各帳號分開顯示。Allowance 改讀 session 事件：週額度只出現在 Session 窗口的帳號，和同時有 5 小時 Session 與 Weekly 窗口的帳號，各自計算自己的用量。`sessions` 目錄是連結的帳號只要有事件也會換算，而且不會把另一個帳號的 token 算進來。同一天只要這組裡任何一個帳號有事件，那天的合併 ccusage 每日列就不進入 Allowance。
+多個 Codex 家目錄若解析到同一個 `sessions` 目錄，Tokens 頁只保留該目錄本體那個帳號的用量。配額卡仍依各帳號分開顯示。Allowance 改讀 session 事件：週額度只出現在 Session 窗口的帳號，和同時有 5 小時 Session 與 Weekly 窗口的帳號，各自計算自己的用量。`sessions` 目錄是連結的帳號只要有事件也會換算，而且不會把另一個帳號的 token 算進來。同一天只要這組裡任何一個帳號有事件，那天的合併 ccusage 每日列就不進入 Allowance。事件屬於它自己時間的本地日。
 
 原本 plugin 可能會 refresh OAuth token，並把更新後的 credential 寫回同一個檔案來源。WebUI 不使用 browser cookies。
 

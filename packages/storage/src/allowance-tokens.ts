@@ -154,7 +154,7 @@ export function listAllowanceRows(
     const current = eventHours.get(key);
     if (current) current.tokens += event.tokens;
     else eventHours.set(key, { providerId: event.providerId, startedAt, tokens: event.tokens });
-    const localDay = hourDay("ccusage", startedAt);
+    const localDay = hourDay("ccusage", event.observedAt);
     const members = groupMembers.get(event.providerId) ?? [event.providerId];
     for (const id of members) eventDays.add(dayKey(id, "ccusage", localDay));
   }

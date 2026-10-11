@@ -49,7 +49,8 @@ analysis, section 4.2. Per completed cycle there, the medians are 2.75M tokens p
    before the file cursor moves on. The scanner never reads `creator_account_id`. Events
    that match no account are counted in the error log and not stored. Quota observations
    are not written from these events.
-5. Accounts that share one real sessions directory are one group. When any account in the
+5. Accounts that share one real sessions directory are one group. The local day of an
+   event is that event's own timestamp in the server time zone. When any account in the
    group has event rows on a local day, Allowance uses each account's hourly event sums
    for that day and leaves out every account's ccusage row for that day. A day with no
    event in the group keeps the daily row. An account that has event rows in the
