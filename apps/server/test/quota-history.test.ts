@@ -328,6 +328,70 @@ test("keeps a Codex 7-day Session history on the Weekly quota window", async () 
   storage.close();
 });
 
+test("keeps Weekly visible when a 5-hour Session follows a 7-day Session on the same account", async () => {
+  const storage = new SqliteStorage();
+  await storage.init();
+  const week = 7 * 24 * 60 * 60 * 1000;
+  const fiveHours = 5 * 60 * 60 * 1000;
+  await storage.insertQuotaObservations([
+    {
+      providerId: "codex:codex",
+      observedAt: "2026-10-03T00:00:00.000Z",
+      windowKey: "session",
+      windowLabel: "Session",
+      periodMs: week,
+      resetsAt: "2026-10-04T00:00:00.000Z",
+      present: true,
+      usedPercent: 40,
+      limitValue: null,
+      limitUnit: null,
+      usedValue: null,
+    },
+  ]);
+
+  await recordQuotaFromRefresh(storage, "codex:codex", [{
+    id: "snap-mixed-windows",
+    providerId: "codex:codex",
+    tool: "OpenUsage Plugin Snapshot",
+    startedAt: "2026-10-03T01:00:00.000Z",
+    source: "api" as const,
+    raw: {
+      lines: [
+        {
+          type: "progress",
+          label: "Session",
+          used: 12,
+          limit: 100,
+          format: { kind: "percent" },
+          resetsAt: "2026-10-03T06:00:00.000Z",
+          periodDurationMs: fiveHours,
+        },
+        {
+          type: "progress",
+          label: "Weekly",
+          used: 40,
+          limit: 100,
+          format: { kind: "percent" },
+          resetsAt: "2026-10-04T00:00:00.000Z",
+          periodDurationMs: week,
+        },
+      ],
+    },
+  }]);
+
+  const dashboard = await loadQuotaDashboard(storage);
+  const windows = dashboard.windows.filter((window) => window.providerId === "codex:codex");
+  expect(windows.map((window) => [window.windowKey, window.usedPercent]).sort()).toEqual([
+    ["session", 12],
+    ["weekly", 40],
+  ]);
+
+  const stored = await storage.listQuotaObservationsSince("2026-01-01T00:00:00.000Z");
+  expect(stored.find((row) => row.usedPercent === 40 && row.observedAt === "2026-10-03T00:00:00.000Z")?.windowKey)
+    .toBe("session");
+  storage.close();
+});
+
 function observation(observedAt: string, usedPercent: number, periodMs: number, resetsAt: string) {
   return {
     providerId: "grok",
