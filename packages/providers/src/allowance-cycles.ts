@@ -97,14 +97,15 @@ export function buildAllowanceCycleSummaries(
       .filter((cycle) => cycle.start <= nowMs && nowMs < cycle.end)
       .sort((left, right) => right.start - left.start)[0] ?? null;
     const baseline = baselineFrom(cycles);
-    summaries.push({
+    const summary = {
       providerId: window.providerId,
       windowKey: window.windowKey,
       windowLabel: window.windowLabel,
       baseline,
       current: open ? currentCycle(open, rows, nowMs, baseline, bounded.filter((cycle) => cycle.end <= nowMs)) : null,
       cycles,
-    });
+    };
+    if (usableSummary(summary, points)) summaries.push(summary);
   }
   return summaries.sort((left, right) => left.providerId.localeCompare(right.providerId));
 }
@@ -166,6 +167,15 @@ function measureCycle(
     included: exclusion == null,
     exclusion,
   };
+}
+
+function usableSummary(
+  summary: AllowanceCycleSummary,
+  points: Array<{ usedPercent: number }>,
+): boolean {
+  const included = summary.cycles.some((cycle) => cycle.included);
+  if (summary.current == null && !included) return false;
+  return !(points.length > 0 && points.every((point) => point.usedPercent === 0));
 }
 
 function baselineFrom(cycles: AllowanceCompletedCycle[]): AllowanceCycleSummary["baseline"] {
