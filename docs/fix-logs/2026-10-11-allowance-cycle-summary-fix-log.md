@@ -90,3 +90,7 @@ At `21a1e3a`, before this docs commit. The documentation edits were already in t
 The page assertions run in vitest. No browser was opened.
 
 This commit updates the plan's omission rule, `README_WEBUI.md`, `README_WEBUI.zh-TW.md`, the Allowance section of `docs/USER_GUIDE_WEBUI.zh-TW.md`, and this log.
+
+## Review round 3
+
+Target `d0c9b6a`. Grok Build `grok-4.7` high, AGY `gemini-3.8-flash-high`, Codex `gpt-6.1-sol` high (second Codex home): all APPROVE. C2-1 confirmed resolved; no new findings.
