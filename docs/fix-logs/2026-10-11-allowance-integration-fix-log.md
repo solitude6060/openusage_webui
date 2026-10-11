@@ -91,7 +91,7 @@ Reviewed at `34667a5`. Grok and Codex requested changes. One finding was verifie
 
 A refresh that drops every quota window writes a newer Weekly absence and leaves the old 7-day Session present. The stored rows in the new test were that pair. The scan still returned `weekly-primary`.
 
-`shapeFor` now classifies `collapseQuotaWindows(aliasCodexSevenDaySessions(rows))`. The 7-day Session is read as Weekly and the 5-hour Session stays Session, so the pair is `five-hour-primary`. The newer Weekly absence replaces the older Session, so the shape is null and that account is left out of event assignment.
+`shapeFor` now classifies `collapseQuotaWindows(aliasCodexSevenDaySessions(rows))`. The 7-day Session is read as Weekly and the 5-hour Session stays Session, so the pair is `five-hour-primary`. The newer Weekly absence replaces the older Session, so the shape is null and that account is no longer matched by shape; a recorded plan name that matches only that account still assigns events to it.
 
 The I3 note above says the refresh scan needed no change because it classifies the plugin lines of the account being refreshed. That path is unchanged. This round covers the stored rows used for the other accounts.
 
@@ -115,3 +115,7 @@ Recorded on this branch after `c3a00d9`.
 | `bun run build:webui` | passed (web `tsc` + Vite, server bundle) |
 
 `CcusageProvider > default command runner cleans up child processes on timeout` passed in this run. The Antigravity Cloud Code test that reaches a running language server did not fail. Neither was changed. Nothing was pushed.
+
+## Review round 2
+
+Target `0451be5`. Grok Build `grok-4.7` high (REQUEST_CHANGES, documentation only), AGY `gemini-3.8-flash-high` (APPROVE), Codex `gpt-6.1-sol` high via the second Codex home (APPROVE). N1-1 confirmed resolved in code. Grok (MEDIUM) and Codex (LOW) found that the two zh-TW documents and this log said a cleared shape stops event assignment; `assignAccount` still assigns by a uniquely matching recorded plan name (`packages/providers/src/codex-session-events.ts:235-237`). The zh-TW README, the zh-TW user guide and the round-1 paragraph above now say the shape is cleared and plan-name matching can still assign events. Documentation-only change by the orchestrator (Claude Opus 5.5); no code changed after the reviewed head.
