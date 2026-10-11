@@ -33,7 +33,7 @@
 
 **Enterprise flow** remains request-based via the REST `/api/usage` endpoint -- unchanged.
 
-**Team detection**: an account is treated as "team" when `planName` is `"Team"`, or `spendLimitUsage.limitType` is `"team"`, or `spendLimitUsage.pooledLimit` is greater than `0`. Team accounts display Total usage in dollars; individual accounts display it as a percentage. When `planUsage.limit` is present, that dollar limit is stored with the quota observation. The Allowance page shows it as Stated Cap next to the token estimate. Stated Cap is this included dollar limit. The Total usage percent uses its own denominator. Event prices (`chargedCents`, otherwise `tokenUsage.totalCents`) are stored on the daily token rows. The same events are also grouped by UTC hour into a separate `token_hourly` table that only the Allowance page reads, so its measured span can start and end at hour boundaries. Allowance scales that recorded API price by the Total usage percent and shows it as API Value.
+**Team detection**: an account is treated as "team" when `planName` is `"Team"`, or `spendLimitUsage.limitType` is `"team"`, or `spendLimitUsage.pooledLimit` is greater than `0`. Team accounts display Total usage in dollars; individual accounts display it as a percentage. When `planUsage.limit` is present, that dollar limit is stored with the quota observation. The Allowance page shows a Cursor dollar limit as Included Dollar Limit next to the token estimate, and notes that the estimate scales the combined pool percent, whose denominator differs from that dollar limit. Event prices (`chargedCents`, otherwise `tokenUsage.totalCents`) are stored on the daily token rows. The same events are also grouped by UTC hour into a separate `token_hourly` table that only the Allowance page reads, so its measured span can start and end at hour boundaries. Allowance scales that recorded API price by the Total usage percent and shows it as API Value.
 
 ## What The Percent Means
 
@@ -48,7 +48,7 @@ Cursor staff wrote on 2026-08-13 that `totalPercentUsed`, `autoPercentUsed`, and
 
 A local quotas read on 2026-10-11 returned four different figures for Total usage, Auto usage, API usage, and included spend divided by `limit`. The quotas payload has no per-pool dollar size, so the weights inside `totalPercentUsed` stay uncalculated here. A public forum post on 2026-09-30 matched `(Cursor Models dollars + Other Models dollars) / (Cursor Models pool + Other Models pool)` on another account. This app has not checked that formula against its own snapshot.
 
-Allowance continues to scale tokens and API dollars by the Total usage percent. Stated Cap remains `planUsage.limit`, the included dollar amount.
+Allowance continues to scale tokens and API dollars by the Total usage percent. On that page the Cursor dollar limit is labeled Included Dollar Limit and remains `planUsage.limit`.
 
 ## Endpoints
 
