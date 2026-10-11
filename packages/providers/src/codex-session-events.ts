@@ -83,8 +83,10 @@ export function meterShapeFromObservations(rows: CodexShapeObservation[]): Codex
   const sessionMs = effectivePeriod(latest("session"));
   const weekly = latest("weekly");
   const weeklyMs = weekly ? (weekly.periodMs != null && weekly.periodMs > 0 ? weekly.periodMs : 7 * DAY_MS) : null;
-  if (sessionMs != null && sessionMs < DAY_MS && weeklyMs != null && weeklyMs >= DAY_MS) return "five-hour-primary";
-  if (sessionMs != null && sessionMs >= DAY_MS && (weeklyMs == null || weeklyMs < DAY_MS)) return "weekly-primary";
+  const sessionIsSubDay = sessionMs != null && sessionMs < DAY_MS;
+  const longWindow = (sessionMs != null && sessionMs >= DAY_MS) || (weeklyMs != null && weeklyMs >= DAY_MS);
+  if (sessionIsSubDay && weeklyMs != null && weeklyMs >= DAY_MS) return "five-hour-primary";
+  if (!sessionIsSubDay && longWindow) return "weekly-primary";
   return null;
 }
 

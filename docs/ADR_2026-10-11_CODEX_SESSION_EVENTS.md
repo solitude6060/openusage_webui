@@ -18,7 +18,8 @@ Codex session files are `sessions/**/*.jsonl`. A line with `type: "event_msg"` a
 `secondary` with `used_percent`, `window_minutes`, `resets_at`). One plan reports a weekly
 primary window only (7 days, 10080 minutes). The other reports a 5-hour primary window
 (300 minutes) plus a weekly secondary window. That window shape matches the account's own
-quota lines: a 7-day Session line, or a 5-hour Session line plus a Weekly line.
+quota lines: a 7-day Session line, a 7-day Weekly line with no shorter Session line, or a
+5-hour Session line plus a Weekly line.
 `session_meta.creator_account_id` does not identify who consumed the tokens.
 
 Evidence: `docs/plans/2026-10-11-codex-session-events.md` and the 2026-10-11 allowance gap
@@ -43,8 +44,9 @@ analysis, section 4.2. Per completed cycle there, the medians are 2.75M tokens p
    kept event in that file is skipped. The scan runs inside the existing Codex refresh
    worker, after a successful probe, and the server writes the rows.
 4. An event is assigned to the one account whose quota observations report the same weekly
-   window shape (weekly primary only, or 5-hour primary plus weekly secondary). If the
-   shape does not pick one account, the plan name recorded for an account is used. A plan
+   window shape (a weekly window of at least one day and no shorter session, or 5-hour
+   primary plus weekly secondary). If the shape does not pick one account, the plan name
+   recorded for an account is used. A plan
    learned from a shaped event in that same scan is used to assign the scan's other events
    before the file cursor moves on. The scanner never reads `creator_account_id`. Events
    that match no account are counted in the error log and not stored. Quota observations
