@@ -791,11 +791,13 @@ export class SqliteStorage implements Storage {
   }
 
   async listLatestQuotaObservations(providerId?: string): Promise<QuotaObservation[]> {
+    // Keep one latest row per period. A later read aliases a 7-day Codex Session
+    // onto Weekly, so a newer 5-hour Session must not hide that older row.
     const rows = this.requireDb().query(`
       SELECT * FROM (
         SELECT *,
           ROW_NUMBER() OVER (
-            PARTITION BY provider_id, window_key
+            PARTITION BY provider_id, window_key, COALESCE(period_ms, -1)
             ORDER BY observed_at DESC, id DESC
           ) AS rn
         FROM quota_observations
