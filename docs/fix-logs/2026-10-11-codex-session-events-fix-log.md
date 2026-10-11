@@ -135,3 +135,7 @@ Checks after `37964cb`, before this note:
 | `bun run build:webui` | passed (`tsc`, Vite, server bundle), exit 0 |
 
 The one failure is `CcusageProvider > default command runner cleans up child processes on timeout`. The same test passed when run alone (1 pass, exit 0). The Antigravity Cloud Code test that reaches a running language server did not fail in this run. This session does not push.
+
+## Review round 3
+
+Target `dbb890a`. Grok Build `grok-4.7` high, AGY `gemini-3.8-flash-high`, Codex `gpt-6.1-sol` high (second Codex home): all APPROVE. E2-1 and E2-2 confirmed resolved. Deferred LOW findings (Codex lane): a remap rescan where the sessions directory does not exist still clears events and saves the new mapping key (a missing directory is treated like an empty one); a new test does not restore an environment variable it sets.
