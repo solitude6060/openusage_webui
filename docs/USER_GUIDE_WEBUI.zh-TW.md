@@ -208,7 +208,7 @@ Allowance 頁用你這段時間的實際 token，除以同一個額度表移動�
 - This Period 是目前這個重設週期，從週期開始算到現在。週期已經結束時，這一項留空。Previous Period 是再前一個週期；目前沒有進行中的週期時，改顯示最近結束的那一個
 - Subscription Period 列出最近 120 天的每一次重設週期，不使用其他區間的對齊方式。基準是最近四個納入的週期，只用完整落在週期內的用量，顯示 token 與記下的 API 金額的中位數、最低到最高，以及用了幾個週期
 - 目前週期顯示最新額度讀數、完整落在週期內的用量、對照基準還剩多少，以及推估的結束百分比。標成 Unreliable 時，這個週期還不滿一天、目前週期的額度表中途下降，或最近四個週期有一個比原本的重設時間早超過一小時結束。目前週期的額度表下降時，讀數旁會標 Meter Fell
-- 不進入基準的週期仍會列出，並標上原因：Meter Fell（額度表中途下降）、Shared Session Log（與另一個帳號共用 session）、History Truncated（週期起點早於這次載入的紀錄）、No Tokens、Below 10 Percent（結束時低於 10%）、Edge Uncertain（跨過邊界的用量超過週期內用量的 25%）、Observation Gap（結束前最後一天沒有讀數）
+- 不進入基準的週期仍會列出，並標上原因：Meter Fell（額度表中途下降）、Shared Session Log（與另一個帳號共用 session，而且這個帳號沒有自己的事件）、History Truncated（週期起點早於這次載入的紀錄）、No Tokens、Below 10 Percent（結束時低於 10%）、Edge Uncertain（跨過邊界的用量超過週期內用量的 25%）、Observation Gap（結束前最後一天沒有讀數）
 - 沒有進行中的週期、也沒有納入的週期時，這個帳號不列出。每一筆讀數都是 0% 時也不列出，除非目前這個週期已經有記下的 token
 - 較低的數字只加總完整落在週期裡的用量。跨過起點或終點的用量只加進較高的數字。API 金額只有一側有值時，另一側顯示 Unknown。目前週期不算跨過起點或現在的用量
 - 窄螢幕把已結束的週期改成卡片，寬螢幕用表格
@@ -226,7 +226,7 @@ Allowance 頁用你這段時間的實際 token，除以同一個額度表移動�
 - 百分比移動不到 5 個點時，數字仍會顯示，並標成 Rough Estimate
 - 百分比沒有移動、區間中途往下掉，或這段沒有 token 紀錄時，不算出配額。正向移動不到 1 個百分點仍可粗估
 - 每次百分比變動都會保留，包含不到 1 個百分點的變動。下次正常啟動時，也會從已存的快照補回舊版省略的變動，保留既有紀錄
-- 兩個 Codex 家目錄共用同一份 session 時，用量記在真實目錄那個帳號，只換算那個帳號自己的額度表。另一個帳號不換算
+- 兩個 Codex 家目錄共用同一份 session 時，Tokens 的每日用量記在真實目錄那個帳號。Allowance 在連結的帳號有自己的 session 事件時仍會換算；沒有事件時不換算
 - 官方有給絕對上限時會標成 Stated Cap。Cursor 的美元上限標成 Included Dollar Limit
 - Cursor 的 Total usage 百分比來自 `planUsage.totalPercentUsed`，是合併 pool（用量池）的讀數。Auto usage 是 Cursor 自家模型（包含 Grok 與 Composer）的 pool，API usage 是其他模型的 pool。Included Spend 顯示方案內含的美元花費與上限（$已用金額 of $上限），分子是方案內含金額，不含 bonus。Cursor 官方網站會把這筆內含金額除以上限，顯示為內含用量百分比。畫面上的三個 pool 百分比和官網的內含花費百分比是不同分母的讀數。Allowance 仍用 Total usage 的百分比來換算 token 與 API 金額。Allowance 頁把這個美元上限標成 Included Dollar Limit，並註明：Cursor 有回報合併 pool 百分比時，這個百分比的分母和美元上限不同；Team 方案，以及沒有回報這個百分比的方案，用的是已用金額除以這個上限
 - 同一段用量若有記下 API 價格，會用同一個百分比把這段費用換算成整包的 API 費用，標成 API Value。這段實際費用標成 API Cost。少了價格的紀錄不估金額

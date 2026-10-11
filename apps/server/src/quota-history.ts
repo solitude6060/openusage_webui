@@ -153,6 +153,24 @@ async function previousQuotaObservation(
   return direct;
 }
 
+// A symlink account with session-event rows has its own hourly tokens.
+async function allowanceSharedProviderIds(
+  storage: SqliteStorage,
+  historyStartMs: number,
+): Promise<Set<string>> {
+  const accounts = await storage.listProviderAccounts();
+  const eventProviderIds = new Set(
+    await storage.listCodexEventProviderIds(new Date(historyStartMs).toISOString()),
+  );
+  return new Set(
+    codexSessionTokenDuplicateIds(
+      accounts
+        .filter((account) => account.providerId === "codex")
+        .map((account) => ({ id: account.id, homePath: account.homePath })),
+    ).filter((id) => !eventProviderIds.has(id)),
+  );
+}
+
 export async function loadAllowanceEstimates(
   storage: SqliteStorage,
   spanInput: AllowanceDays | AllowanceSpan,
@@ -167,17 +185,7 @@ export async function loadAllowanceEstimates(
   const historyStart = span.kind === "period" || span.kind === "previous"
     ? lookbackStart
     : lookbackStart - ALLOWANCE_BASELINE_MS;
-  const accounts = await storage.listProviderAccounts();
-  const codexHomes = accounts
-    .filter((account) => account.providerId === "codex")
-    .map((account) => ({ id: account.id, homePath: account.homePath }));
-  // A symlink account with session-event rows has its own hourly tokens.
-  const eventProviderIds = new Set(
-    await storage.listCodexEventProviderIds(new Date(historyStart).toISOString()),
-  );
-  const sharedProviderIds = new Set(
-    codexSessionTokenDuplicateIds(codexHomes).filter((id) => !eventProviderIds.has(id)),
-  );
+  const sharedProviderIds = await allowanceSharedProviderIds(storage, historyStart);
   const observations = await storage.listQuotaObservationsSince(new Date(historyStart).toISOString());
   // A UTC-midnight daily bucket starts before a window that opens later that same day.
   const tokenRows = await storage.listAllowanceTokenRows(
@@ -195,12 +203,7 @@ export async function loadAllowanceCycleSummaries(
   now = new Date(),
 ): Promise<{ span: "cycles"; summaries: AllowanceCycleSummary[] }> {
   const historyStart = now.getTime() - ALLOWANCE_CYCLE_HISTORY_MS;
-  const accounts = await storage.listProviderAccounts();
-  const codexHomes = accounts
-    .filter((account) => account.providerId === "codex")
-    .map((account) => ({ id: account.id, homePath: account.homePath }));
-  // The symlink account has no tokens of its own. The real directory can use its own meter.
-  const sharedProviderIds = new Set(codexSessionTokenDuplicateIds(codexHomes));
+  const sharedProviderIds = await allowanceSharedProviderIds(storage, historyStart);
   const observations = await storage.listQuotaObservationsSince(new Date(historyStart).toISOString());
   const tokenRows = await storage.listAllowanceTokenRows(
     new Date(historyStart - 24 * 60 * 60 * 1000).toISOString(),
