@@ -34,7 +34,7 @@ const SUMMARY_PROGRESS_LABELS = new Set([
   "API usage",
   "Requests",
 ]);
-const SUMMARY_TEXT_LABELS = new Set(["Today"]);
+const SUMMARY_TEXT_LABELS = new Set(["Today", "Included Spend"]);
 const SUMMARY_BADGE_LABELS = new Set(["Status", "Account"]);
 
 type DashboardLine = Record<string, unknown>;

@@ -1051,6 +1051,19 @@
         limitUnit: hasPlanUsageLimit && pu.limit > 0 ? "usd" : undefined,
         usedValue: hasPlanUsageLimit && pu.limit > 0 ? ctx.fmt.dollars(planUsed) : undefined,
       }))
+
+      // Included dollars only. totalSpend adds bonus and stays on Total usage usedValue.
+      if (hasPlanUsageLimit && pu.limit > 0) {
+        const includedCents = Number.isFinite(pu.includedSpend)
+          ? pu.includedSpend
+          : (Number.isFinite(pu.remaining) ? pu.limit - pu.remaining : null)
+        if (includedCents != null) {
+          lines.push(ctx.line.text({
+            label: "Included Spend",
+            value: formatUsdFromCents(includedCents) + " of " + formatUsdFromCents(pu.limit),
+          }))
+        }
+      }
     }
 
     if (typeof pu.autoPercentUsed === "number" && Number.isFinite(pu.autoPercentUsed)) {

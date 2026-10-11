@@ -140,6 +140,10 @@ function useNarrowLayout(): boolean {
   return narrow;
 }
 
+function isCursorAccount(providerId: string): boolean {
+  return providerId === "cursor" || providerId.startsWith("cursor:");
+}
+
 function AllowanceCycle({ cycle }: { cycle: AllowanceEstimate }) {
   const allowance = cycle.estimatedAllowance;
   return (
@@ -165,8 +169,15 @@ function AllowanceCycle({ cycle }: { cycle: AllowanceEstimate }) {
         {cycle.tokens > 0 ? `${formatCompactTokenCount(cycle.tokens)} tokens used` : "No tokens in this span"}
         {cycle.apiCost != null ? ` · API Cost ${formatApiMoney(cycle.apiCost)}` : ""}
         {cycle.coarse ? " · Rough Estimate" : ""}
-        {cycle.statedLimit != null ? ` · Stated Cap ${formatLimit(cycle)}` : ""}
+        {cycle.statedLimit != null
+          ? ` · ${isCursorAccount(cycle.providerId) ? "Included Dollar Limit" : "Stated Cap"} ${formatLimit(cycle)}`
+          : ""}
       </p>
+      {isCursorAccount(cycle.providerId) && cycle.statedLimit != null ? (
+        <p className="allowance-meta">
+          When Cursor reports its combined pool percent, that percent has a different denominator from this dollar limit. Team plans, and plans without that percent, use spend divided by this limit.
+        </p>
+      ) : null}
       {cycle.models.length > 0 ? (
         <ul className="allowance-models">
           {cycle.models.map((model) => (

@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { getAllowance } from "../lib/api";
+import { getAllowance, type AllowanceEstimate } from "../lib/api";
+import { formatMoney } from "../lib/format";
 import { AllowancePage } from "./allowance-page";
 
 vi.mock("../lib/api", () => ({
@@ -43,3 +44,83 @@ describe("Allowance calculation notes", () => {
     await waitFor(() => expect(screen.queryByText("Loading...")).not.toBeInTheDocument());
   });
 });
+
+function estimate(overrides: Partial<AllowanceEstimate> & Pick<AllowanceEstimate, "providerId" | "statedLimit" | "statedLimitUnit">): AllowanceEstimate {
+  return {
+    windowKey: "weekly",
+    windowLabel: "Weekly",
+    from: "2026-10-01T00:00:00.000Z",
+    to: "2026-10-08T00:00:00.000Z",
+    resetsAt: null,
+    percentStart: 10,
+    percentEnd: 20,
+    tokens: 1000,
+    estimatedAllowance: 10000,
+    apiCost: null,
+    estimatedApiCost: null,
+    coarse: false,
+    models: [],
+    reason: "ok",
+    ...overrides,
+  };
+}
+
+describe("Allowance stated cap label", () => {
+  test("labels a Cursor dollar limit apart from the combined pool estimate", async () => {
+    mockViewport(false);
+    vi.mocked(getAllowance).mockResolvedValue({
+      span: "7",
+      days: 7,
+      estimates: [
+        estimate({
+          providerId: "cursor",
+          windowKey: "cursor:total-usage",
+          windowLabel: "Total usage",
+          statedLimit: 400,
+          statedLimitUnit: "usd",
+        }),
+        estimate({
+          providerId: "codex",
+          statedLimit: 50,
+          statedLimitUnit: "usd",
+        }),
+      ],
+    });
+    render(<AllowancePage providers={[]} refreshToken={0} />);
+
+    const cursorLimit = await screen.findByText(new RegExp(`Included Dollar Limit ${escapeRegExp(formatMoney(400))}`));
+    expect(cursorLimit).not.toHaveTextContent("Stated Cap");
+    expect(screen.getByText("When Cursor reports its combined pool percent, that percent has a different denominator from this dollar limit. Team plans, and plans without that percent, use spend divided by this limit.")).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`Stated Cap ${escapeRegExp(formatMoney(50))}`))).toBeInTheDocument();
+    expect(screen.getAllByText(/Included Dollar Limit/)).toHaveLength(1);
+    await waitFor(() => expect(screen.queryByText("Loading...")).not.toBeInTheDocument());
+  });
+
+  test("labels a named Cursor account the same way as the base provider", async () => {
+    mockViewport(false);
+    vi.mocked(getAllowance).mockResolvedValue({
+      span: "7",
+      days: 7,
+      estimates: [
+        estimate({
+          providerId: "cursor:work",
+          windowKey: "cursor:total-usage",
+          windowLabel: "Total usage",
+          statedLimit: 400,
+          statedLimitUnit: "usd",
+        }),
+      ],
+    });
+    render(<AllowancePage providers={[]} refreshToken={0} />);
+
+    const cursorLimit = await screen.findByText(new RegExp(`Included Dollar Limit ${escapeRegExp(formatMoney(400))}`));
+    expect(cursorLimit).not.toHaveTextContent("Stated Cap");
+    expect(screen.getByText("When Cursor reports its combined pool percent, that percent has a different denominator from this dollar limit. Team plans, and plans without that percent, use spend divided by this limit.")).toBeInTheDocument();
+    expect(screen.queryByText(/Stated Cap/)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("Loading...")).not.toBeInTheDocument());
+  });
+});
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
