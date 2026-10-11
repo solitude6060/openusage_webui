@@ -140,7 +140,7 @@ function lookbackStart(span: AllowanceSpan, now: Date): number {
   return now.getTime();
 }
 
-function chooseWindows(observations: AllowanceObservation[]): ChosenWindow[] {
+export function chooseWindows(observations: AllowanceObservation[]): ChosenWindow[] {
   const groups = new Map<string, AllowanceObservation[]>();
   for (const observation of observations) {
     const key = `${observation.providerId}\u0000${observation.windowKey}`;
@@ -192,7 +192,7 @@ function effectivePeriod(latest: AllowanceObservation, group: AllowanceObservati
   return maxHorizon;
 }
 
-function meterPoints(observations: AllowanceObservation[], window: ChosenWindow): MeterPoint[] {
+export function meterPoints(observations: AllowanceObservation[], window: ChosenWindow): MeterPoint[] {
   const points: MeterPoint[] = [];
   const group = observations.filter((item) => item.providerId === window.providerId && item.windowKey === window.windowKey);
   const periods = new Map<string, number | null>();
@@ -223,7 +223,7 @@ interface BoundedCycle {
   end: number;
 }
 
-function boundedCycles(points: MeterPoint[]): BoundedCycle[] {
+export function boundedCycles(points: MeterPoint[]): BoundedCycle[] {
   const drafted = clusterPoints(points).map((cycle) => {
     const resetsAt = cycleEndOf(cycle);
     return {

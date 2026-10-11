@@ -1,4 +1,10 @@
-import type { AllowanceObservation, AllowanceTokenRow } from "./allowance-estimate";
+import {
+  boundedCycles,
+  chooseWindows,
+  meterPoints,
+  type AllowanceObservation,
+  type AllowanceTokenRow,
+} from "./allowance-estimate";
 
 export type AllowanceCycleExclusion =
   | "meter-fell"
@@ -58,10 +64,46 @@ export interface AllowanceCycleSummary {
 }
 
 export function buildAllowanceCycleSummaries(
-  _observations: AllowanceObservation[],
+  observations: AllowanceObservation[],
   _tokenRows: AllowanceTokenRow[],
   _sharedProviderIds: ReadonlySet<string>,
-  _now: Date,
+  now: Date,
 ): AllowanceCycleSummary[] {
-  return [];
+  const nowMs = now.getTime();
+  const summaries: AllowanceCycleSummary[] = [];
+  for (const window of chooseWindows(observations)) {
+    const points = meterPoints(observations, window).filter((point) => point.at <= nowMs);
+    const cycles = boundedCycles(points)
+      .filter((cycle) => cycle.end <= nowMs)
+      .map((cycle) => emptyCycle(cycle.start, cycle.end))
+      .sort((left, right) => right.end.localeCompare(left.end));
+    summaries.push({
+      providerId: window.providerId,
+      windowKey: window.windowKey,
+      windowLabel: window.windowLabel,
+      baseline: { tokens: null, apiDollars: null },
+      current: null,
+      cycles,
+    });
+  }
+  return summaries.sort((left, right) => left.providerId.localeCompare(right.providerId));
+}
+
+function emptyCycle(start: number, end: number): AllowanceCompletedCycle {
+  return {
+    start: new Date(start).toISOString(),
+    end: new Date(end).toISOString(),
+    lengthMs: end - start,
+    endPercent: 0,
+    tokensLow: 0,
+    tokensHigh: 0,
+    apiCostLow: null,
+    apiCostHigh: null,
+    allowanceLow: null,
+    allowanceHigh: null,
+    apiDollarsLow: null,
+    apiDollarsHigh: null,
+    included: true,
+    exclusion: null,
+  };
 }
