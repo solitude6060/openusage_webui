@@ -358,4 +358,19 @@ describe("allowance cycle baseline", () => {
     expect(summary?.cycles.find((cycle) => cycle.end === "2026-09-13T00:00:00.000Z")?.exclusion).toBe("meter-fell");
     expect(summary?.current).not.toBeNull();
   });
+
+  test("excludes a provider whose session log is shared", () => {
+    const summaries = buildAllowanceCycleSummaries(
+      [observation("2026-10-07T12:00:00.000Z", 50, "2026-10-08T00:00:00.000Z", "codex:family")],
+      [bucket("2026-10-03T00:00:00.000Z", 100, { costUsd: 2, providerId: "codex:family" })],
+      new Set(["codex:family"]),
+      new Date("2026-10-09T00:00:00.000Z"),
+    );
+
+    expect(summaries[0]?.cycles[0]).toEqual(expect.objectContaining({
+      included: false,
+      exclusion: "shared-log",
+    }));
+    expect(summaries[0]?.baseline.tokens).toBeNull();
+  });
 });
