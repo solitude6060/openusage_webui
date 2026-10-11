@@ -8,6 +8,7 @@ import {
 import { IMPLIED_MIN_PERCENT } from "./quota-view";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const BASELINE_LIMIT = 4;
 
 export type AllowanceCycleExclusion =
   | "meter-fell"
@@ -150,7 +151,7 @@ function measureCycle(cycle: BoundedCycle, rows: AllowanceTokenRow[]): Allowance
 }
 
 function baselineFrom(cycles: AllowanceCompletedCycle[]): AllowanceCycleSummary["baseline"] {
-  const sample = cycles.filter((cycle) => cycle.included).slice(0, 1);
+  const sample = cycles.filter((cycle) => cycle.included).slice(0, BASELINE_LIMIT);
   return {
     tokens: stats(presentNumbers(sample.map((cycle) => cycle.allowanceLow))),
     apiDollars: stats(presentNumbers(sample.map((cycle) => cycle.apiDollarsLow))),
