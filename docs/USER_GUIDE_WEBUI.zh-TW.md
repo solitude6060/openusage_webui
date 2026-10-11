@@ -204,8 +204,14 @@ events 必須完整取得才會寫入，避免把部分資料顯示成完整總�
 
 Allowance 頁用你這段時間的實際 token，除以同一個額度表移動的百分比，估出訂閱配額大約有多大。
 
-- 時間可選 1 Day、3 Days、5 Days、7 Days、30 Days、This Month、This Period、Previous Period
+- 時間可選 1 Day、3 Days、5 Days、7 Days、30 Days、This Month、This Period、Previous Period、Subscription Period
 - This Period 是目前這個重設週期，從週期開始算到現在。週期已經結束時，這一項留空。Previous Period 是再前一個週期；目前沒有進行中的週期時，改顯示最近結束的那一個
+- Subscription Period 列出最近 120 天的每一次重設週期，不使用其他區間的對齊方式。基準是最近四個納入的週期，只用完整落在週期內的用量，顯示 token 與記下的 API 金額的中位數、最低到最高，以及用了幾個週期
+- 目前週期顯示最新額度讀數、完整落在週期內的用量、對照基準還剩多少，以及推估的結束百分比。標成 Unreliable 時，這個週期還不滿一天、目前週期的額度表中途下降，或最近四個週期有一個比原本的重設時間早超過一小時結束。目前週期的額度表下降時，讀數旁會標 Meter Fell
+- 不進入基準的週期仍會列出，並標上原因：Meter Fell（額度表中途下降）、Shared Session Log（與另一個帳號共用 session）、History Truncated（週期起點早於這次載入的紀錄）、No Tokens、Below 10 Percent（結束時低於 10%）、Edge Uncertain（跨過邊界的用量超過週期內用量的 25%）、Observation Gap（結束前最後一天沒有讀數）
+- 沒有進行中的週期、也沒有納入的週期時，這個帳號不列出。每一筆讀數都是 0% 時也不列出，除非目前這個週期已經有記下的 token
+- 較低的數字只加總完整落在週期裡的用量。跨過起點或終點的用量只加進較高的數字。API 金額只有一側有值時，另一側顯示 Unknown。目前週期不算跨過起點或現在的用量
+- 窄螢幕把已結束的週期改成卡片，寬螢幕用表格
 - This Month 用這台電腦的本地日曆
 - 每個帳號用至少一天的額度窗口。有 Weekly 就用 Weekly；Cursor 用 Total usage。Codex 的 Session 若重設時間在一天以上，也拿來算；幾小時後就重設的 Session 不算
 - 區間裡額度重設時，重設前後各算一次，方便比較配額有沒有變小。新週期提早開始時，舊週期算到新週期開始為止

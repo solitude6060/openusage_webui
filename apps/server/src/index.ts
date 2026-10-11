@@ -24,6 +24,7 @@ import {
 } from "./provider-accounts";
 import {
   backfillQuotaObservations,
+  loadAllowanceCycleSummaries,
   loadAllowanceEstimates,
   loadQuotaDashboard,
   recordQuotaFromRefresh,
@@ -381,8 +382,9 @@ async function handleApi(
   if (request.method === "GET" && url.pathname === "/api/usage/allowance") {
     const span = parseAllowanceSpan(url.searchParams);
     if (!span) {
-      return jsonError("BAD_REQUEST", "Range must be 1, 3, 5, 7, or 30 days, month, period, or previous", 400);
+      return jsonError("BAD_REQUEST", "Range must be 1, 3, 5, 7, or 30 days, month, period, previous, or cycles", 400);
     }
+    if (span.kind === "cycles") return json(await loadAllowanceCycleSummaries(storage));
     return json(await loadAllowanceEstimates(storage, span));
   }
 

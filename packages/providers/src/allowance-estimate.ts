@@ -15,6 +15,7 @@ export type AllowanceSpan =
   | { kind: "month" }
   | { kind: "period" }
   | { kind: "previous" };
+export type AllowanceCycleSpan = { kind: "cycles" };
 
 export function isAllowanceDays(value: number): value is AllowanceDays {
   return (ALLOWANCE_DAY_OPTIONS as readonly number[]).includes(value);
@@ -24,10 +25,14 @@ export function normalizeAllowanceSpan(value: AllowanceDays | AllowanceSpan): Al
   return typeof value === "number" ? { kind: "days", days: value } : value;
 }
 
-export function parseAllowanceSpan(params: { get(name: string): string | null }): AllowanceSpan | null {
+export function parseAllowanceSpan(
+  params: { get(name: string): string | null },
+): AllowanceSpan | AllowanceCycleSpan | null {
   const requested = params.get("span");
   if (requested != null && requested !== "") {
-    if (requested === "month" || requested === "period" || requested === "previous") return { kind: requested };
+    if (requested === "month" || requested === "period" || requested === "previous" || requested === "cycles") {
+      return { kind: requested };
+    }
     return null;
   }
   const days = Number(params.get("days") ?? "7");
@@ -143,7 +148,7 @@ function lookbackStart(span: AllowanceSpan, now: Date): number {
   return now.getTime();
 }
 
-function chooseWindows(observations: AllowanceObservation[]): ChosenWindow[] {
+export function chooseWindows(observations: AllowanceObservation[]): ChosenWindow[] {
   const groups = new Map<string, AllowanceObservation[]>();
   for (const observation of observations) {
     const key = `${observation.providerId}\u0000${observation.windowKey}`;
@@ -195,7 +200,7 @@ function effectivePeriod(latest: AllowanceObservation, group: AllowanceObservati
   return maxHorizon;
 }
 
-function meterPoints(observations: AllowanceObservation[], window: ChosenWindow): MeterPoint[] {
+export function meterPoints(observations: AllowanceObservation[], window: ChosenWindow): MeterPoint[] {
   const points: MeterPoint[] = [];
   const group = observations.filter((item) => item.providerId === window.providerId && item.windowKey === window.windowKey);
   const periods = new Map<string, number | null>();
@@ -226,7 +231,7 @@ interface BoundedCycle {
   end: number;
 }
 
-function boundedCycles(points: MeterPoint[]): BoundedCycle[] {
+export function boundedCycles(points: MeterPoint[]): BoundedCycle[] {
   const drafted = clusterPoints(points).map((cycle) => {
     const resetsAt = cycleEndOf(cycle);
     return {
