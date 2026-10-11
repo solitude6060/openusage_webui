@@ -791,11 +791,13 @@ export class SqliteStorage implements Storage {
   }
 
   async listLatestQuotaObservations(providerId?: string): Promise<QuotaObservation[]> {
+    // Keep one latest row per period. A later read aliases a 7-day Codex Session
+    // onto Weekly, so a newer 5-hour Session must not hide that older row.
     const rows = this.requireDb().query(`
       SELECT * FROM (
         SELECT *,
           ROW_NUMBER() OVER (
-            PARTITION BY provider_id, window_key
+            PARTITION BY provider_id, window_key, COALESCE(period_ms, -1)
             ORDER BY observed_at DESC, id DESC
           ) AS rn
         FROM quota_observations
@@ -809,7 +811,10 @@ export class SqliteStorage implements Storage {
     providerId: string,
     windowKey: string,
     resetsAt: string,
+    period?: { periodMs?: number; excludePeriodMs?: number },
   ): Promise<QuotaObservation | null> {
+    const periodMs = period?.periodMs ?? null;
+    const excludePeriodMs = period?.excludePeriodMs ?? null;
     const row = this.requireDb().query(`
       SELECT * FROM quota_observations
       WHERE provider_id = ? AND window_key = ? AND present = 1
@@ -818,9 +823,19 @@ export class SqliteStorage implements Storage {
           period_ms IS NULL OR period_ms <= 0
           OR julianday(observed_at) >= julianday(resets_at) - (period_ms / 86400000.0) / 2
         )
+        AND (? IS NULL OR period_ms = ?)
+        AND (? IS NULL OR period_ms IS NULL OR period_ms != ?)
       ORDER BY observed_at DESC, id DESC
       LIMIT 1
-    `).get(providerId, windowKey, resetsAt) as QuotaObservationRow | null;
+    `).get(
+      providerId,
+      windowKey,
+      resetsAt,
+      periodMs,
+      periodMs,
+      excludePeriodMs,
+      excludePeriodMs,
+    ) as QuotaObservationRow | null;
     return row ? rowToQuotaObservation(row) : null;
   }
 

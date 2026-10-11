@@ -257,10 +257,10 @@ describe("OpenUsagePluginProvider original bundled plugin fixtures", () => {
     ]);
     expect(records[0]).toMatchObject({
       providerId: "codex",
-      model: "Pro 20x",
+      model: "Pro 200",
       raw: {
         pluginId: "codex",
-        plan: "Pro 20x",
+        plan: "Pro 200",
         lines: [
           {
             type: "progress",

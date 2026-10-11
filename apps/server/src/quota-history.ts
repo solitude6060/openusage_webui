@@ -1,7 +1,13 @@
 import type { UsageRecord } from "../../../packages/core/src/types";
 import {
+  CODEX_SEVEN_DAY_PERIOD_MS,
+  aliasCodexSevenDaySession,
+  aliasCodexSevenDaySessions,
+  collapseQuotaWindows,
+  isCodexProviderId,
   observationsFromLines,
   selectQuotaObservations,
+  type QuotaObservation,
 } from "../../../packages/providers/src/quota-observations";
 import {
   codexSessionTokenDuplicateIds,
@@ -46,7 +52,9 @@ export async function recordQuotaFromRefresh(
   const lines = (snapshot.raw as { lines: unknown[] }).lines;
   const observedAt = snapshot.startedAt;
   const present = observationsFromLines(providerId, lines, observedAt);
-  const latest = await storage.listLatestQuotaObservations(providerId);
+  const latest = collapseQuotaWindows(
+    aliasCodexSevenDaySessions(await storage.listLatestQuotaObservations(providerId)),
+  );
   await storage.insertQuotaObservations(selectQuotaObservations(present, latest, observedAt));
 }
 
@@ -62,9 +70,9 @@ export async function backfillQuotaObservations(storage: SqliteStorage): Promise
       return;
     }
     if (!Array.isArray(lines)) return;
-    const providerLatest = [...(latest.get(row.providerId)?.values() ?? [])];
+    const providerLatest = aliasCodexSevenDaySessions([...(latest.get(row.providerId)?.values() ?? [])]);
     const selected = selectQuotaObservations(
-      observationsFromLines(row.providerId, lines, row.startedAt),
+      aliasCodexSevenDaySessions(observationsFromLines(row.providerId, lines, row.startedAt)),
       providerLatest,
       row.startedAt,
     );
@@ -89,12 +97,14 @@ export async function loadQuotaDashboard(storage: SqliteStorage): Promise<{
       .filter((account) => account.providerId === "codex")
       .map((account) => ({ id: account.id, homePath: account.homePath })),
   ));
-  const latest = await storage.listLatestQuotaObservations();
+  const latest = collapseQuotaWindows(
+    aliasCodexSevenDaySessions(await storage.listLatestQuotaObservations()),
+  );
   const pairs = [];
   for (const current of latest) {
     const cutoff = current.resetsAt ? previousResetCutoff(current.resetsAt, current.periodMs) : null;
     const previous = cutoff
-      ? await storage.latestQuotaObservationBeforeReset(current.providerId, current.windowKey, cutoff)
+      ? await previousQuotaObservation(storage, current, cutoff)
       : null;
     pairs.push({ current, previous });
   }
@@ -108,6 +118,34 @@ export async function loadQuotaDashboard(storage: SqliteStorage): Promise<{
     windows: buildQuotaWindowViews(pairs, tokenRows, sharedProviderIds),
     failures,
   };
+}
+
+async function previousQuotaObservation(
+  storage: SqliteStorage,
+  current: QuotaObservation,
+  cutoff: string,
+): Promise<QuotaObservation | null> {
+  const codex = isCodexProviderId(current.providerId);
+  const direct = await storage.latestQuotaObservationBeforeReset(
+    current.providerId,
+    current.windowKey,
+    cutoff,
+    codex && current.windowKey === "session"
+      ? { excludePeriodMs: CODEX_SEVEN_DAY_PERIOD_MS }
+      : undefined,
+  );
+  if (current.windowKey !== "weekly" || !codex) return direct;
+  const legacy = await storage.latestQuotaObservationBeforeReset(
+    current.providerId,
+    "session",
+    cutoff,
+    { periodMs: CODEX_SEVEN_DAY_PERIOD_MS },
+  );
+  const legacyWeekly = legacy ? aliasCodexSevenDaySession(legacy) : null;
+  const aliased = legacyWeekly && legacyWeekly.windowKey === "weekly" ? legacyWeekly : null;
+  if (!aliased) return direct;
+  if (!direct || aliased.observedAt > direct.observedAt) return aliased;
+  return direct;
 }
 
 export async function loadAllowanceEstimates(

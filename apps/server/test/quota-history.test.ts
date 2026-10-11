@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequestHandler } from "../src/index";
-import { backfillQuotaObservations, loadAllowanceEstimates, recordQuotaFromRefresh } from "../src/quota-history";
+import { backfillQuotaObservations, loadAllowanceEstimates, loadQuotaDashboard, recordQuotaFromRefresh } from "../src/quota-history";
 import { SqliteStorage } from "../../../packages/storage/src/index";
 
 let dataDir = "";
@@ -256,6 +256,199 @@ test("allowance aligns mid-hour readings to the hour boundaries that sit between
       reason: "ok",
     }),
   ]);
+  storage.close();
+});
+
+test("keeps a Codex 7-day Session history on the Weekly quota window", async () => {
+  const storage = new SqliteStorage();
+  await storage.init();
+  const week = 7 * 24 * 60 * 60 * 1000;
+  await storage.insertQuotaObservations([
+    {
+      providerId: "codex:codex",
+      observedAt: "2026-09-26T00:00:00.000Z",
+      windowKey: "session",
+      windowLabel: "Session",
+      periodMs: week,
+      resetsAt: "2026-09-27T00:00:00.000Z",
+      present: true,
+      usedPercent: 80,
+      limitValue: null,
+      limitUnit: null,
+      usedValue: null,
+    },
+    {
+      providerId: "codex:codex",
+      observedAt: "2026-10-03T00:00:00.000Z",
+      windowKey: "weekly",
+      windowLabel: "Weekly",
+      periodMs: week,
+      resetsAt: "2026-10-04T00:00:00.000Z",
+      present: true,
+      usedPercent: 40,
+      limitValue: null,
+      limitUnit: null,
+      usedValue: null,
+    },
+    {
+      providerId: "codex:family",
+      observedAt: "2026-10-03T00:00:00.000Z",
+      windowKey: "session",
+      windowLabel: "Session",
+      periodMs: 5 * 60 * 60 * 1000,
+      resetsAt: "2026-10-03T05:00:00.000Z",
+      present: true,
+      usedPercent: 12,
+      limitValue: null,
+      limitUnit: null,
+      usedValue: null,
+    },
+  ]);
+
+  const dashboard = await loadQuotaDashboard(storage);
+  expect(dashboard.windows.filter((window) => window.providerId === "codex:codex")).toEqual([
+    expect.objectContaining({
+      windowKey: "weekly",
+      windowLabel: "Weekly",
+      usedPercent: 40,
+      previous: expect.objectContaining({ usedPercent: 80 }),
+    }),
+  ]);
+  expect(dashboard.windows.filter((window) => window.providerId === "codex:family").map((window) => window.windowKey))
+    .toEqual(["session"]);
+
+  const stored = await storage.listQuotaObservationsSince("2026-01-01T00:00:00.000Z");
+  expect(stored.find((row) => row.providerId === "codex:codex" && row.usedPercent === 80)?.windowKey).toBe("session");
+
+  await recordQuotaFromRefresh(storage, "codex:codex", [snapshot("codex:codex", "2026-10-03T06:00:00.000Z", 42)]);
+  const afterRefresh = await storage.listQuotaObservationsSince("2026-01-01T00:00:00.000Z");
+  expect(afterRefresh.some((row) => row.providerId === "codex:codex" && row.windowKey === "session" && row.present)).toBe(true);
+  expect(afterRefresh.some((row) => row.providerId === "codex:codex" && row.windowKey === "session" && !row.present)).toBe(false);
+  expect(afterRefresh.some((row) => row.providerId === "codex:codex" && row.windowKey === "weekly" && row.usedPercent === 42)).toBe(true);
+  storage.close();
+});
+
+test("keeps Weekly visible when a 5-hour Session follows a 7-day Session on the same account", async () => {
+  const storage = new SqliteStorage();
+  await storage.init();
+  const week = 7 * 24 * 60 * 60 * 1000;
+  const fiveHours = 5 * 60 * 60 * 1000;
+  await storage.insertQuotaObservations([
+    {
+      providerId: "codex:codex",
+      observedAt: "2026-10-03T00:00:00.000Z",
+      windowKey: "session",
+      windowLabel: "Session",
+      periodMs: week,
+      resetsAt: "2026-10-04T00:00:00.000Z",
+      present: true,
+      usedPercent: 40,
+      limitValue: null,
+      limitUnit: null,
+      usedValue: null,
+    },
+  ]);
+
+  await recordQuotaFromRefresh(storage, "codex:codex", [{
+    id: "snap-mixed-windows",
+    providerId: "codex:codex",
+    tool: "OpenUsage Plugin Snapshot",
+    startedAt: "2026-10-03T01:00:00.000Z",
+    source: "api" as const,
+    raw: {
+      lines: [
+        {
+          type: "progress",
+          label: "Session",
+          used: 12,
+          limit: 100,
+          format: { kind: "percent" },
+          resetsAt: "2026-10-03T06:00:00.000Z",
+          periodDurationMs: fiveHours,
+        },
+        {
+          type: "progress",
+          label: "Weekly",
+          used: 40,
+          limit: 100,
+          format: { kind: "percent" },
+          resetsAt: "2026-10-04T00:00:00.000Z",
+          periodDurationMs: week,
+        },
+      ],
+    },
+  }]);
+
+  const dashboard = await loadQuotaDashboard(storage);
+  const windows = dashboard.windows.filter((window) => window.providerId === "codex:codex");
+  expect(windows.map((window) => [window.windowKey, window.usedPercent]).sort()).toEqual([
+    ["session", 12],
+    ["weekly", 40],
+  ]);
+
+  const stored = await storage.listQuotaObservationsSince("2026-01-01T00:00:00.000Z");
+  expect(stored.find((row) => row.usedPercent === 40 && row.observedAt === "2026-10-03T00:00:00.000Z")?.windowKey)
+    .toBe("session");
+  storage.close();
+});
+
+test("uses the older 7-day Session as the previous Weekly window on a mixed account", async () => {
+  const storage = new SqliteStorage();
+  await storage.init();
+  const week = 7 * 24 * 60 * 60 * 1000;
+  const fiveHours = 5 * 60 * 60 * 1000;
+  await storage.insertQuotaObservations([
+    {
+      providerId: "codex:codex",
+      observedAt: "2026-09-26T00:00:00.000Z",
+      windowKey: "session",
+      windowLabel: "Session",
+      periodMs: week,
+      resetsAt: "2026-09-27T00:00:00.000Z",
+      present: true,
+      usedPercent: 80,
+      limitValue: null,
+      limitUnit: null,
+      usedValue: null,
+    },
+    {
+      providerId: "codex:codex",
+      observedAt: "2026-09-28T03:00:00.000Z",
+      windowKey: "session",
+      windowLabel: "Session",
+      periodMs: fiveHours,
+      resetsAt: "2026-09-28T05:00:00.000Z",
+      present: true,
+      usedPercent: 12,
+      limitValue: null,
+      limitUnit: null,
+      usedValue: null,
+    },
+    {
+      providerId: "codex:codex",
+      observedAt: "2026-10-03T00:00:00.000Z",
+      windowKey: "weekly",
+      windowLabel: "Weekly",
+      periodMs: week,
+      resetsAt: "2026-10-04T00:00:00.000Z",
+      present: true,
+      usedPercent: 40,
+      limitValue: null,
+      limitUnit: null,
+      usedValue: null,
+    },
+  ]);
+
+  const dashboard = await loadQuotaDashboard(storage);
+  const windows = dashboard.windows.filter((window) => window.providerId === "codex:codex");
+  const weekly = windows.find((window) => window.windowKey === "weekly");
+  const session = windows.find((window) => window.windowKey === "session");
+  expect(weekly).toEqual(expect.objectContaining({ usedPercent: 40 }));
+  expect(weekly?.previous).toEqual(expect.objectContaining({ usedPercent: 80 }));
+  expect(session).toEqual(expect.objectContaining({ usedPercent: 12, previous: null }));
+
+  const stored = await storage.listQuotaObservationsSince("2026-01-01T00:00:00.000Z");
+  expect(stored.find((row) => row.usedPercent === 80)?.windowKey).toBe("session");
   storage.close();
 });
 

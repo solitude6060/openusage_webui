@@ -715,4 +715,90 @@ describe("allowance estimates", () => {
     expect(month[0]).toEqual(expect.objectContaining({ tokens: 50, estimatedAllowance: 250 }));
     expect(thirty[0]).toEqual(expect.objectContaining({ tokens: 100, estimatedAllowance: 500 }));
   });
+
+  test("reads a Codex 7-day Session series as one Weekly window", () => {
+    const estimates = buildAllowanceEstimates(
+      [
+        observation({
+          providerId: "codex:codex",
+          windowKey: "session",
+          windowLabel: "Session",
+          observedAt: "2026-09-23T00:00:00.000Z",
+          usedPercent: 10,
+          resetsAt: "2026-09-30T00:00:00.000Z",
+        }),
+        observation({
+          providerId: "codex:codex",
+          windowKey: "weekly",
+          windowLabel: "Weekly",
+          observedAt: "2026-09-29T12:00:00.000Z",
+          usedPercent: 30,
+          resetsAt: "2026-09-30T00:00:00.000Z",
+        }),
+        observation({
+          providerId: "codex:codex",
+          windowKey: "session",
+          windowLabel: "Session",
+          periodMs: 5 * 60 * 60 * 1000,
+          observedAt: "2026-09-29T12:00:00.000Z",
+          usedPercent: 80,
+          resetsAt: "2026-09-29T17:00:00.000Z",
+        }),
+      ],
+      [row({ providerId: "codex:codex", tokens: 200 })],
+      new Set(),
+      7,
+      new Date(NOW),
+    );
+
+    expect(estimates).toEqual([
+      expect.objectContaining({
+        providerId: "codex:codex",
+        windowKey: "weekly",
+        windowLabel: "Weekly",
+        percentStart: 10,
+        percentEnd: 30,
+        tokens: 200,
+        estimatedAllowance: 1000,
+        reason: "ok",
+      }),
+    ]);
+  });
+
+  test("leaves a 7-day Session on another provider under Session", () => {
+    const estimates = buildAllowanceEstimates(
+      [
+        observation({
+          providerId: "example",
+          windowKey: "session",
+          windowLabel: "Session",
+          observedAt: "2026-09-23T00:00:00.000Z",
+          usedPercent: 10,
+          resetsAt: "2026-09-30T00:00:00.000Z",
+        }),
+        observation({
+          providerId: "example",
+          windowKey: "session",
+          windowLabel: "Session",
+          observedAt: "2026-09-29T12:00:00.000Z",
+          usedPercent: 30,
+          resetsAt: "2026-09-30T00:00:00.000Z",
+        }),
+      ],
+      [row({ providerId: "example", tokens: 200 })],
+      new Set(),
+      7,
+      new Date(NOW),
+    );
+
+    expect(estimates).toEqual([
+      expect.objectContaining({
+        providerId: "example",
+        windowKey: "session",
+        windowLabel: "Session",
+        percentStart: 10,
+        percentEnd: 30,
+      }),
+    ]);
+  });
 });

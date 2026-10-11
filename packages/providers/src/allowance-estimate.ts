@@ -1,3 +1,5 @@
+import { aliasCodexSevenDaySessions } from "./quota-observations";
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
 const COARSE_DELTA = 5;
@@ -105,9 +107,10 @@ export function buildAllowanceEstimates(
   const span = normalizeAllowanceSpan(spanInput);
   const rangeEnd = now.getTime();
   const estimates: AllowanceEstimate[] = [];
+  const windows = aliasCodexSevenDaySessions(observations);
 
-  for (const window of chooseWindows(observations)) {
-    const points = meterPoints(observations, window).filter((point) => point.at <= rangeEnd);
+  for (const window of chooseWindows(windows)) {
+    const points = meterPoints(windows, window).filter((point) => point.at <= rangeEnd);
     const cycles = boundedCycles(points);
     const shared = sharedProviderIds.has(window.providerId);
     const selected = selectCycles(cycles, span, rangeEnd, now, shared);

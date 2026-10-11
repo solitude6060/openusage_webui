@@ -1,4 +1,5 @@
 export const QUOTA_RECORD_GAP_MS = 6 * 60 * 60 * 1000;
+export const CODEX_SEVEN_DAY_PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type QuotaLimitUnit = "usd" | "tokens" | "requests";
 
@@ -30,6 +31,51 @@ const ACCOUNT_LABELS = new Set([
   "on-demand",
   "requests",
 ]);
+
+export function isCodexProviderId(providerId: string): boolean {
+  return providerId === "codex" || providerId.startsWith("codex:");
+}
+
+// Read-time only. A Codex account that stored its 7-day window as Session keeps
+// those rows; callers see them as Weekly so later Weekly readings stay one series.
+export function aliasCodexSevenDaySession<T extends {
+  providerId: string;
+  windowKey: string;
+  windowLabel: string;
+  periodMs: number | null;
+}>(observation: T): T {
+  if (
+    isCodexProviderId(observation.providerId)
+    && observation.windowKey === "session"
+    && observation.periodMs === CODEX_SEVEN_DAY_PERIOD_MS
+  ) {
+    return { ...observation, windowKey: "weekly", windowLabel: "Weekly" };
+  }
+  return observation;
+}
+
+export function aliasCodexSevenDaySessions<T extends {
+  providerId: string;
+  windowKey: string;
+  windowLabel: string;
+  periodMs: number | null;
+}>(observations: T[]): T[] {
+  return observations.map(aliasCodexSevenDaySession);
+}
+
+export function collapseQuotaWindows<T extends {
+  providerId: string;
+  windowKey: string;
+  observedAt: string;
+}>(observations: T[]): T[] {
+  const byKey = new Map<string, T>();
+  for (const observation of observations) {
+    const key = `${observation.providerId}\u0000${observation.windowKey}`;
+    const existing = byKey.get(key);
+    if (!existing || observation.observedAt > existing.observedAt) byKey.set(key, observation);
+  }
+  return [...byKey.values()];
+}
 
 export function quotaWindowKey(providerId: string, label: string): string {
   const slug = label

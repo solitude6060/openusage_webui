@@ -63,6 +63,23 @@ Returns rate limit windows, optional credits, and available on-demand rate limit
 
 Both rate_limit windows are enforced simultaneously — hitting either limit throttles the user.
 
+OpenUsage names each line from its duration. A window of 5 hours (`limit_window_seconds` 18000) is Session. A window of 7 days (604800) is Weekly. The match is exact. A 7-day window sitting in `primary_window` is shown only as Weekly. The same rule applies to each `additional_rate_limits` entry. When the duration is missing, or it is neither 5 hours nor 7 days, primary stays Session and secondary stays Weekly.
+
+The percent comes from that window's `used_percent`. The response headers `x-codex-primary-used-percent` and `x-codex-secondary-used-percent` fill in only when the matching window has no percent.
+
+| `plan_type` | Shown as |
+|---|---|
+| `prolite` | Pro 100 |
+| `pro` | Pro 200 |
+| `promax` | Pro 500 |
+| `self_serve_business_prolite` | Business Premium |
+
+Other plan identifiers keep a readable name. Underscores become spaces.
+
+Readings saved earlier as a 7-day Session are shown as Weekly in Allowance and Quotas, together with newer Weekly readings. The original rows remain in the database. A 5-hour Session stays a Session. A newer 5-hour Session on the same account leaves the Weekly series visible. Its previous reading is the latest 7-day Session before the reset. The previous 5-hour Session is the latest Session row with another period.
+
+The example above is the common shape: a 5-hour primary window and a 7-day secondary window.
+
 OpenUsage floors the remaining credit balance to a whole number and displays its fixed USD
 equivalent at `$0.04` per credit. For example, `820.6969075` renders as
 `$32.80 · 820 credits`. The credit balance is unbounded; the API does not provide a maximum.
