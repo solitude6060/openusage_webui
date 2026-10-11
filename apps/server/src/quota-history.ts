@@ -1,5 +1,6 @@
 import type { UsageRecord } from "../../../packages/core/src/types";
 import {
+  CODEX_SEVEN_DAY_PERIOD_MS,
   aliasCodexSevenDaySession,
   aliasCodexSevenDaySessions,
   collapseQuotaWindows,
@@ -124,13 +125,22 @@ async function previousQuotaObservation(
   current: QuotaObservation,
   cutoff: string,
 ): Promise<QuotaObservation | null> {
+  const codex = isCodexProviderId(current.providerId);
   const direct = await storage.latestQuotaObservationBeforeReset(
     current.providerId,
     current.windowKey,
     cutoff,
+    codex && current.windowKey === "session"
+      ? { excludePeriodMs: CODEX_SEVEN_DAY_PERIOD_MS }
+      : undefined,
   );
-  if (current.windowKey !== "weekly" || !isCodexProviderId(current.providerId)) return direct;
-  const legacy = await storage.latestQuotaObservationBeforeReset(current.providerId, "session", cutoff);
+  if (current.windowKey !== "weekly" || !codex) return direct;
+  const legacy = await storage.latestQuotaObservationBeforeReset(
+    current.providerId,
+    "session",
+    cutoff,
+    { periodMs: CODEX_SEVEN_DAY_PERIOD_MS },
+  );
   const legacyWeekly = legacy ? aliasCodexSevenDaySession(legacy) : null;
   const aliased = legacyWeekly && legacyWeekly.windowKey === "weekly" ? legacyWeekly : null;
   if (!aliased) return direct;

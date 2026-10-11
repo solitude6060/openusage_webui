@@ -811,7 +811,10 @@ export class SqliteStorage implements Storage {
     providerId: string,
     windowKey: string,
     resetsAt: string,
+    period?: { periodMs?: number; excludePeriodMs?: number },
   ): Promise<QuotaObservation | null> {
+    const periodMs = period?.periodMs ?? null;
+    const excludePeriodMs = period?.excludePeriodMs ?? null;
     const row = this.requireDb().query(`
       SELECT * FROM quota_observations
       WHERE provider_id = ? AND window_key = ? AND present = 1
@@ -820,9 +823,19 @@ export class SqliteStorage implements Storage {
           period_ms IS NULL OR period_ms <= 0
           OR julianday(observed_at) >= julianday(resets_at) - (period_ms / 86400000.0) / 2
         )
+        AND (? IS NULL OR period_ms = ?)
+        AND (? IS NULL OR period_ms IS NULL OR period_ms != ?)
       ORDER BY observed_at DESC, id DESC
       LIMIT 1
-    `).get(providerId, windowKey, resetsAt) as QuotaObservationRow | null;
+    `).get(
+      providerId,
+      windowKey,
+      resetsAt,
+      periodMs,
+      periodMs,
+      excludePeriodMs,
+      excludePeriodMs,
+    ) as QuotaObservationRow | null;
     return row ? rowToQuotaObservation(row) : null;
   }
 

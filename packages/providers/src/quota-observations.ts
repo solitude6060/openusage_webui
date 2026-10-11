@@ -1,5 +1,5 @@
 export const QUOTA_RECORD_GAP_MS = 6 * 60 * 60 * 1000;
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+export const CODEX_SEVEN_DAY_PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type QuotaLimitUnit = "usd" | "tokens" | "requests";
 
@@ -47,7 +47,7 @@ export function aliasCodexSevenDaySession<T extends {
   if (
     isCodexProviderId(observation.providerId)
     && observation.windowKey === "session"
-    && observation.periodMs === WEEK_MS
+    && observation.periodMs === CODEX_SEVEN_DAY_PERIOD_MS
   ) {
     return { ...observation, windowKey: "weekly", windowLabel: "Weekly" };
   }
