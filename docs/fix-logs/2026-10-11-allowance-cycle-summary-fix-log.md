@@ -8,6 +8,7 @@
 |------|----------------|
 | Implementer | Grok Build, `grok-4.7` |
 | Review round 1 | Grok `REQUEST_CHANGES`, AGY `APPROVE`, Codex `REQUEST_CHANGES`, against `fbbfe86`. Raw reviews stay outside this repo |
+| Review round 2 | Grok `APPROVE`, AGY `APPROVE`, Codex `REQUEST_CHANGES`, against `1078a57`. Raw reviews stay outside this repo |
 
 `packages/storage` is unchanged. `span=cycles` is a separate response and is not passed through the existing estimate builder. Codex session-event import, Cursor meter semantics, five-hour windows, prorating, and retiring the older implied-allowance helper stay out of scope.
 
@@ -71,3 +72,21 @@ At `9d06dd2`, before this docs commit:
 The ccusage child-process timeout test and the Antigravity Cloud Code test did not fail in that bun run. The page assertions run in vitest. No browser was opened.
 
 This commit updates the plan's Changes section, `README_WEBUI.md`, `README_WEBUI.zh-TW.md`, the Allowance section of `docs/USER_GUIDE_WEBUI.zh-TW.md`, and this log.
+
+## Review round 2
+
+Reviewed revision: `1078a57`. Grok `APPROVE`, AGY `APPROVE`, Codex `REQUEST_CHANGES`. Raw reviews stay outside this repo. Round 1 stays resolved.
+
+| Finding | Source | Severity | Verified | Disposition | Commits |
+|---------|--------|----------|----------|-------------|---------|
+| C2-1. All-0% omission hides a provider whose current cycle has positive tokens | Codex (reproduced) | MEDIUM | yes: `allowance-cycles.ts:178` | Keep a summary when `current.tokens` > 0. A provider whose every reading is 0% and whose current cycle has no tokens is still omitted. Plan and user docs state that exception | `d21b36b` / `21a1e3a` |
+
+At `21a1e3a`, before this docs commit. The documentation edits were already in the working tree and are not inputs to these runners.
+
+- `bun run test -- --run`: 69 files, 1302 tests passed, exit 0.
+- `bun test packages/storage/test packages/providers/test apps/server/test apps/web/src`: 62 files, 514 tests, 513 passed, 1 failed, 1243 expectations, exit 1. The failure is `CcusageProvider > default command runner cleans up child processes on timeout` (known timing flake). The Antigravity Cloud Code test did not fail.
+- `bun run build:webui`: exit 0. The web typecheck and the server bundle both finished.
+
+The page assertions run in vitest. No browser was opened.
+
+This commit updates the plan's omission rule, `README_WEBUI.md`, `README_WEBUI.zh-TW.md`, the Allowance section of `docs/USER_GUIDE_WEBUI.zh-TW.md`, and this log.

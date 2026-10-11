@@ -48,9 +48,10 @@ window:
   elapsed fraction, `meterFell` when a reading drops, `projectionReliable` false when elapsed < 1
   day, the meter fell, or a cycle ended more than 1 hour before its stated reset in any of the
   last 4 completed cycles. A reset less than or equal to 1 hour early is not an early restart.
-- A summary is omitted when it has no open cycle and no included cycle, and when every reading is
-  0%. The page shows one-sided API dollars as the known amount and `Unknown`, and says that the
-  baseline median uses only usage fully inside each period.
+- A summary is omitted when it has no open cycle and no included cycle. It is also omitted when
+  every reading is 0%, unless the current cycle has recorded tokens. The page shows one-sided API
+  dollars as the known amount and `Unknown`, and says that the baseline median uses only usage
+  fully inside each period.
 
 S2. Route: `GET /api/usage/allowance?span=cycles` returns `{ span: "cycles", summaries }`, loaded in
 `apps/server/src/quota-history.ts` with `storage.listAllowanceTokenRows` (same rows and
