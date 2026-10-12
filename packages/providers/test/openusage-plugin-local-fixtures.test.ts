@@ -63,7 +63,7 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
         request: requestByUrl({
           "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage": {
             enabled: true,
-            planUsage: { totalSpend: 1200, limit: 2400 },
+            planUsage: { totalSpend: 1200, includedSpend: 1200, limit: 2400 },
             billingCycleEnd: "1775234693029",
           },
           "https://api2.cursor.sh/aiserver.v1.DashboardService/GetPlanInfo": {
@@ -80,7 +80,10 @@ describe("OpenUsagePluginProvider original local plugin fixtures", () => {
       expect(records[0]?.raw).toMatchObject({
         pluginId: "cursor",
         plan: "Pro",
-        lines: [{ type: "progress", label: "Total usage", used: 50, limit: 100 }],
+        lines: [
+          { type: "progress", label: "Total usage", used: 50, limit: 100 },
+          { type: "text", label: "Included Spend", value: "$12.00 of $24.00" },
+        ],
       });
     });
   });

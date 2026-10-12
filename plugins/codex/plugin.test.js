@@ -224,7 +224,7 @@ describe("codex plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.plan).toBe("Pro 20x")
+    expect(result.plan).toBe("Pro 200")
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
     expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
     const credits = result.lines.find((line) => line.label === "Credits")
@@ -238,7 +238,7 @@ describe("codex plugin", () => {
     expect(credits).not.toHaveProperty("limit")
   })
 
-  it("maps prolite plan to Pro 5x", async () => {
+  it("maps prolite plan to Pro 100", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
       tokens: { access_token: "token" },
@@ -262,7 +262,7 @@ describe("codex plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.plan).toBe("Pro 5x")
+    expect(result.plan).toBe("Pro 100")
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
     expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
     const credits = result.lines.find((line) => line.label === "Credits")
@@ -270,7 +270,7 @@ describe("codex plugin", () => {
     expect(credits.value).toBe("$4.00 · 100 credits")
   })
 
-  it("keeps the weekly body window when the session header is the only percent header", async () => {
+  it("maps two 7-day windows to one Weekly line and ignores the stale header", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
       tokens: { access_token: "token" },
@@ -290,14 +290,11 @@ describe("codex plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    const session = result.lines.find((line) => line.label === "Session")
-    const weekly = result.lines.find((line) => line.label === "Weekly")
-    expect(session).toEqual(expect.objectContaining({
-      used: 80,
-      periodDurationMs: 604800000,
-    }))
-    expect(weekly).toEqual(expect.objectContaining({
-      used: 12,
+    expect(result.lines.find((line) => line.label === "Session")).toBeUndefined()
+    const weekly = result.lines.filter((line) => line.label === "Weekly")
+    expect(weekly).toHaveLength(1)
+    expect(weekly[0]).toEqual(expect.objectContaining({
+      used: 10,
       periodDurationMs: 604800000,
     }))
   })
@@ -2235,5 +2232,138 @@ describe("codex plugin", () => {
       String(call[0].url).includes("rate-limit-reset-credits"),
     )
     expect(hitResetEndpoint).toBe(false)
+  })
+
+  async function probeSignedIn(body, headers = {}) {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers,
+      bodyText: JSON.stringify(body),
+    })
+    const plugin = await loadPlugin()
+    return plugin.probe(ctx)
+  }
+
+  it("prefers a fresh window percent over a stale usage header", async () => {
+    const result = await probeSignedIn(
+      {
+        rate_limit: {
+          primary_window: { reset_after_seconds: 60, used_percent: 0 },
+          secondary_window: { reset_after_seconds: 120, used_percent: 7 },
+        },
+      },
+      {
+        "x-codex-primary-used-percent": "99",
+        "x-codex-secondary-used-percent": "99",
+      },
+    )
+    expect(result.lines.find((line) => line.label === "Session")).toEqual(expect.objectContaining({ used: 0 }))
+    expect(result.lines.find((line) => line.label === "Weekly")).toEqual(expect.objectContaining({ used: 7 }))
+  })
+
+  it("uses the usage header when the matching window has no percent", async () => {
+    const result = await probeSignedIn(
+      { rate_limit: {} },
+      {
+        "x-codex-primary-used-percent": "25",
+        "x-codex-secondary-used-percent": "50",
+      },
+    )
+    expect(result.lines.find((line) => line.label === "Session")).toEqual(expect.objectContaining({ used: 25 }))
+    expect(result.lines.find((line) => line.label === "Weekly")).toEqual(expect.objectContaining({ used: 50 }))
+  })
+
+  it("maps a 7-day primary window to Weekly and does not invent a Session line", async () => {
+    const result = await probeSignedIn({
+      rate_limit: {
+        primary_window: {
+          used_percent: 5,
+          limit_window_seconds: 604800,
+          reset_after_seconds: 60,
+        },
+        secondary_window: null,
+      },
+    })
+    expect(result.lines.find((line) => line.label === "Session")).toBeUndefined()
+    expect(result.lines.find((line) => line.label === "Weekly")).toEqual(expect.objectContaining({
+      used: 5,
+      periodDurationMs: 604800000,
+    }))
+  })
+
+  it("keeps the primary and secondary slots when the window duration is unrecognized", async () => {
+    const result = await probeSignedIn({
+      rate_limit: {
+        primary_window: { used_percent: 11, limit_window_seconds: 86400 },
+        secondary_window: { used_percent: 22, limit_window_seconds: 2592000 },
+      },
+    })
+    expect(result.lines.find((line) => line.label === "Session")).toEqual(expect.objectContaining({
+      used: 11,
+      periodDurationMs: 86400000,
+    }))
+    expect(result.lines.find((line) => line.label === "Weekly")).toEqual(expect.objectContaining({
+      used: 22,
+      periodDurationMs: 2592000000,
+    }))
+  })
+
+  it("classifies a 5-hour secondary and a 7-day primary by duration", async () => {
+    const result = await probeSignedIn(
+      {
+        rate_limit: {
+          primary_window: { limit_window_seconds: 604800, reset_after_seconds: 400000 },
+          secondary_window: { used_percent: 10, limit_window_seconds: 18000, reset_after_seconds: 3600 },
+        },
+      },
+      { "x-codex-primary-used-percent": "40" },
+    )
+    expect(result.lines.find((line) => line.label === "Session")).toEqual(expect.objectContaining({
+      used: 10,
+      periodDurationMs: 18000000,
+    }))
+    expect(result.lines.find((line) => line.label === "Weekly")).toEqual(expect.objectContaining({
+      used: 40,
+      periodDurationMs: 604800000,
+    }))
+  })
+
+  it.each([
+    ["prolite", "Pro 100"],
+    ["pro", "Pro 200"],
+    ["promax", "Pro 500"],
+    ["self_serve_business_prolite", "Business Premium"],
+    ["  PRO\n", "Pro 200"],
+    ["plus", "Plus"],
+    ["self_serve_business", "Self Serve Business"],
+  ])("maps plan %j to %s", async (planType, label) => {
+    const result = await probeSignedIn({ plan_type: planType })
+    expect(result.plan).toBe(label)
+  })
+
+  it("maps a 7-day Spark primary window to Spark Weekly", async () => {
+    const result = await probeSignedIn({
+      additional_rate_limits: [{
+        limit_name: "GPT-5.3-Codex-Spark",
+        rate_limit: {
+          primary_window: {
+            used_percent: 7,
+            limit_window_seconds: 604800,
+            reset_after_seconds: 60,
+          },
+          secondary_window: null,
+        },
+      }],
+    })
+    expect(result.lines.find((line) => line.label === "Spark")).toBeUndefined()
+    expect(result.lines.find((line) => line.label === "Spark Weekly")).toEqual(expect.objectContaining({
+      used: 7,
+      periodDurationMs: 604800000,
+    }))
   })
 })

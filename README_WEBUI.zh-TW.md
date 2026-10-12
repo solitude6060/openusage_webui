@@ -190,11 +190,13 @@ CODEX_HOME/auth.json
 ~/.codex/auth.json
 ```
 
-多個 Codex 家目錄若解析到同一個 `sessions` 目錄，Tokens 頁只保留該目錄本體那個帳號的用量。配額卡仍依各帳號分開顯示。Allowance 頁不會把這份共用 session 用量換算成各帳號的 token 配額。
+多個 Codex 家目錄若解析到同一個 `sessions` 目錄，Tokens 頁只保留該目錄本體那個帳號的用量。配額卡仍依各帳號分開顯示。Allowance 改讀 session 事件：至少一天的 Session 或 Weekly 窗口、而且沒有更短 Session 的帳號，和同時有 5 小時 Session 與 Weekly 窗口的帳號，各自計算自己的用量。先前存成 7 天 Session 的讀數也看成 Weekly，所以它和 5 小時 Session 一起時，用量歸到 5 小時那個帳號。後來的讀數若沒有 Weekly 窗口，這個帳號的窗口形狀會清除，不再依形狀分配事件；若已記錄的方案名稱只對上這個帳號，事件仍會依方案名稱分給它。`sessions` 目錄是連結的帳號只要有事件也會換算，而且不會把另一個帳號的 token 算進來。同一天只要這組裡任何一個帳號有事件，那天的合併 ccusage 每日列就不進入 Allowance。事件屬於它自己時間的本地日。
 
 原本 plugin 可能會 refresh OAuth token，並把更新後的 credential 寫回同一個檔案來源。WebUI 不使用 browser cookies。
 
-Allowance 在有每小時 token 資料時（Claude、Cursor、Grok）對齊到整點，其餘（Codex，以及沒有每小時資料的舊日期）仍對齊到日界。每小時資料另外存放，只有 Allowance 讀取；Tokens、Sessions、Dashboard 的合計仍用每日紀錄。Claude 卡片上，以每小時資料測量的日子只列一行 `All Models`，不分模型。
+Allowance 在有每小時 token 資料時（Claude、Cursor、Grok，以及有 Codex session 事件的日子）對齊到整點，沒有那些事件的日子仍對齊到日界。每小時資料另外存放，只有 Allowance 讀取；Tokens、Sessions、Dashboard 的合計仍用每日紀錄。Claude 卡片上，以及以 Codex session 事件測量的日子，只列一行 `All Models`，不分模型。
+
+Allowance 頁的 Subscription Period 列出最近 120 天的每一次重設週期。Codex 以前存成 7 天 Session 的讀數，會和較新的 Weekly 讀數放在同一個系列。基準是最近四個納入的週期的中位數，只用完整落在各週期內的用量，並標出最低、最高，以及這個中位數用了幾個週期；token 與記下的 API 金額各一組。目前這個週期顯示最新的額度讀數、完整落在週期內的 token 與 API 金額、對照這個中位數還剩多少，以及推估的結束百分比。Unreliable 表示這個週期還不滿一天、目前週期的額度表中途下降，或最近四個週期裡有一個比原本的重設時間早超過一小時結束。週期中途額度表往下掉、session 紀錄與另一個帳號共用且這個帳號沒有自己的 session 事件、週期起點早於這次載入的紀錄、沒有 token、結束時低於 10%、跨過邊界的用量超過週期內用量的 25%，或結束前最後一天沒有讀數時，該週期不進入基準。完整落在週期裡的用量是較低的數字。跨過任一邊界的用量只加進較高的數字。API 金額只有一側有值時，另一側顯示 Unknown。沒有進行中的週期、也沒有納入的週期時，這個帳號不列出。每一筆讀數都是 0% 時也不列出，除非目前這個週期已經有記下的 token。
 
 ### Pi 的用量
 

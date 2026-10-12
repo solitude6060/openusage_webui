@@ -139,6 +139,24 @@ describe("Dashboard line grouping", () => {
     ]);
   });
 
+  test("keeps Cursor included spend beside the pool meters in the card summary", () => {
+    const result = splitDashboardLines([
+      { type: "progress", label: "Total usage", used: 12.5, limit: 100, format: { kind: "percent" } },
+      { type: "text", label: "Included Spend", value: "$50.00 of $200.00" },
+      { type: "progress", label: "Auto usage", used: 4, limit: 100, format: { kind: "percent" } },
+      { type: "progress", label: "API usage", used: 80, limit: 100, format: { kind: "percent" } },
+      { type: "text", label: "Last 7 Days", value: "$3.50 · 2 calls" },
+    ]);
+
+    expect(result.summaryLines.map((line) => line.label)).toEqual([
+      "Total usage",
+      "Included Spend",
+      "Auto usage",
+      "API usage",
+    ]);
+    expect(result.detailLines.map((line) => line.label)).toEqual(["Last 7 Days"]);
+  });
+
   test("keeps Antigravity Account badge in the card summary", () => {
     const result = splitDashboardLines([
       { type: "badge", label: "Account", text: "user@example.com" },

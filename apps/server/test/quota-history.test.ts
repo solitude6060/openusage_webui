@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequestHandler } from "../src/index";
-import { backfillQuotaObservations, loadAllowanceEstimates, recordQuotaFromRefresh } from "../src/quota-history";
+import { backfillQuotaObservations, loadAllowanceCycleSummaries, loadAllowanceEstimates, loadQuotaDashboard, recordQuotaFromRefresh } from "../src/quota-history";
 import { SqliteStorage } from "../../../packages/storage/src/index";
 
 let dataDir = "";
@@ -258,6 +258,330 @@ test("allowance aligns mid-hour readings to the hour boundaries that sit between
   ]);
   storage.close();
 });
+
+test("keeps a Codex 7-day Session history on the Weekly quota window", async () => {
+  const storage = new SqliteStorage();
+  await storage.init();
+  const week = 7 * 24 * 60 * 60 * 1000;
+  await storage.insertQuotaObservations([
+    {
+      providerId: "codex:codex",
+      observedAt: "2026-09-26T00:00:00.000Z",
+      windowKey: "session",
+      windowLabel: "Session",
+      periodMs: week,
+      resetsAt: "2026-09-27T00:00:00.000Z",
+      present: true,
+      usedPercent: 80,
+      limitValue: null,
+      limitUnit: null,
+      usedValue: null,
+    },
+    {
+      providerId: "codex:codex",
+      observedAt: "2026-10-03T00:00:00.000Z",
+      windowKey: "weekly",
+      windowLabel: "Weekly",
+      periodMs: week,
+      resetsAt: "2026-10-04T00:00:00.000Z",
+      present: true,
+      usedPercent: 40,
+      limitValue: null,
+      limitUnit: null,
+      usedValue: null,
+    },
+    {
+      providerId: "codex:family",
+      observedAt: "2026-10-03T00:00:00.000Z",
+      windowKey: "session",
+      windowLabel: "Session",
+      periodMs: 5 * 60 * 60 * 1000,
+      resetsAt: "2026-10-03T05:00:00.000Z",
+      present: true,
+      usedPercent: 12,
+      limitValue: null,
+      limitUnit: null,
+      usedValue: null,
+    },
+  ]);
+
+  const dashboard = await loadQuotaDashboard(storage);
+  expect(dashboard.windows.filter((window) => window.providerId === "codex:codex")).toEqual([
+    expect.objectContaining({
+      windowKey: "weekly",
+      windowLabel: "Weekly",
+      usedPercent: 40,
+      previous: expect.objectContaining({ usedPercent: 80 }),
+    }),
+  ]);
+  expect(dashboard.windows.filter((window) => window.providerId === "codex:family").map((window) => window.windowKey))
+    .toEqual(["session"]);
+
+  const stored = await storage.listQuotaObservationsSince("2026-01-01T00:00:00.000Z");
+  expect(stored.find((row) => row.providerId === "codex:codex" && row.usedPercent === 80)?.windowKey).toBe("session");
+
+  await recordQuotaFromRefresh(storage, "codex:codex", [snapshot("codex:codex", "2026-10-03T06:00:00.000Z", 42)]);
+  const afterRefresh = await storage.listQuotaObservationsSince("2026-01-01T00:00:00.000Z");
+  expect(afterRefresh.some((row) => row.providerId === "codex:codex" && row.windowKey === "session" && row.present)).toBe(true);
+  expect(afterRefresh.some((row) => row.providerId === "codex:codex" && row.windowKey === "session" && !row.present)).toBe(false);
+  expect(afterRefresh.some((row) => row.providerId === "codex:codex" && row.windowKey === "weekly" && row.usedPercent === 42)).toBe(true);
+  storage.close();
+});
+
+test("keeps Weekly visible when a 5-hour Session follows a 7-day Session on the same account", async () => {
+  const storage = new SqliteStorage();
+  await storage.init();
+  const week = 7 * 24 * 60 * 60 * 1000;
+  const fiveHours = 5 * 60 * 60 * 1000;
+  await storage.insertQuotaObservations([
+    {
+      providerId: "codex:codex",
+      observedAt: "2026-10-03T00:00:00.000Z",
+      windowKey: "session",
+      windowLabel: "Session",
+      periodMs: week,
+      resetsAt: "2026-10-04T00:00:00.000Z",
+      present: true,
+      usedPercent: 40,
+      limitValue: null,
+      limitUnit: null,
+      usedValue: null,
+    },
+  ]);
+
+  await recordQuotaFromRefresh(storage, "codex:codex", [{
+    id: "snap-mixed-windows",
+    providerId: "codex:codex",
+    tool: "OpenUsage Plugin Snapshot",
+    startedAt: "2026-10-03T01:00:00.000Z",
+    source: "api" as const,
+    raw: {
+      lines: [
+        {
+          type: "progress",
+          label: "Session",
+          used: 12,
+          limit: 100,
+          format: { kind: "percent" },
+          resetsAt: "2026-10-03T06:00:00.000Z",
+          periodDurationMs: fiveHours,
+        },
+        {
+          type: "progress",
+          label: "Weekly",
+          used: 40,
+          limit: 100,
+          format: { kind: "percent" },
+          resetsAt: "2026-10-04T00:00:00.000Z",
+          periodDurationMs: week,
+        },
+      ],
+    },
+  }]);
+
+  const dashboard = await loadQuotaDashboard(storage);
+  const windows = dashboard.windows.filter((window) => window.providerId === "codex:codex");
+  expect(windows.map((window) => [window.windowKey, window.usedPercent]).sort()).toEqual([
+    ["session", 12],
+    ["weekly", 40],
+  ]);
+
+  const stored = await storage.listQuotaObservationsSince("2026-01-01T00:00:00.000Z");
+  expect(stored.find((row) => row.usedPercent === 40 && row.observedAt === "2026-10-03T00:00:00.000Z")?.windowKey)
+    .toBe("session");
+  storage.close();
+});
+
+test("uses the older 7-day Session as the previous Weekly window on a mixed account", async () => {
+  const storage = new SqliteStorage();
+  await storage.init();
+  const week = 7 * 24 * 60 * 60 * 1000;
+  const fiveHours = 5 * 60 * 60 * 1000;
+  await storage.insertQuotaObservations([
+    {
+      providerId: "codex:codex",
+      observedAt: "2026-09-26T00:00:00.000Z",
+      windowKey: "session",
+      windowLabel: "Session",
+      periodMs: week,
+      resetsAt: "2026-09-27T00:00:00.000Z",
+      present: true,
+      usedPercent: 80,
+      limitValue: null,
+      limitUnit: null,
+      usedValue: null,
+    },
+    {
+      providerId: "codex:codex",
+      observedAt: "2026-09-28T03:00:00.000Z",
+      windowKey: "session",
+      windowLabel: "Session",
+      periodMs: fiveHours,
+      resetsAt: "2026-09-28T05:00:00.000Z",
+      present: true,
+      usedPercent: 12,
+      limitValue: null,
+      limitUnit: null,
+      usedValue: null,
+    },
+    {
+      providerId: "codex:codex",
+      observedAt: "2026-10-03T00:00:00.000Z",
+      windowKey: "weekly",
+      windowLabel: "Weekly",
+      periodMs: week,
+      resetsAt: "2026-10-04T00:00:00.000Z",
+      present: true,
+      usedPercent: 40,
+      limitValue: null,
+      limitUnit: null,
+      usedValue: null,
+    },
+  ]);
+
+  const dashboard = await loadQuotaDashboard(storage);
+  const windows = dashboard.windows.filter((window) => window.providerId === "codex:codex");
+  const weekly = windows.find((window) => window.windowKey === "weekly");
+  const session = windows.find((window) => window.windowKey === "session");
+  expect(weekly).toEqual(expect.objectContaining({ usedPercent: 40 }));
+  expect(weekly?.previous).toEqual(expect.objectContaining({ usedPercent: 80 }));
+  expect(session).toEqual(expect.objectContaining({ usedPercent: 12, previous: null }));
+
+  const stored = await storage.listQuotaObservationsSince("2026-01-01T00:00:00.000Z");
+  expect(stored.find((row) => row.usedPercent === 80)?.windowKey).toBe("session");
+  storage.close();
+});
+
+
+test("allowance span=cycles returns summaries for the last 120 days", async () => {
+  const storage = new SqliteStorage();
+  await storage.init();
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+  const week = 7 * day;
+  const recentReset = now - 110 * day;
+  const oldReset = now - 130 * day;
+  await storage.insertQuotaObservations([
+    cycleObservation("grok", recentReset, week),
+    cycleObservation("claude-code", oldReset, week),
+  ]);
+  await storage.upsertUsageRecords([
+    cycleTokens("grok", recentReset - 3 * day, 400, 4),
+    cycleTokens("claude-code", oldReset - 3 * day, 400, 4),
+  ]);
+
+  const handle = createRequestHandler(storage, { host: "127.0.0.1", port: 6736 }, undefined, []);
+  const response = await handle(new Request("http://127.0.0.1:6736/api/usage/allowance?span=cycles"));
+  expect(response.status).toBe(200);
+  const body = await response.json() as {
+    span: string;
+    summaries: Array<{ providerId: string; cycles: Array<{ included: boolean; endPercent: number }> }>;
+  };
+  expect(body.span).toBe("cycles");
+  expect(body.summaries.map((item) => item.providerId)).toEqual(["grok"]);
+  expect(body.summaries[0]?.cycles[0]).toEqual(expect.objectContaining({ included: true, endPercent: 40 }));
+  storage.close();
+});
+
+test("allowance span=cycles excludes a cycle that starts before the loaded history", async () => {
+  const storage = new SqliteStorage();
+  await storage.init();
+  const now = new Date("2026-10-11T00:00:00.000Z");
+  const day = 24 * 60 * 60 * 1000;
+  const period = 30 * day;
+  const historyStart = now.getTime() - 120 * day;
+  const reset = historyStart + 10 * day;
+  const openReset = now.getTime() + 10 * day;
+  await storage.insertQuotaObservations([
+    cycleObservation("cursor", reset, period),
+    {
+      ...cycleObservation("cursor", openReset, period),
+      observedAt: new Date(now.getTime() - 60 * 60 * 1000).toISOString(),
+      usedPercent: 15,
+    },
+  ]);
+  await storage.upsertUsageRecords([
+    cycleTokens("cursor", reset - 3 * day, 1000, 1),
+  ]);
+
+  const body = await loadAllowanceCycleSummaries(storage, now);
+  const cycle = body.summaries[0]?.cycles.find((item) => item.end === new Date(reset).toISOString());
+  expect(cycle).toEqual(expect.objectContaining({ included: false, exclusion: "history-truncated" }));
+  expect(body.summaries[0]?.baseline.tokens).toBeNull();
+  storage.close();
+});
+
+test("allowance span=cycles excludes the duplicate Codex session account", async () => {
+  const storage = new SqliteStorage();
+  await storage.init();
+  const homeRoot = mkdtempSync(join(tmpdir(), "openusage-codex-cycle-"));
+  try {
+    const codexHome = join(homeRoot, "codex");
+    const familyHome = join(homeRoot, "family");
+    mkdirSync(join(codexHome, "sessions"), { recursive: true });
+    mkdirSync(familyHome, { recursive: true });
+    symlinkSync(join(codexHome, "sessions"), join(familyHome, "sessions"));
+    await storage.upsertProviderAccount({
+      id: "codex:codex", providerId: "codex", label: "Codex", homePath: codexHome, enabled: true, sortOrder: 0,
+    });
+    await storage.upsertProviderAccount({
+      id: "codex:family", providerId: "codex", label: "Family", homePath: familyHome, enabled: true, sortOrder: 1,
+    });
+    const reset = Date.now() - 3 * 24 * 60 * 60 * 1000;
+    const week = 7 * 24 * 60 * 60 * 1000;
+    await storage.insertQuotaObservations([
+      cycleObservation("codex:codex", reset, week),
+      cycleObservation("codex:family", reset, week),
+    ]);
+    await storage.upsertUsageRecords([
+      cycleTokens("codex:codex", reset - 3 * 24 * 60 * 60 * 1000, 200, 2),
+      cycleTokens("codex:family", reset - 3 * 24 * 60 * 60 * 1000, 200, 2),
+    ]);
+
+    const handle = createRequestHandler(storage, { host: "127.0.0.1", port: 6736 }, undefined, []);
+    const response = await handle(new Request("http://127.0.0.1:6736/api/usage/allowance?span=cycles"));
+    expect(response.status).toBe(200);
+    const body = await response.json() as {
+      summaries: Array<{ providerId: string; cycles: Array<{ included: boolean; exclusion: string | null }> }>;
+    };
+    const byId = new Map(body.summaries.map((item) => [item.providerId, item]));
+    expect(byId.has("codex:family")).toBe(false);
+    expect(byId.get("codex:codex")?.cycles[0]?.included).toBe(true);
+  } finally {
+    storage.close();
+    rmSync(homeRoot, { recursive: true, force: true });
+  }
+});
+
+function cycleObservation(providerId: string, resetMs: number, periodMs: number) {
+  return {
+    providerId,
+    observedAt: new Date(resetMs - 12 * 60 * 60 * 1000).toISOString(),
+    windowKey: "weekly",
+    windowLabel: "Weekly",
+    periodMs,
+    resetsAt: new Date(resetMs).toISOString(),
+    present: true,
+    usedPercent: 40,
+    limitValue: null,
+    limitUnit: null,
+    usedValue: null,
+  };
+}
+
+function cycleTokens(providerId: string, startedMs: number, totalTokens: number, costUsd: number) {
+  const startedAt = new Date(startedMs).toISOString();
+  return {
+    id: `cycle-${providerId}-${startedAt}`,
+    providerId,
+    tool: "Grok Session",
+    model: "model",
+    totalTokens,
+    costUsd,
+    startedAt,
+    source: "plugin" as const,
+  };
+}
 
 function observation(observedAt: string, usedPercent: number, periodMs: number, resetsAt: string) {
   return {

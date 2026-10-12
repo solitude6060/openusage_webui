@@ -63,6 +63,23 @@ Returns rate limit windows, optional credits, and available on-demand rate limit
 
 Both rate_limit windows are enforced simultaneously — hitting either limit throttles the user.
 
+OpenUsage names each line from its duration. A window of 5 hours (`limit_window_seconds` 18000) is Session. A window of 7 days (604800) is Weekly. The match is exact. A 7-day window sitting in `primary_window` is shown only as Weekly. The same rule applies to each `additional_rate_limits` entry. When the duration is missing, or it is neither 5 hours nor 7 days, primary stays Session and secondary stays Weekly.
+
+The percent comes from that window's `used_percent`. The response headers `x-codex-primary-used-percent` and `x-codex-secondary-used-percent` fill in only when the matching window has no percent.
+
+| `plan_type` | Shown as |
+|---|---|
+| `prolite` | Pro 100 |
+| `pro` | Pro 200 |
+| `promax` | Pro 500 |
+| `self_serve_business_prolite` | Business Premium |
+
+Other plan identifiers keep a readable name. Underscores become spaces.
+
+Readings saved earlier as a 7-day Session are shown as Weekly in Allowance and Quotas, together with newer Weekly readings. The original rows remain in the database. A 5-hour Session stays a Session. A newer 5-hour Session on the same account leaves the Weekly series visible. Its previous reading is the latest 7-day Session before the reset. The previous 5-hour Session is the latest Session row with another period.
+
+The example above is the common shape: a 5-hour primary window and a 7-day secondary window.
+
 OpenUsage floors the remaining credit balance to a whole number and displays its fixed USD
 equivalent at `$0.04` per credit. For example, `820.6969075` renders as
 `$32.80 · 820 credits`. The credit balance is unbounded; the API does not provide a maximum.
@@ -142,9 +159,9 @@ WebUI tracks multiple homes through the shared Provider Accounts feature (Settin
 
 - With **no** configured accounts for Codex, behavior stays a single provider id `codex`.
 - With one or more accounts, each is registered as `codex:<slug>` and probed with that home injected as `CODEX_HOME`. Local ccusage logs follow the same home via `homePath`.
-- When two homes resolve to the same `sessions` directory, Tokens keeps those ccusage rows on the account whose `sessions` path is the real directory. The other account still probes quota, and its card can still show Today / Last 30 Days from that probe. The Allowance page converts only the real-directory account, and only from that account's own meter. The symlink account is not converted.
+- When two homes resolve to the same `sessions` directory, Tokens keeps those ccusage rows on the account whose `sessions` path is the real directory. The other account still probes quota, and its card can still show Today / Last 30 Days from that probe. Allowance reads Codex session events instead of that shared daily row. An event goes to the account whose weekly meter has the same shape, or to the one account with that recorded plan name. A seven-day Weekly line, or a seven-day Session line, is the weekly shape when there is no shorter Session line. A five-hour Session plus a Weekly line is the other shape. A saved 7-day Session is read as Weekly for that choice, so it together with a 5-hour Session is the five-hour shape. A later reading with no Weekly window clears that shape. An account with those events is converted even when its `sessions` directory is a link, and the other account's tokens are not included. Prompt text and account ids are not stored. When the account shape or recorded plan changes, the next refresh rereads the session files and replaces the stored events. If a session folder or file cannot be read, the previous events stay and the following refresh tries the full reread again. An empty sessions folder that can be read still clears the stored events.
 - A Codex session line uses `limit_window_seconds` when the usage payload sends it. Allowance infers a longer period only from observations with the same reset timestamp. A long cycle remains eligible near its end; a later true five-hour cycle cannot inherit its duration.
-- Allowance measures between times where the meter value is known and no daily total crosses that time. A day boundary counts when the nearest readings on both sides are equal; each end can then be off by one percentage point. If two such times cannot be found, the page shows `Daily Usage Cannot Align` and withholds conversion. Token and API cost totals include only rows fully inside the aligned span. Codex daily rows follow this computer's local day. A meter decrease anywhere in the cycle also prevents conversion. Codex stays on daily rows because `ccusage codex` has no hourly output; hourly Allowance buckets apply to Claude, Cursor and Grok only.
+- Allowance measures between times where the meter value is known and no daily total crosses that time. A day boundary counts when the nearest readings on both sides are equal; each end can then be off by one percentage point. If two such times cannot be found, the page shows `Daily Usage Cannot Align` and withholds conversion. Token and API cost totals include only rows fully inside the aligned span. Codex daily rows follow this computer's local day. A meter decrease anywhere in the cycle also prevents conversion. When any Codex account that shares a sessions directory has events on a local day, that day's ccusage rows for the whole group are left out of Allowance, and each account is measured from its own hourly event buckets. The local day is the event's own time on this computer. Days with no event in the group stay on the daily row. Hourly buckets also apply to Claude, Cursor and Grok. Tokens, Sessions and Dashboard stay on daily rows.
 - Explicit model prices, including zero, take precedence. When exactly one model price is missing, the reported day total minus explicit model prices supplies its cost. Otherwise known Codex models use the standard short-context table in `packages/providers/src/openai-token-rates.ts`; an unknown model does not receive a residual calculated from estimated prices.
 - Summary preserves original CLI prices and provenance. For one identifiable account, complete model prices supersede the legacy day price; incomplete prices use a known legacy total. Ambiguous multiple-account legacy ownership is not guessed.
 - Detect scans `~/.codex`, `~/.config/codex`, and the process `CODEX_HOME` when those paths contain `auth.json`.

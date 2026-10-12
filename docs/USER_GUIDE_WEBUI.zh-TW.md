@@ -204,24 +204,31 @@ events 必須完整取得才會寫入，避免把部分資料顯示成完整總�
 
 Allowance 頁用你這段時間的實際 token，除以同一個額度表移動的百分比，估出訂閱配額大約有多大。
 
-- 時間可選 1 Day、3 Days、5 Days、7 Days、30 Days、This Month、This Period、Previous Period
+- 時間可選 1 Day、3 Days、5 Days、7 Days、30 Days、This Month、This Period、Previous Period、Subscription Period
 - This Period 是目前這個重設週期，從週期開始算到現在。週期已經結束時，這一項留空。Previous Period 是再前一個週期；目前沒有進行中的週期時，改顯示最近結束的那一個
+- Subscription Period 列出最近 120 天的每一次重設週期，不使用其他區間的對齊方式。基準是最近四個納入的週期，只用完整落在週期內的用量，顯示 token 與記下的 API 金額的中位數、最低到最高，以及用了幾個週期
+- 目前週期顯示最新額度讀數、完整落在週期內的用量、對照基準還剩多少，以及推估的結束百分比。標成 Unreliable 時，這個週期還不滿一天、目前週期的額度表中途下降，或最近四個週期有一個比原本的重設時間早超過一小時結束。目前週期的額度表下降時，讀數旁會標 Meter Fell
+- 不進入基準的週期仍會列出，並標上原因：Meter Fell（額度表中途下降）、Shared Session Log（與另一個帳號共用 session，而且這個帳號沒有自己的事件）、History Truncated（週期起點早於這次載入的紀錄）、No Tokens、Below 10 Percent（結束時低於 10%）、Edge Uncertain（跨過邊界的用量超過週期內用量的 25%）、Observation Gap（結束前最後一天沒有讀數）
+- 沒有進行中的週期、也沒有納入的週期時，這個帳號不列出。每一筆讀數都是 0% 時也不列出，除非目前這個週期已經有記下的 token
+- 較低的數字只加總完整落在週期裡的用量。跨過起點或終點的用量只加進較高的數字。API 金額只有一側有值時，另一側顯示 Unknown。目前週期不算跨過起點或現在的用量
+- 窄螢幕把已結束的週期改成卡片，寬螢幕用表格
 - This Month 用這台電腦的本地日曆
-- 每個帳號用至少一天的額度窗口。有 Weekly 就用 Weekly；Cursor 用 Total usage。Codex 的 Session 若重設時間在一天以上，也拿來算；幾小時後就重設的 Session 不算
+- 每個帳號用至少一天的額度窗口。有 Weekly 就用 Weekly；Cursor 用 Total usage。Codex 以前存成 7 天 Session 的讀數，會和較新的 Weekly 讀數放在同一個系列。幾小時後就重設的 Session 不算。沒有 Weekly 時，重設時間超過一天、期間不是剛好 7 天的 Session，仍可用來算
 - 區間裡額度重設時，重設前後各算一次，方便比較配額有沒有變小。新週期提早開始時，舊週期算到新週期開始為止
-- 沒有兩筆額度觀測時，不換算。有兩筆以上時，起訖放在額度值已知、而且沒有單日合計橫跨的時間。一個時間點前後最近的兩筆讀數相同，就把測量對齊到那個時間點。Claude、Cursor、Grok 有每小時用量的日子，時間點是整點；Codex 與沒有每小時用量的日子，時間點是一天的零時。找不到兩個這樣的時間，顯示 Daily Usage Cannot Align，暫停換算
+- 沒有兩筆額度觀測時，不換算。有兩筆以上時，起訖放在額度值已知、而且沒有單日合計橫跨的時間。一個時間點前後最近的兩筆讀數相同，就把測量對齊到那個時間點。Claude、Cursor、Grok，以及有 Codex session 事件的日子，時間點是整點；沒有那些事件的日子，時間點是一天的零時。找不到兩個這樣的時間，顯示 Daily Usage Cannot Align，暫停換算
 - 沒有每小時用量的日子，單日合計不拆成日內的幾小時。token 與 API Cost 只加總完整落在對齊後區間裡的紀錄
 - 每小時用量另外存放，只給 Allowance 使用；Tokens、Sessions、Dashboard 仍用每日紀錄
 - Claude 的每小時用量來自 ccusage 的 1 小時區塊，不分模型，卡片上以每小時用量測量的日子只列一行 `All Models`。已結束的日子，每小時合計等於當天 ccusage 的每日合計，才會寫入新的每小時用量；不相符（包含當天有每日用量卻沒有可用區塊）就記錄一筆錯誤，該日不寫入新資料。該日先前已存的每小時用量會保留，Allowance 仍然使用；沒有任何已存每小時用量的日子才沿用每日紀錄。今天（尚未結束的日子）不做這項檢查，直接寫入。Claude Code 已刪除舊 log 的日子沒有每小時用量，也沿用每日紀錄
-- Codex 沒有每小時用量來源，維持每日紀錄
+- Codex 的 Allowance 讀 session 檔裡的用量事件。至少有一天的 Session 或 Weekly 窗口、而且沒有更短 Session 的帳號，和同時有 5 小時 Session 與 Weekly 窗口的帳號，各自收到自己的事件，再彙總成每小時。先前存成 7 天 Session 的讀數，分配事件時也看成 Weekly，所以它和 5 小時 Session 一起時，事件歸到 5 小時那個帳號。後來的讀數若沒有 Weekly 窗口，這個帳號的窗口形狀會清除，不再依形狀分配事件；若已記錄的方案名稱只對上這個帳號，事件仍會依方案名稱分給它。帳號只要有這些事件就會換算，即使 `sessions` 目錄是連結；另一個帳號的 token 不會算進來。Tokens 頁仍用每日的 ccusage 紀錄。事件不保存提示文字，也不保存帳號識別碼
 - Claude 與 Codex 的 ccusage／Pi Session 每日用量是匯入當下的本地日，讀取時用這台電腦的當地午夜對齊。Cursor 與 Grok 的每日用量維持 UTC 日。這台電腦改了時區，既有的 ccusage／Pi Session 每日用量會整批跟著新時區平移
 - Pi Session 維持每日紀錄；同一天的 ccusage 改用每小時資料時，Pi 用量仍分別計入
 - 零時前後讀數相同，只代表用量沒有跨過下一個百分點，每一端最多可能差 1 個百分點
 - 百分比移動不到 5 個點時，數字仍會顯示，並標成 Rough Estimate
 - 百分比沒有移動、區間中途往下掉，或這段沒有 token 紀錄時，不算出配額。正向移動不到 1 個百分點仍可粗估
 - 每次百分比變動都會保留，包含不到 1 個百分點的變動。下次正常啟動時，也會從已存的快照補回舊版省略的變動，保留既有紀錄
-- 兩個 Codex 家目錄共用同一份 session 時，用量記在真實目錄那個帳號，只換算那個帳號自己的額度表。另一個帳號不換算
-- 官方有給絕對上限時（例如 Cursor 的美元上限）會標成 Stated Cap
+- 兩個 Codex 家目錄共用同一份 session 時，Tokens 的每日用量記在真實目錄那個帳號。Allowance 在連結的帳號有自己的 session 事件時仍會換算；沒有事件時不換算
+- 官方有給絕對上限時會標成 Stated Cap。Cursor 的美元上限標成 Included Dollar Limit
+- Cursor 的 Total usage 百分比來自 `planUsage.totalPercentUsed`，是合併 pool（用量池）的讀數。Auto usage 是 Cursor 自家模型（包含 Grok 與 Composer）的 pool，API usage 是其他模型的 pool。Included Spend 顯示方案內含的美元花費與上限（$已用金額 of $上限），分子是方案內含金額，不含 bonus。Cursor 官方網站會把這筆內含金額除以上限，顯示為內含用量百分比。畫面上的三個 pool 百分比和官網的內含花費百分比是不同分母的讀數。Allowance 仍用 Total usage 的百分比來換算 token 與 API 金額。Allowance 頁把這個美元上限標成 Included Dollar Limit，並註明：Cursor 有回報合併 pool 百分比時，這個百分比的分母和美元上限不同；Team 方案，以及沒有回報這個百分比的方案，用的是已用金額除以這個上限
 - 同一段用量若有記下 API 價格，會用同一個百分比把這段費用換算成整包的 API 費用，標成 API Value。這段實際費用標成 API Cost。少了價格的紀錄不估金額
 - Codex 優先保留 ccusage 提供的模型費用，包含明確的 0。整天總額若只剩一個模型尚未定價，可將可確認的餘額歸給該模型；其餘已知模型才依 OpenAI 標準短上下文單價估價。多個未知模型無法拆分時，保持未知。單日合計看不出哪些請求用了長上下文或 Fast mode
 - Cursor 的非數字費用保持未知，明確數字 0 則保留。API Value 為 0 時仍會顯示

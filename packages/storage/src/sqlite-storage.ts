@@ -15,6 +15,7 @@ import type {
 } from "../../core/src/types";
 import { isMultiAccountProviderId, providerIdFromAccountId } from "../../core/src/types";
 import type { Storage } from "./storage";
+import { codexSessionAccountGroups } from "../../providers/src/codex-session-ownership";
 import type { QuotaLimitUnit, QuotaObservation } from "../../providers/src/quota-observations";
 import {
   TOKEN_HOURLY_SCHEMA,
@@ -24,6 +25,16 @@ import {
   prepareHourlyUpsert,
   type AllowanceTokenRow,
 } from "./allowance-tokens";
+import {
+  CODEX_TOKEN_EVENTS_SCHEMA,
+  insertCodexTokenEvents,
+  replaceCodexTokenEvents,
+  listCodexEventCursors,
+  listCodexEventProviderIds,
+  saveCodexEventCursors,
+  type CodexEventCursor,
+  type CodexTokenEventInsert,
+} from "./codex-token-events";
 
 type UsageRecordRow = {
   id: string;
@@ -184,6 +195,7 @@ export class SqliteStorage implements Storage {
       );
     `);
     this.db.exec(TOKEN_HOURLY_SCHEMA);
+    this.db.exec(CODEX_TOKEN_EVENTS_SCHEMA);
     this.migrateCodexInstancesToProviderAccounts();
   }
 
@@ -663,6 +675,7 @@ export class SqliteStorage implements Storage {
     const db = this.requireDb();
     db.query("DELETE FROM usage_records WHERE provider_id = ?").run(providerId);
     db.query("DELETE FROM token_hourly WHERE provider_id = ?").run(providerId);
+    db.query("DELETE FROM codex_token_events WHERE provider_id = ?").run(providerId);
   }
 
   async deleteLocalLogUsageRecords(providerIds: ProviderId[], tool: string): Promise<void> {
@@ -791,11 +804,13 @@ export class SqliteStorage implements Storage {
   }
 
   async listLatestQuotaObservations(providerId?: string): Promise<QuotaObservation[]> {
+    // Keep one latest row per period. A later read aliases a 7-day Codex Session
+    // onto Weekly, so a newer 5-hour Session must not hide that older row.
     const rows = this.requireDb().query(`
       SELECT * FROM (
         SELECT *,
           ROW_NUMBER() OVER (
-            PARTITION BY provider_id, window_key
+            PARTITION BY provider_id, window_key, COALESCE(period_ms, -1)
             ORDER BY observed_at DESC, id DESC
           ) AS rn
         FROM quota_observations
@@ -809,7 +824,10 @@ export class SqliteStorage implements Storage {
     providerId: string,
     windowKey: string,
     resetsAt: string,
+    period?: { periodMs?: number; excludePeriodMs?: number },
   ): Promise<QuotaObservation | null> {
+    const periodMs = period?.periodMs ?? null;
+    const excludePeriodMs = period?.excludePeriodMs ?? null;
     const row = this.requireDb().query(`
       SELECT * FROM quota_observations
       WHERE provider_id = ? AND window_key = ? AND present = 1
@@ -818,9 +836,19 @@ export class SqliteStorage implements Storage {
           period_ms IS NULL OR period_ms <= 0
           OR julianday(observed_at) >= julianday(resets_at) - (period_ms / 86400000.0) / 2
         )
+        AND (? IS NULL OR period_ms = ?)
+        AND (? IS NULL OR period_ms IS NULL OR period_ms != ?)
       ORDER BY observed_at DESC, id DESC
       LIMIT 1
-    `).get(providerId, windowKey, resetsAt) as QuotaObservationRow | null;
+    `).get(
+      providerId,
+      windowKey,
+      resetsAt,
+      periodMs,
+      periodMs,
+      excludePeriodMs,
+      excludePeriodMs,
+    ) as QuotaObservationRow | null;
     return row ? rowToQuotaObservation(row) : null;
   }
 
@@ -830,7 +858,31 @@ export class SqliteStorage implements Storage {
 
   // Allowance only: daily rows, with hourly rows replacing any provider/tool/day that has them.
   async listAllowanceTokenRows(from: string): Promise<AllowanceTokenRow[]> {
-    return listAllowanceRows(this.requireDb(), from);
+    const accounts = await this.listProviderAccounts("codex");
+    const groups = codexSessionAccountGroups(
+      accounts.map((account) => ({ id: account.id, homePath: account.homePath })),
+    );
+    return listAllowanceRows(this.requireDb(), from, groups);
+  }
+
+  async upsertCodexTokenEvents(events: CodexTokenEventInsert[]): Promise<void> {
+    insertCodexTokenEvents(this.requireDb(), events);
+  }
+
+  async replaceCodexTokenEvents(providerIds: string[], events: CodexTokenEventInsert[]): Promise<void> {
+    replaceCodexTokenEvents(this.requireDb(), providerIds, events);
+  }
+
+  async listCodexEventProviderIds(from: string): Promise<string[]> {
+    return listCodexEventProviderIds(this.requireDb(), from);
+  }
+
+  async listCodexEventCursors(): Promise<CodexEventCursor[]> {
+    return listCodexEventCursors(this.requireDb());
+  }
+
+  async saveCodexEventCursors(cursors: CodexEventCursor[]): Promise<void> {
+    saveCodexEventCursors(this.requireDb(), cursors);
   }
 
   async insertProbeFailure(providerId: string, failedAt: string, message: string): Promise<void> {
