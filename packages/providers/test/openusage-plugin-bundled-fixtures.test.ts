@@ -165,6 +165,16 @@ describe("OpenUsagePluginProvider original bundled plugin fixtures", () => {
         authorization: "Bearer claude-access-token",
         beta: "oauth-2025-04-20",
       },
+      {
+        url: "https://api.anthropic.com/api/oauth/profile",
+        authorization: "Bearer claude-access-token",
+        beta: "oauth-2025-04-20",
+      },
+      {
+        url: "https://api.anthropic.com/api/oauth/usage?cedar_ember=1&skip_spend=1",
+        authorization: "Bearer claude-access-token",
+        beta: "oauth-2025-04-20",
+      },
     ]);
     expect(records[0]).toMatchObject({
       providerId: "claude-code",
@@ -191,6 +201,8 @@ describe("OpenUsagePluginProvider original bundled plugin fixtures", () => {
             resetsAt: "2026-06-23T07:00:00.000Z",
             periodDurationMs: 604800000,
           },
+          // The mock answers the reset-grant read without a cedar_ember block.
+          { type: "text", label: "Rate Limit Resets", value: "No data" },
         ],
       },
     });
