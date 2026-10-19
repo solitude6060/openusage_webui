@@ -111,3 +111,14 @@ and after), so stored labels do not mark plan changes. The only observed plan ch
 
 Cursor Extra Usage from usage-summary (`eab20cf`), Antigravity Gemini meters from Cloud Code
 (`9e6d362`), Antigravity Argon quota (`063eb06`), incremental log reads (`5c9d9a7`, `f0039b2`).
+
+## First-Principles Audit (2026-10-19, after review round 4)
+
+- Need: the owner runs only the WebUI on Linux (:6736). The needs are (1) Claude resets and the $250 window on the card, (2) the Allowance projection matching upstream, (3) usage reconstructed per weekly cycle and per billing month.
+- Assumption relied on for R1-7: the desktop log path matters for this fork. Verified false for this host: `src-tauri` cannot build on Linux (`tauri-nspanel` needs macOS `objc2_app_kit`), and the WebUI server has no response-body logging (`grep` of `apps/server/src`, `packages/providers/src`).
+- Upstream projection: the Pace formula already equals `projectedEndPercent` (Evidence section), so need (2) required no new projection code.
+- Verdict:
+  - Keep Tracks A, B and C; they map one to one onto needs 1 to 3.
+  - Keep the R1-7 change as shipped (`fd2ded2`, `2bdf3bf`, `044534a`): it is small, harness-tested (25 tests), and satisfies the AGENTS.md audit rule. Stop further review rounds on it; the last commit is recorded as not re-reviewed.
+  - Do not add more desktop work, upstream candidates (Deferred Upstream Candidates) or a second billing heuristic to this PR.
+- Review: rounds 1–2 APPROVE for Tracks A–C; CRITICAL/HIGH open: 0.
