@@ -1100,9 +1100,14 @@ describe("claude plugin", () => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
     ctx.host.fs.exists = () => true
-    ctx.host.http.request.mockReturnValue({
-      status: 200,
-      bodyText: JSON.stringify({}),
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts && opts.url)
+      // Profile and reset-grant reads are separate requests. Fail them so this
+      // test still covers an empty usage card, not a reset-grant row.
+      if (url.includes("/api/oauth/profile") || url.includes("cedar_ember=1")) {
+        return { status: 500, bodyText: "", headers: {} }
+      }
+      return { status: 200, bodyText: JSON.stringify({}), headers: {} }
     })
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
@@ -1275,10 +1280,13 @@ describe("claude plugin", () => {
     let firstUsageHeaders = null
     ctx.host.http.request.mockImplementation((opts) => {
       if (String(opts.url).includes("/api/oauth/usage")) {
-        usageCalls += 1
-        if (!firstUsageHeaders) firstUsageHeaders = opts.headers
-        if (usageCalls === 1) {
-          return { status: 401, bodyText: "" }
+        // The reset-grant read uses the same path with cedar_ember. It is not a usage retry.
+        if (!String(opts.url).includes("cedar_ember")) {
+          usageCalls += 1
+          if (!firstUsageHeaders) firstUsageHeaders = opts.headers
+          if (usageCalls === 1) {
+            return { status: 401, bodyText: "" }
+          }
         }
         return {
           status: 200,
@@ -2179,10 +2187,10 @@ describe("claude plugin", () => {
         plugin.probe(ctx)
         expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
 
-        // 90 s later — window expired, should attempt API again
+        // 90 s later — window expired. Usage, profile, and reset grants each request once.
         vi.setSystemTime(new Date("2026-04-14T10:01:30.000Z"))
         const result2 = plugin.probe(ctx)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(4)
         // No rate-limited badge after success (amber color = rate-limited)
         expect(result2.lines.find((l) => l.label === "Status" && l.color === "#f59e0b")).toBeUndefined()
       } finally {
@@ -2200,19 +2208,19 @@ describe("claude plugin", () => {
         ctx.host.http.request.mockReturnValue({ status: 200, bodyText: "{}", headers: {} })
         const plugin = await loadPlugin()
 
-        // First probe — succeeds
+        // First probe — usage, then one profile read and one reset-grant read
         plugin.probe(ctx)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(3)
 
         // 30 s later — within MIN_USAGE_FETCH_INTERVAL_MS (5 min), no new request
         vi.setSystemTime(new Date("2026-04-14T10:00:30.000Z"))
         plugin.probe(ctx)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(3)
 
-        // 5+ minutes later — interval elapsed, should fetch again
+        // 5+ minutes later — usage interval elapsed; profile and reset grants stay cached
         vi.setSystemTime(new Date("2026-04-14T10:05:01.000Z"))
         plugin.probe(ctx)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(4)
       } finally {
         vi.useRealTimers()
       }
@@ -2267,13 +2275,406 @@ describe("claude plugin", () => {
         plugin.probe(ctx)
         expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
 
-        // 5 min 1 s later — backoff expired
+        // 5 min 1 s later — backoff expired. Usage, profile, and reset grants each request once.
         vi.setSystemTime(new Date("2026-04-14T10:05:01.000Z"))
         plugin.probe(ctx)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(4)
       } finally {
         vi.useRealTimers()
       }
+    })
+  })
+
+  describe("track A resets, dollar credits, and profile plan", () => {
+    const USAGE = {
+      five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+    }
+    const GRANT_ENDS = "2026-10-22T16:00:00.000Z"
+    const CLI_USER_AGENT = "claude-cli/2.1.303 (external, cli)"
+
+    function withCreds(ctx, oauth) {
+      ctx.host.fs.exists = () => true
+      ctx.host.fs.readText = () =>
+        JSON.stringify({
+          claudeAiOauth: Object.assign(
+            {
+              accessToken: "token-a",
+              subscriptionType: "max",
+              rateLimitTier: "default_claude_max_5x",
+            },
+            oauth || {},
+          ),
+        })
+    }
+
+    function route(ctx, handlers) {
+      ctx.host.http.request.mockImplementation((opts) => {
+        const url = String(opts && opts.url)
+        if (url.includes("cedar_ember=1")) return handlers.cedar(opts)
+        if (url.includes("/api/oauth/profile")) return handlers.profile(opts)
+        return handlers.usage(opts)
+      })
+    }
+
+    function jsonResponse(status, body) {
+      return { status, bodyText: JSON.stringify(body), headers: {} }
+    }
+
+    function grantFixture(grants, extra) {
+      return {
+        cedar_ember: Object.assign(
+          { eligible: true, ineligible_reason: null, grants: grants },
+          extra || {},
+        ),
+      }
+    }
+
+    function resetLine(result) {
+      return result.lines.find((line) => line.label === "Rate Limit Resets")
+    }
+
+    it("reads reset grants with the Claude CLI user agent and shows the soonest deadline", async () => {
+      const ctx = makeCtx()
+      withCreds(ctx)
+      route(ctx, {
+        usage: () => jsonResponse(200, USAGE),
+        profile: () => jsonResponse(200, { organization: { rate_limit_tier: "default_claude_max_5x" } }),
+        cedar: () =>
+          jsonResponse(
+            200,
+            grantFixture([
+              { id: "test-grant-1", resets_left: 1, ends_at: GRANT_ENDS },
+              { id: "test-grant-later", resets_left: 2, ends_at: "2026-11-01T00:00:00.000Z" },
+              { id: "test-grant-open", resets_left: 4 },
+            ]),
+          ),
+      })
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const cedarCall = ctx.host.http.request.mock.calls.find((call) =>
+        String(call[0].url).includes("cedar_ember=1"),
+      )
+      expect(cedarCall).toBeTruthy()
+      expect(String(cedarCall[0].url)).toContain("/api/oauth/usage?cedar_ember=1&skip_spend=1")
+      expect(cedarCall[0].method).toBe("GET")
+      expect(cedarCall[0].headers["User-Agent"]).toBe(CLI_USER_AGENT)
+      expect(cedarCall[0].headers.Authorization).toBe("Bearer token-a")
+      expect(cedarCall[0].headers.Accept).toBe("application/json")
+      expect(cedarCall[0].headers["Content-Type"]).toBe("application/json")
+      expect(cedarCall[0].headers["anthropic-beta"]).toBe("oauth-2025-04-20")
+
+      const usageCall = ctx.host.http.request.mock.calls.find(
+        (call) => String(call[0].url).includes("/api/oauth/usage") && !String(call[0].url).includes("cedar_ember"),
+      )
+      expect(usageCall[0].headers["User-Agent"]).toBe("claude-code/2.1.69")
+      expect(ctx.host.http.request.mock.calls.some((call) => String(call[0].url).includes("reset_rate_limits"))).toBe(false)
+      expect(ctx.host.http.request.mock.calls.some((call) => call[0].method === "POST")).toBe(false)
+
+      const line = resetLine(result)
+      expect(line).toBeTruthy()
+      expect(line.type).toBe("text")
+      // Host text lines cannot carry resetsAt. The soonest ends_at is baked into the value.
+      expect(line.value).toBe("7 available · by Oct 22")
+      expect(line.resetsAt).toBeUndefined()
+    })
+
+    it("accepts a top-level cedar block and a grant with no deadline", async () => {
+      const ctx = makeCtx()
+      withCreds(ctx)
+      route(ctx, {
+        usage: () => jsonResponse(200, USAGE),
+        profile: () => jsonResponse(200, {}),
+        cedar: () =>
+          jsonResponse(200, {
+            eligible: true,
+            grants: [{ id: "test-grant-1", resets_left: 1 }],
+          }),
+      })
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      expect(resetLine(result).value).toBe("1 available")
+    })
+
+    it("shows 0 available when the account is ineligible and has no grants", async () => {
+      const ctx = makeCtx()
+      withCreds(ctx)
+      route(ctx, {
+        usage: () => jsonResponse(200, USAGE),
+        profile: () => jsonResponse(200, {}),
+        cedar: () =>
+          jsonResponse(200, {
+            cedar_ember: { eligible: false, ineligible_reason: "surface", grants: [] },
+          }),
+      })
+      const plugin = await loadPlugin()
+      expect(resetLine(plugin.probe(ctx)).value).toBe("0 available")
+    })
+
+    it("shows No data and drops the block when any grant lacks a string id or numeric resets_left", async () => {
+      const cases = [
+        [{ resets_left: 1, ends_at: GRANT_ENDS }],
+        [{ id: "test-grant-1", resets_left: "1" }],
+        [
+          { id: "test-grant-1", resets_left: 1, ends_at: GRANT_ENDS },
+          { id: 15, resets_left: 2 },
+        ],
+      ]
+      const plugin = await loadPlugin()
+      for (const grants of cases) {
+        const ctx = makeCtx()
+        withCreds(ctx)
+        route(ctx, {
+          usage: () => jsonResponse(200, USAGE),
+          profile: () => jsonResponse(200, {}),
+          cedar: () => jsonResponse(200, grantFixture(grants)),
+        })
+        plugin._resetState()
+        const result = plugin.probe(ctx)
+        expect(resetLine(result).value).toBe("No data")
+        expect(JSON.stringify(result)).not.toContain("test-grant-1")
+      }
+    })
+
+    it("shows No data when the cedar response does not include a grant block", async () => {
+      const ctx = makeCtx()
+      withCreds(ctx)
+      route(ctx, {
+        usage: () => jsonResponse(200, USAGE),
+        profile: () => jsonResponse(200, {}),
+        cedar: () => jsonResponse(200, { five_hour: { utilization: 1 } }),
+      })
+      const plugin = await loadPlugin()
+      expect(resetLine(plugin.probe(ctx)).value).toBe("No data")
+    })
+
+    it("asks for reset grants at most once an hour per access token and keeps the last value", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        withCreds(ctx)
+        let cedarStatus = 200
+        route(ctx, {
+          usage: () => jsonResponse(200, USAGE),
+          profile: () => jsonResponse(200, {}),
+          cedar: () =>
+            cedarStatus === 200
+              ? jsonResponse(200, grantFixture([{ id: "test-grant-1", resets_left: 1, ends_at: GRANT_ENDS }]))
+              : { status: 500, bodyText: "", headers: {} },
+        })
+        const plugin = await loadPlugin()
+        const cedarCalls = () =>
+          ctx.host.http.request.mock.calls.filter((call) => String(call[0].url).includes("cedar_ember=1")).length
+
+        expect(resetLine(plugin.probe(ctx)).value).toBe("1 available · by Oct 22")
+        expect(cedarCalls()).toBe(1)
+
+        vi.setSystemTime(new Date("2026-04-14T10:30:00.000Z"))
+        expect(resetLine(plugin.probe(ctx)).value).toBe("1 available · by Oct 22")
+        expect(cedarCalls()).toBe(1)
+
+        vi.setSystemTime(new Date("2026-04-14T11:00:01.000Z"))
+        cedarStatus = 500
+        expect(resetLine(plugin.probe(ctx)).value).toBe("1 available · by Oct 22")
+        expect(cedarCalls()).toBe(2)
+        expect(ctx.host.log.warn.mock.calls.some((call) => String(call[0]).includes("reset grants"))).toBe(true)
+
+        withCreds(ctx, { accessToken: "token-b" })
+        cedarStatus = 200
+        expect(resetLine(plugin.probe(ctx)).value).toBe("1 available · by Oct 22")
+        expect(cedarCalls()).toBe(3)
+        const lastCedar = ctx.host.http.request.mock.calls.filter((call) =>
+          String(call[0].url).includes("cedar_ember=1"),
+        ).at(-1)
+        expect(lastCedar[0].headers.Authorization).toBe("Bearer token-b")
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("logs a failed first reset-grant read and does not invent a count", async () => {
+      const ctx = makeCtx()
+      withCreds(ctx)
+      route(ctx, {
+        usage: () => jsonResponse(200, USAGE),
+        profile: () => jsonResponse(200, {}),
+        cedar: () => {
+          throw new Error("socket closed")
+        },
+      })
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      expect(resetLine(result)).toBeUndefined()
+      expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+      expect(ctx.host.log.warn.mock.calls.some((call) => String(call[0]).includes("reset grants"))).toBe(true)
+    })
+
+    it("renders dollar credit lines and skips extra usage and spend", async () => {
+      const ctx = makeCtx()
+      withCreds(ctx)
+      route(ctx, {
+        usage: () =>
+          jsonResponse(200, {
+            five_hour: USAGE.five_hour,
+            iguana_necktie: {
+              limit_dollars: 250,
+              used_dollars: 0,
+              resets_at: "2026-11-05T07:59:00.000Z",
+            },
+            cinder_cove: { limit_dollars: 40, used_dollars: 12.5, resets_at: "2026-12-01T00:00:00.000Z" },
+            wattle_ember: { label: "Launch Credit", limit_dollars: 15, resets_at: "2026-12-15T00:00:00.000Z" },
+            second_credit: { limit_dollars: 8, used_dollars: 1 },
+            labeled_again: { label: "Launch Credit", limit_dollars: 3, used_dollars: 0 },
+            empty_label: { label: "   ", limit_dollars: 6, used_dollars: 2 },
+            seven_day_sonnet: null,
+            extra_usage: { is_enabled: true, used_credits: 500, monthly_limit: 1000, limit_dollars: 999 },
+            spend: { limit_dollars: 50, used_dollars: 4, resets_at: "2026-12-01T00:00:00.000Z" },
+          }),
+        profile: () => jsonResponse(200, {}),
+        cedar: () => jsonResponse(200, { cedar_ember: null }),
+      })
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const credits = result.lines.filter((line) => line.format && line.format.kind === "dollars" && line.label !== "Extra usage spent")
+      expect(credits.map((line) => line.label)).toEqual([
+        "Credit",
+        "Claude Code And Cowork Credit",
+        "Launch Credit",
+        "Credit 2",
+        "Launch Credit 2",
+        "Credit 3",
+      ])
+      expect(credits[0]).toMatchObject({
+        type: "progress",
+        used: 0,
+        limit: 250,
+        format: { kind: "dollars" },
+        resetsAt: "2026-11-05T07:59:00.000Z",
+      })
+      expect(credits[1].used).toBe(12.5)
+      expect(credits[1].limit).toBe(40)
+      expect(credits[2].used).toBe(0)
+      expect(credits[2].resetsAt).toBe("2026-12-15T00:00:00.000Z")
+      expect(result.lines.find((line) => line.label === "Extra usage spent")).toBeTruthy()
+      expect(result.lines.some((line) => line.limit === 999 || line.limit === 50)).toBe(false)
+    })
+
+    it("uses the profile rate limit tier after a successful usage fetch, once per access token", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        withCreds(ctx, { subscriptionType: "pro", rateLimitTier: "default_claude_max_5x" })
+        let usageStatus = 429
+        route(ctx, {
+          usage: () =>
+            usageStatus === 200
+              ? jsonResponse(200, USAGE)
+              : { status: 429, bodyText: "", headers: { "Retry-After": "60" } },
+          profile: (opts) => {
+            expect(opts.method).toBe("GET")
+            expect(String(opts.url)).toContain("/api/oauth/profile")
+            expect(opts.headers["User-Agent"]).toBe("claude-code/2.1.69")
+            expect(opts.headers.Authorization).toBe("Bearer token-a")
+            return jsonResponse(200, {
+              organization: {
+                rate_limit_tier: "default_claude_max_20x",
+                uuid: "11111111-2222-4333-8444-555555555555",
+                email: "person@example.com",
+              },
+            })
+          },
+          cedar: () => jsonResponse(200, grantFixture([{ id: "test-grant-1", resets_left: 1 }])),
+        })
+        const plugin = await loadPlugin()
+        const profileCalls = () =>
+          ctx.host.http.request.mock.calls.filter((call) => String(call[0].url).includes("/api/oauth/profile")).length
+
+        const blocked = plugin.probe(ctx)
+        expect(profileCalls()).toBe(0)
+        expect(blocked.plan).toBe("Pro 5x")
+
+        vi.setSystemTime(new Date("2026-04-14T10:01:30.000Z"))
+        usageStatus = 200
+        const live = plugin.probe(ctx)
+        expect(live.plan).toBe("Max 20x")
+        expect(profileCalls()).toBe(1)
+
+        vi.setSystemTime(new Date("2026-04-14T10:08:00.000Z"))
+        expect(plugin.probe(ctx).plan).toBe("Max 20x")
+        expect(profileCalls()).toBe(1)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("falls back to the saved credential plan when the profile cannot be read", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        withCreds(ctx)
+        route(ctx, {
+          usage: () => jsonResponse(200, USAGE),
+          profile: () => ({ status: 503, bodyText: "", headers: {} }),
+          cedar: () => jsonResponse(200, { cedar_ember: { eligible: false } }),
+        })
+        const plugin = await loadPlugin()
+        const profileCalls = () =>
+          ctx.host.http.request.mock.calls.filter((call) => String(call[0].url).includes("/api/oauth/profile")).length
+
+        expect(plugin.probe(ctx).plan).toBe("Max 5x")
+        expect(profileCalls()).toBe(1)
+        expect(ctx.host.log.warn.mock.calls.some((call) => String(call[0]).includes("profile"))).toBe(true)
+
+        vi.setSystemTime(new Date("2026-04-14T11:30:00.000Z"))
+        expect(plugin.probe(ctx).plan).toBe("Max 5x")
+        expect(profileCalls()).toBe(1)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("does not put event props, grant ids, organization ids, or emails on the probe output", async () => {
+      const secretEvent = "event-prop-do-not-leak"
+      const grantId = "test-grant-1"
+      const orgId = "11111111-2222-4333-8444-555555555555"
+      const email = "person@example.com"
+      const ctx = makeCtx()
+      withCreds(ctx)
+      route(ctx, {
+        usage: () =>
+          jsonResponse(200, {
+            five_hour: USAGE.five_hour,
+            event_props: { campaign: secretEvent, email: email },
+            iguana_necktie: { limit_dollars: 250, used_dollars: 0, label: "Pool Credit" },
+          }),
+        profile: () =>
+          jsonResponse(200, {
+            organization: { uuid: orgId, rate_limit_tier: "default_claude_max_20x", name: email },
+            email: email,
+          }),
+        cedar: () =>
+          jsonResponse(
+            200,
+            grantFixture(
+              [{ id: grantId, resets_left: 1, ends_at: GRANT_ENDS }],
+              { next_grant_id: grantId, event_props: { id: orgId } },
+            ),
+          ),
+      })
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      expect(result.plan).toBe("Max 20x")
+      expect(resetLine(result).value).toBe("1 available · by Oct 22")
+      expect(result.lines.find((line) => line.label === "Pool Credit")).toBeTruthy()
+      const encoded = JSON.stringify(result)
+      expect(encoded).not.toContain(secretEvent)
+      expect(encoded).not.toContain(grantId)
+      expect(encoded).not.toContain(orgId)
+      expect(encoded).not.toContain(email)
+      expect(encoded).not.toContain("event_props")
     })
   })
 })
