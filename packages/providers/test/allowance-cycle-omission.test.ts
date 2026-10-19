@@ -36,7 +36,7 @@ describe("allowance cycle summary omission", () => {
     const summaries = buildAllowanceCycleSummaries(
       [
         observation("2026-10-02T00:00:00.000Z", 40, "2026-10-08T00:00:00.000Z"),
-        observation("2026-10-05T00:00:00.000Z", 25, "2026-10-08T00:00:00.000Z"),
+        observation("2026-10-05T00:00:00.000Z", 37, "2026-10-08T00:00:00.000Z"),
       ],
       [bucket("2026-10-03T00:00:00.000Z", 100)],
       new Set(),
@@ -89,7 +89,7 @@ describe("allowance cycle summary omission", () => {
     const summaries = buildAllowanceCycleSummaries(
       [
         observation("2026-10-02T00:00:00.000Z", 40, "2026-10-08T00:00:00.000Z"),
-        observation("2026-10-05T00:00:00.000Z", 25, "2026-10-08T00:00:00.000Z"),
+        observation("2026-10-05T00:00:00.000Z", 37, "2026-10-08T00:00:00.000Z"),
         observation("2026-10-09T00:00:00.000Z", 15, "2026-10-15T00:00:00.000Z"),
       ],
       [bucket("2026-10-03T00:00:00.000Z", 100)],
