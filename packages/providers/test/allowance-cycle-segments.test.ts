@@ -355,3 +355,32 @@ describe("allowance baseline regime", () => {
     expect(summary?.regimeChanged).toBe(false);
   });
 });
+
+describe("allowance cycle segment review fixes", () => {
+  test("counts an hour that lies wholly between a reset's readings in the earlier segment once", () => {
+    const observations = midCycleReset().map((point) =>
+      point.observedAt === "2026-10-14T04:42:00.000Z" ? { ...point, observedAt: "2026-10-14T08:00:00.000Z" } : point);
+    const rows = [...midCycleRows(188), hour("2026-10-14T06:00:00.000Z", 500, 10)];
+    const cycle = buildAllowanceCycleSummaries(observations, rows, new Set(), NOW)[0]?.cycles[0];
+
+    expect(cycle?.segments[0]?.end).toBe("2026-10-14T08:00:00.000Z");
+    expect(cycle?.segments[0]?.tokens).toBe(10_100);
+    expect(cycle?.tokensHigh).toBe(19_550);
+  });
+
+  test("keeps the regime change when the cycle that shows it is excluded", () => {
+    const { observations: older, rows: olderRows } = olderCycle();
+    // A one-point fall after the reset excludes the regime cycle as meter-fell.
+    const observations = [
+      ...older,
+      ...midCycleReset(),
+      observation("2026-10-16T12:00:00.000Z", 49, RESET),
+    ];
+    const summary = buildAllowanceCycleSummaries(observations, [...olderRows, ...midCycleRows(188)], new Set(), NOW)[0];
+
+    expect(summary?.cycles[0]?.exclusion).toBe("meter-fell");
+    expect(summary?.regimeChanged).toBe(true);
+    expect(summary?.baseline.dollarsPerPercent).toBeNull();
+  });
+});
+

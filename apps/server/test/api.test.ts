@@ -171,6 +171,8 @@ describe("WebUI API", () => {
     expect(rejected.status).toBe(400);
     expect((await rejected.json()).error.code).toBe("BAD_REQUEST");
     expect(await storage.getProviderSettings("ccusage")).toEqual({ billingAnchor: "2026-10-01T04:00:00.000Z" });
+    // Date.parse accepts this in the server's own time zone, which would shift every month boundary.
+    expect((await put("October 19, 2026")).status).toBe(400);
     expect((await put("")).status).toBe(200);
     expect(await storage.getProviderSettings("ccusage")).toEqual({ billingAnchor: "" });
   });

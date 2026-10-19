@@ -293,6 +293,27 @@ describe("billing months review fixes", () => {
     expect(consumed(summary, "2026-10-01T00:00:00.000Z")).toBe(27);
   });
 
+  test("does not count a peak from before the month again in the month", () => {
+    const summary = build(
+      [
+        observation("2026-09-30T00:00:00.000Z", 80, EDGE_RESET),
+        observation("2026-10-01T01:00:00.000Z", 76, EDGE_RESET),
+        observation("2026-10-01T02:00:00.000Z", 72, EDGE_RESET),
+        observation("2026-10-01T03:00:00.000Z", 68, EDGE_RESET),
+        observation("2026-10-01T04:00:00.000Z", 64, EDGE_RESET),
+        observation("2026-10-01T05:00:00.000Z", 0, EDGE_RESET),
+        observation("2026-10-03T00:00:00.000Z", 20, EDGE_RESET),
+        observation("2026-10-04T23:00:00.000Z", 2, "2026-10-11T19:00:00.000Z"),
+      ],
+      [hour("2026-09-29T00:00:00.000Z", 1000, 10), hour("2026-10-02T00:00:00.000Z", 1000, 10)],
+      "2026-10-05T00:00:00.000Z",
+    );
+
+    expect(consumed(summary, "2026-09-01T00:00:00.000Z")).toBe(80);
+    // The first segment's October readings run 76 down to 64, so it adds 76 - 76; the second adds 20 and the next cycle 2.
+    expect(consumed(summary, "2026-10-01T00:00:00.000Z")).toBe(22);
+  });
+
   test("keeps splitting a month at a regime change after four newer cycles", () => {
     const later = [
       "2026-10-24T19:00:00.000Z",
