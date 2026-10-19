@@ -151,11 +151,26 @@ export interface AllowanceCycleStat {
   n: number;
 }
 
+export interface AllowanceCycleSegment {
+  start: string;
+  end: string;
+  startPercent: number;
+  endPercent: number;
+  tokens: number;
+  apiCost: number | null;
+  tokensPerPercent: number | null;
+  dollarsPerPercent: number | null;
+}
+
 export interface AllowanceCompletedCycle {
   start: string;
   end: string;
   lengthMs: number;
   endPercent: number;
+  consumedPercent: number;
+  segments: AllowanceCycleSegment[];
+  tokensPerPercent: number | null;
+  dollarsPerPercent: number | null;
   tokensLow: number;
   tokensHigh: number;
   apiCostLow: number | null;
@@ -190,7 +205,9 @@ export interface AllowanceCycleSummary {
   baseline: {
     tokens: AllowanceCycleStat | null;
     apiDollars: AllowanceCycleStat | null;
+    dollarsPerPercent: AllowanceCycleStat | null;
   };
+  regimeChanged: boolean;
   current: AllowanceCycleCurrent | null;
   cycles: AllowanceCompletedCycle[];
 }

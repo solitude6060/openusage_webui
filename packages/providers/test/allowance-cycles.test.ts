@@ -65,12 +65,12 @@ describe("allowance cycle boundaries", () => {
 });
 
 describe("allowance cycle exclusion", () => {
-  test("excludes a cycle whose meter falls", () => {
+  test("excludes a cycle whose meter falls by less than the 5 points of a mid-cycle reset", () => {
     const summaries = buildAllowanceCycleSummaries(
       [
         observation("2026-10-02T00:00:00.000Z", 10, "2026-10-08T00:00:00.000Z"),
         observation("2026-10-05T00:00:00.000Z", 40, "2026-10-08T00:00:00.000Z"),
-        observation("2026-10-07T12:00:00.000Z", 25, "2026-10-08T00:00:00.000Z"),
+        observation("2026-10-07T12:00:00.000Z", 37, "2026-10-08T00:00:00.000Z"),
         observation("2026-10-09T00:00:00.000Z", 12, "2026-10-15T00:00:00.000Z"),
       ],
       [],
@@ -401,7 +401,7 @@ describe("allowance cycle baseline", () => {
     observations.push(
       observation("2026-10-14T00:00:00.000Z", 10, resets[5]!),
       observation("2026-10-16T00:00:00.000Z", 80, resets[5]!),
-      observation("2026-10-17T12:00:00.000Z", 30, resets[5]!),
+      observation("2026-10-17T12:00:00.000Z", 77, resets[5]!),
     );
     const rows = includedTokens.map((tokens, index) =>
       bucket(new Date(Date.parse(resets[index]!) - 3 * DAY_MS).toISOString(), tokens, { costUsd: 1 }),
@@ -420,7 +420,7 @@ describe("allowance cycle baseline", () => {
 
   test("median of the Grok-sized cycles is 13.05 million tokens per percent", () => {
     const cycles = [
-      { reset: "2026-09-13T00:00:00.000Z", percents: [30, 10], tokens: 9_000_000_000, cost: 900 },
+      { reset: "2026-09-13T00:00:00.000Z", percents: [30, 27], tokens: 9_000_000_000, cost: 900 },
       { reset: "2026-09-20T00:00:00.000Z", percents: [100], tokens: 752_000_000, cost: 276 },
       { reset: "2026-09-27T00:00:00.000Z", percents: [100], tokens: 1_305_000_000, cost: 463 },
       { reset: "2026-10-04T00:00:00.000Z", percents: [17], tokens: 286_960_000, cost: 411 * 17 / 100 },

@@ -139,7 +139,9 @@ describe("Subscription period", () => {
               baseline: {
                 tokens: { median: 1_305_000_000, min: 752_000_000, max: 1_688_000_000, n: 3 },
                 apiDollars: { median: 411, min: 276, max: 463, n: 3 },
+                dollarsPerPercent: { median: 4.11, min: 2.76, max: 4.63, n: 3 },
               },
+              regimeChanged: true,
               current: {
                 start: "2026-10-04T00:00:00.000Z",
                 end: "2026-10-11T00:00:00.000Z",
@@ -156,10 +158,55 @@ describe("Subscription period", () => {
               },
               cycles: [
                 {
+                  start: "2026-10-10T19:00:00.000Z",
+                  end: "2026-10-17T19:00:00.000Z",
+                  lengthMs: 7 * 24 * 60 * 60 * 1000,
+                  endPercent: 96,
+                  consumedPercent: 190,
+                  segments: [
+                    {
+                      start: "2026-10-10T19:00:00.000Z",
+                      end: "2026-10-14T04:22:00.000Z",
+                      startPercent: 0,
+                      endPercent: 96,
+                      tokens: 9600,
+                      apiCost: 96,
+                      tokensPerPercent: 100,
+                      dollarsPerPercent: 1,
+                    },
+                    {
+                      start: "2026-10-14T04:42:00.000Z",
+                      end: "2026-10-17T19:00:00.000Z",
+                      startPercent: 1,
+                      endPercent: 95,
+                      tokens: 9400,
+                      apiCost: 188,
+                      tokensPerPercent: 100,
+                      dollarsPerPercent: 2,
+                    },
+                  ],
+                  tokensPerPercent: 100,
+                  dollarsPerPercent: 1.5,
+                  tokensLow: 19000,
+                  tokensHigh: 19000,
+                  apiCostLow: 284,
+                  apiCostHigh: 284,
+                  allowanceLow: 10000,
+                  allowanceHigh: 10000,
+                  apiDollarsLow: 150,
+                  apiDollarsHigh: 150,
+                  included: true,
+                  exclusion: null,
+                },
+                {
                   start: "2026-09-27T00:00:00.000Z",
                   end: "2026-10-04T00:00:00.000Z",
                   lengthMs: 7 * 24 * 60 * 60 * 1000,
                   endPercent: 40,
+                  consumedPercent: 40,
+                  segments: [],
+                  tokensPerPercent: 2.5,
+                  dollarsPerPercent: 0.25,
                   tokensLow: 100,
                   tokensHigh: 165,
                   apiCostLow: 10,
@@ -176,6 +223,10 @@ describe("Subscription period", () => {
                   end: "2026-09-27T00:00:00.000Z",
                   lengthMs: 7 * 24 * 60 * 60 * 1000,
                   endPercent: 9,
+                  consumedPercent: 9,
+                  segments: [],
+                  tokensPerPercent: 10,
+                  dollarsPerPercent: 0.11,
                   tokensLow: 90,
                   tokensHigh: 90,
                   apiCostLow: 1,
@@ -211,11 +262,18 @@ describe("Subscription period", () => {
     expect(screen.getAllByText("$4.00–Unknown")).toHaveLength(2);
     expect(screen.getAllByText("$11.00")).toHaveLength(2);
     expect(screen.getByText("Unreliable")).toBeInTheDocument();
+    expect(screen.getAllByText("190% · 2 Segments")).toHaveLength(2);
+    expect(screen.getAllByText("Consumed").length).toBeGreaterThan(0);
+    expect(screen.queryByText("End Percent")).not.toBeInTheDocument();
+    expect(screen.getByText("API Dollars Per Percent $4.11 median · $2.76–$4.63 · n 3")).toBeInTheDocument();
+    expect(screen.getByText("Rate Changed At A Mid-Period Reset · Baseline Uses Only The Newer Side")).toBeInTheDocument();
     const details = screen.getByText("How This Is Calculated").closest("details");
     expect(details).toHaveTextContent("last four included periods");
     expect(details).toHaveTextContent("That median uses only the usage fully inside each period.");
     expect(details).toHaveTextContent("more than an hour before its stated reset");
     expect(details).toHaveTextContent("the meter fell during this period");
+    expect(details).toHaveTextContent("reset in place");
+    expect(details).toHaveTextContent("the baseline keeps only the newer side");
     expect(details).not.toHaveTextContent("Daily totals cannot be split inside a day");
     expect(getAllowance).toHaveBeenCalledWith("cycles");
   });

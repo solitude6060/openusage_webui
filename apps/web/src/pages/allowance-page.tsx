@@ -109,6 +109,9 @@ export function AllowancePage({
                   A subscription period runs from one reset to the next. The baseline is the median of the last four included periods. That median uses only the usage fully inside each period. The lowest, the highest, and how many periods that median used sit beside it, for tokens and for API dollars.
                 </p>
                 <p className="settings-help muted">
+                  When the meter falls by 5 points or more while its stated reset stays put, the period was reset in place. Each stretch between resets is measured alone, and the period's consumed percent is the sum of their climbs, so it can pass 100. Dollars per percent is the API dollars divided by that consumed percent. When dollars per percent on the two sides of a reset differ by more than 30 percent, the baseline keeps only the newer side.
+                </p>
+                <p className="settings-help muted">
                   The current period shows the latest meter reading, the tokens and API dollars fully inside it so far, and what remains of the baseline. The projected end percent is that reading divided by how much of the period has passed. Unreliable means the period is less than a day old, the meter fell during this period, or one of the last four periods ended more than an hour before its stated reset.
                 </p>
               </>
@@ -297,6 +300,7 @@ function AllowancePeriod({
 }) {
   const tokens = summary.baseline.tokens;
   const dollars = summary.baseline.apiDollars;
+  const perPercent = summary.baseline.dollarsPerPercent;
   return (
     <article className="allowance-account">
       <div className="allowance-account-header">
@@ -315,6 +319,10 @@ function AllowancePeriod({
         )}
         {tokens ? <p className="allowance-meta">{statRange(tokens, formatCompactTokenCount)}</p> : null}
         {dollars ? <p className="allowance-api">API Dollars {statRange(dollars, formatApiMoney)}</p> : null}
+        {perPercent ? <p className="allowance-api">API Dollars Per Percent {statRange(perPercent, formatApiMoney)}</p> : null}
+        {summary.regimeChanged ? (
+          <p className="allowance-meta">Rate Changed At A Mid-Period Reset · Baseline Uses Only The Newer Side</p>
+        ) : null}
       </section>
       <section className="allowance-cycle-block">
         <h5>Current Cycle</h5>
@@ -400,12 +408,17 @@ function completedFields(cycle: AllowanceCompletedCycle): Array<{ label: string;
   return [
     { label: "Period", value: `${formatDate(cycle.start)} – ${formatDate(cycle.end)}` },
     { label: "Length", value: formatCycleLength(cycle.lengthMs) },
-    { label: "End Percent", value: formatPercent(cycle.endPercent) },
+    { label: "Consumed", value: consumedLabel(cycle) },
     { label: "Tokens", value: formatTokenSpan(cycle.tokensLow, cycle.tokensHigh) },
     { label: "Allowance", value: formatTokenSpan(cycle.allowanceLow, cycle.allowanceHigh) },
     { label: "API Dollars", value: formatMoneySpan(cycle.apiDollarsLow, cycle.apiDollarsHigh) },
     { label: "Reason", value: cycleReasonLabel(cycle.exclusion) },
   ];
+}
+
+function consumedLabel(cycle: AllowanceCompletedCycle): string {
+  const percent = formatPercent(cycle.consumedPercent);
+  return cycle.segments.length > 1 ? `${percent} · ${cycle.segments.length} Segments` : percent;
 }
 
 function statRange(stat: AllowanceCycleStat, format: (value: number) => string): string {

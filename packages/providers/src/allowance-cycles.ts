@@ -11,6 +11,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const BASELINE_LIMIT = 4;
 const CYCLE_MIN_PERCENT = 10;
 const EDGE_UNCERTAIN_RATIO = 1.25;
+// A meter that falls this many points while its stated reset holds was reset inside the cycle.
+const MID_CYCLE_RESET_DROP = 5;
+// Dollars per percent on the two sides of a reset differing by more than 30 percent mark a regime change.
+const REGIME_SHIFT_RATIO = 1.3;
 
 export type AllowanceCycleExclusion =
   | "meter-fell"
@@ -28,11 +32,26 @@ export interface AllowanceCycleStat {
   n: number;
 }
 
+export interface AllowanceCycleSegment {
+  start: string;
+  end: string;
+  startPercent: number;
+  endPercent: number;
+  tokens: number;
+  apiCost: number | null;
+  tokensPerPercent: number | null;
+  dollarsPerPercent: number | null;
+}
+
 export interface AllowanceCompletedCycle {
   start: string;
   end: string;
   lengthMs: number;
   endPercent: number;
+  consumedPercent: number;
+  segments: AllowanceCycleSegment[];
+  tokensPerPercent: number | null;
+  dollarsPerPercent: number | null;
   tokensLow: number;
   tokensHigh: number;
   apiCostLow: number | null;
@@ -67,7 +86,9 @@ export interface AllowanceCycleSummary {
   baseline: {
     tokens: AllowanceCycleStat | null;
     apiDollars: AllowanceCycleStat | null;
+    dollarsPerPercent: AllowanceCycleStat | null;
   };
+  regimeChanged: boolean;
   current: AllowanceCycleCurrent | null;
   cycles: AllowanceCompletedCycle[];
 }
@@ -98,12 +119,13 @@ export function buildAllowanceCycleSummaries(
     const open = bounded
       .filter((cycle) => cycle.start <= nowMs && nowMs < cycle.end)
       .sort((left, right) => right.start - left.start)[0] ?? null;
-    const baseline = baselineFrom(cycles);
+    const { baseline, regimeChanged } = baselineFrom(cycles);
     const summary = {
       providerId: window.providerId,
       windowKey: window.windowKey,
       windowLabel: window.windowLabel,
       baseline,
+      regimeChanged,
       current: open ? currentCycle(open, rows, nowMs, baseline, bounded.filter((cycle) => cycle.end <= nowMs)) : null,
       cycles,
     };
@@ -124,6 +146,19 @@ interface UsageSide {
   rows: number;
 }
 
+interface Reading {
+  at: number;
+  usedPercent: number;
+  resetsAt: string;
+}
+
+interface SegmentSpan {
+  from: number;
+  to: number;
+  startPercent: number;
+  endPercent: number;
+}
+
 function measureCycle(
   cycle: BoundedCycle,
   rows: AllowanceTokenRow[],
@@ -134,16 +169,26 @@ function measureCycle(
     .filter((point) => point.at >= cycle.start && point.at < cycle.end)
     .sort((left, right) => left.at - right.at);
   const endPercent = readings.reduce((max, point) => Math.max(max, point.usedPercent), 0);
-  const meterFell = readings.some((point, index) =>
-    index > 0 && point.usedPercent < readings[index - 1]!.usedPercent);
+  const runs = splitRuns(readings);
+  const meterFell = runs.some((run) => run.some((point, index) =>
+    index > 0 && point.usedPercent < run[index - 1]!.usedPercent));
+  const spans = segmentSpans(runs, cycle);
+  const consumedPercent = spans.reduce((sum, span) => sum + span.endPercent - span.startPercent, 0);
   const latest = readings.at(-1)?.at;
   const observationGap = latest == null || cycle.end - latest > DAY_MS;
+  const sides = spans.map(emptySide);
   const inside = emptySide();
   const straddle = emptySide();
   for (const row of rows) {
-    const place = bucketPlace(row, cycle.start, cycle.end);
-    if (place === "inside") addRow(inside, row);
-    else if (place === "straddle") addRow(straddle, row);
+    const places = spans.map((span) => bucketPlace(row, span.from, span.to));
+    const index = places.indexOf("inside");
+    if (index >= 0) {
+      addRow(sides[index]!, row);
+      addRow(inside, row);
+    } else if (places.includes("straddle")) {
+      // A row that crosses both edges of a mid-cycle reset still counts once.
+      addRow(straddle, row);
+    }
   }
   const tokensLow = inside.tokens;
   const tokensHigh = inside.tokens + straddle.tokens;
@@ -152,23 +197,63 @@ function measureCycle(
   const truncated = history != null && (
     cycle.start < history.observationStartMs || cycle.start < history.tokenStartMs
   );
-  const exclusion = cycleExclusion(meterFell, shared, truncated, tokensLow, tokensHigh, endPercent, observationGap);
+  const exclusion = cycleExclusion(meterFell, shared, truncated, tokensLow, tokensHigh, consumedPercent, observationGap);
   return {
     start: new Date(cycle.start).toISOString(),
     end: new Date(cycle.end).toISOString(),
     lengthMs: cycle.end - cycle.start,
     endPercent,
+    consumedPercent,
+    segments: spans.map((span, index) => ({
+      start: new Date(span.from).toISOString(),
+      end: new Date(span.to).toISOString(),
+      startPercent: span.startPercent,
+      endPercent: span.endPercent,
+      tokens: sides[index]!.tokens,
+      apiCost: sideCost(sides[index]!),
+      tokensPerPercent: perPercent(sides[index]!.tokens, span.endPercent - span.startPercent),
+      dollarsPerPercent: perPercent(sideCost(sides[index]!), span.endPercent - span.startPercent),
+    })),
+    tokensPerPercent: perPercent(tokensLow, consumedPercent),
+    dollarsPerPercent: perPercent(apiCostLow, consumedPercent),
     tokensLow,
     tokensHigh,
     apiCostLow,
     apiCostHigh,
-    allowanceLow: perFullMeter(tokensLow, endPercent),
-    allowanceHigh: perFullMeter(tokensHigh, endPercent),
-    apiDollarsLow: perFullMeter(apiCostLow, endPercent),
-    apiDollarsHigh: perFullMeter(apiCostHigh, endPercent),
+    allowanceLow: perFullMeter(tokensLow, consumedPercent),
+    allowanceHigh: perFullMeter(tokensHigh, consumedPercent),
+    apiDollarsLow: perFullMeter(apiCostLow, consumedPercent),
+    apiDollarsHigh: perFullMeter(apiCostHigh, consumedPercent),
     included: exclusion == null,
     exclusion,
   };
+}
+
+// A fall of at least 5 points under an unchanged stated reset starts a new run of readings.
+function splitRuns(readings: Reading[]): Reading[][] {
+  const runs: Reading[][] = [[]];
+  readings.forEach((point, index) => {
+    const before = readings[index - 1];
+    if (before && before.usedPercent - point.usedPercent >= MID_CYCLE_RESET_DROP
+      && Math.abs(Date.parse(point.resetsAt) - Date.parse(before.resetsAt)) <= HOUR_MS) {
+      runs.push([]);
+    }
+    runs.at(-1)!.push(point);
+  });
+  return runs;
+}
+
+// The first segment keeps the cycle's assumed 0 percent at its start and the last runs to the cycle's end.
+// A later segment starts at its first reading; one without a climb cannot be measured and is left out.
+function segmentSpans(runs: Reading[][], cycle: BoundedCycle): SegmentSpan[] {
+  return runs
+    .map((run, index) => ({
+      from: index === 0 ? cycle.start : run[0]!.at,
+      to: index === runs.length - 1 ? cycle.end : run.at(-1)!.at,
+      startPercent: index === 0 ? 0 : run[0]!.usedPercent,
+      endPercent: run.reduce((max, point) => Math.max(max, point.usedPercent), 0),
+    }))
+    .filter((span, index) => index === 0 || span.endPercent > span.startPercent);
 }
 
 function usableSummary(
@@ -181,11 +266,67 @@ function usableSummary(
   return !(points.length > 0 && points.every((point) => point.usedPercent === 0));
 }
 
-function baselineFrom(cycles: AllowanceCompletedCycle[]): AllowanceCycleSummary["baseline"] {
+interface BaselineUnit {
+  allowance: number | null;
+  dollars: number | null;
+  dollarsPerPercent: number | null;
+}
+
+function baselineFrom(
+  cycles: AllowanceCompletedCycle[],
+): { baseline: AllowanceCycleSummary["baseline"]; regimeChanged: boolean } {
   const sample = cycles.filter((cycle) => cycle.included).slice(0, BASELINE_LIMIT);
+  const boundary = latestRegimeBoundary(sample);
+  const units = (boundary ? sample.slice(0, boundary.cycle + 1) : sample).map((cycle, index) =>
+    boundary && index === boundary.cycle
+      ? poolSegments(cycle.segments.slice(boundary.segment))
+      : unitFrom(cycle.tokensLow, cycle.apiCostLow, cycle.consumedPercent));
   return {
-    tokens: stats(presentNumbers(sample.map((cycle) => cycle.allowanceLow))),
-    apiDollars: stats(presentNumbers(sample.map((cycle) => cycle.apiDollarsLow))),
+    baseline: {
+      tokens: stats(presentNumbers(units.map((unit) => unit.allowance))),
+      apiDollars: stats(presentNumbers(units.map((unit) => unit.dollars))),
+      dollarsPerPercent: stats(presentNumbers(units.map((unit) => unit.dollarsPerPercent))),
+    },
+    regimeChanged: boundary != null,
+  };
+}
+
+// The newest reset, scanning newest cycle first, whose two sides cost clearly different dollars per percent.
+// ponytail: only a reset inside a cycle counts; a rate change exactly at a cycle edge is not detected.
+function latestRegimeBoundary(sample: AllowanceCompletedCycle[]): { cycle: number; segment: number } | null {
+  for (let cycle = 0; cycle < sample.length; cycle += 1) {
+    const { segments } = sample[cycle]!;
+    for (let segment = segments.length - 1; segment > 0; segment -= 1) {
+      if (regimeShift(segments[segment - 1]!, segments[segment]!)) return { cycle, segment };
+    }
+  }
+  return null;
+}
+
+function regimeShift(before: AllowanceCycleSegment, after: AllowanceCycleSegment): boolean {
+  const left = before.dollarsPerPercent;
+  const right = after.dollarsPerPercent;
+  if (left == null || right == null || !(left > 0) || !(right > 0)) return false;
+  // Climbs under the 10 percent cycle minimum are too coarse to compare.
+  if (before.endPercent - before.startPercent < CYCLE_MIN_PERCENT) return false;
+  if (after.endPercent - after.startPercent < CYCLE_MIN_PERCENT) return false;
+  return Math.max(left, right) / Math.min(left, right) > REGIME_SHIFT_RATIO;
+}
+
+function poolSegments(segments: AllowanceCycleSegment[]): BaselineUnit {
+  const costs = segments.map((segment) => segment.apiCost);
+  return unitFrom(
+    segments.reduce((sum, segment) => sum + segment.tokens, 0),
+    costs.some((cost) => cost == null) ? null : costs.reduce<number>((sum, cost) => sum + (cost ?? 0), 0),
+    segments.reduce((sum, segment) => sum + segment.endPercent - segment.startPercent, 0),
+  );
+}
+
+function unitFrom(tokens: number, cost: number | null, percent: number): BaselineUnit {
+  return {
+    allowance: perFullMeter(tokens, percent),
+    dollars: perFullMeter(cost, percent),
+    dollarsPerPercent: perPercent(cost, percent),
   };
 }
 
@@ -262,14 +403,14 @@ function cycleExclusion(
   historyTruncated: boolean,
   tokensLow: number,
   tokensHigh: number,
-  endPercent: number,
+  consumedPercent: number,
   observationGap: boolean,
 ): AllowanceCycleExclusion | null {
   if (meterFell) return "meter-fell";
   if (shared) return "shared-log";
   if (historyTruncated) return "history-truncated";
   if (tokensLow <= 0) return "no-tokens";
-  if (endPercent < CYCLE_MIN_PERCENT) return "below-min-percent";
+  if (consumedPercent < CYCLE_MIN_PERCENT) return "below-min-percent";
   if (tokensHigh > tokensLow * EDGE_UNCERTAIN_RATIO) return "edge-uncertain";
   if (observationGap) return "observation-gap";
   return null;
@@ -300,9 +441,14 @@ function combinedCost(low: UsageSide, extra: UsageSide): number | null {
   return (low.rows === 0 ? 0 : low.cost ?? 0) + (extra.rows === 0 ? 0 : extra.cost ?? 0);
 }
 
-function perFullMeter(amount: number | null, endPercent: number): number | null {
-  if (amount == null || !(endPercent > 0)) return null;
-  return amount / (endPercent / 100);
+function perFullMeter(amount: number | null, percent: number): number | null {
+  if (amount == null || !(percent > 0)) return null;
+  return amount / (percent / 100);
+}
+
+function perPercent(amount: number | null, percent: number): number | null {
+  if (amount == null || !(percent > 0)) return null;
+  return amount / percent;
 }
 
 function bucketPlace(row: AllowanceTokenRow, cycleStart: number, cycleEnd: number): "inside" | "straddle" | "out" {
