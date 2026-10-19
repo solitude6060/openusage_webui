@@ -3892,6 +3892,20 @@ mod tests {
     }
 
     #[test]
+    fn redact_body_redacts_escaped_quotes_and_braces_in_strings() {
+        let body = r#"{"full_name":"Jane \"Private\" Smith","event_props":{"campaign":"spring {private}","org":"secret-org"}}"#;
+        let redacted = redact_body(body);
+        for secret in ["Private", "Smith", "spring", "secret-org"] {
+            assert!(
+                !redacted.contains(secret),
+                "{} should be redacted, got: {}",
+                secret,
+                redacted
+            );
+        }
+    }
+
+    #[test]
     fn ccusage_runner_order_matches_expected_priority() {
         assert_eq!(
             ccusage_runner_order(),
