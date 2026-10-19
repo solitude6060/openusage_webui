@@ -2539,12 +2539,12 @@ describe("claude plugin", () => {
       const result = plugin.probe(ctx)
       const credits = result.lines.filter((line) => line.format && line.format.kind === "dollars" && line.label !== "Extra usage spent")
       expect(credits.map((line) => line.label)).toEqual([
-        "Credit",
+        "Cloud Credit",
         "Claude Code And Cowork Credit",
         "Launch Credit",
-        "Credit 2",
+        "Credit",
         "Launch Credit 2",
-        "Credit 3",
+        "Credit 2",
       ])
       expect(credits[0]).toMatchObject({
         type: "progress",
