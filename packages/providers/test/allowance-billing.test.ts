@@ -157,6 +157,22 @@ describe("billing months token totals", () => {
   });
 });
 
+describe("billing months token coverage", () => {
+  test("leaves tokensFrom empty for a month that ends before token data starts", () => {
+    const summary = build(
+      [
+        observation("2026-09-20T00:00:00.000Z", 10, "2026-09-25T00:00:00.000Z"),
+        ...openCycle("2026-10-19T00:00:00.000Z", "2026-10-22T00:00:00.000Z"),
+      ],
+      [hour("2026-10-05T03:00:00.000Z", 10, 1)],
+      "2026-10-19T00:00:00.000Z",
+    );
+
+    const september = summary?.billing?.months.find((month) => month.start === "2026-09-01T00:00:00.000Z");
+    expect(september).toEqual(expect.objectContaining({ tokens: 0, apiDollars: null, tokensFrom: null }));
+  });
+});
+
 describe("billing months weekly parts", () => {
   const RESET = "2026-10-17T19:00:00.000Z";
 
