@@ -267,6 +267,17 @@
   font-size: 0.78rem;
 }
 
+.allowance-billing-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+}
+
+.allowance-billing-form input {
+  width: auto;
+}
+
 .allowance-cycle-cards {
   display: none;
   margin: 12px 0 0;

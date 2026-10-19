@@ -199,6 +199,31 @@ export interface AllowanceCycleCurrent {
   meterFell: boolean;
 }
 
+export interface AllowanceBillingPart {
+  from: string;
+  to: string;
+  consumedPercent: number;
+  availablePercent: number;
+}
+
+export interface AllowanceBillingMonth {
+  start: string;
+  end: string;
+  current: boolean;
+  apiDollars: number | null;
+  tokens: number;
+  tokensFrom: string | null;
+  weeklyParts: AllowanceBillingPart[];
+  projectedApiDollars: number | null;
+  projectionReliable: boolean | null;
+}
+
+export interface AllowanceBilling {
+  anchor: string | null;
+  anchorSource: "setting" | "calendar";
+  months: AllowanceBillingMonth[];
+}
+
 export interface AllowanceCycleSummary {
   providerId: string;
   windowKey: string;
@@ -211,6 +236,7 @@ export interface AllowanceCycleSummary {
   regimeChanged: boolean;
   current: AllowanceCycleCurrent | null;
   cycles: AllowanceCompletedCycle[];
+  billing: AllowanceBilling | null;
 }
 
 export interface AllowanceEstimate {
@@ -239,6 +265,17 @@ export async function getAllowance(range: AllowanceRange): Promise<
 > {
   const named = range === "month" || range === "period" || range === "previous" || range === "cycles";
   return request(`/api/usage/allowance?${named ? `span=${range}` : `days=${range}`}`);
+}
+
+export async function updateProviderSettings(
+  providerId: string,
+  settings: Record<string, string>,
+): Promise<Record<string, string>> {
+  return request(`/api/settings/${encodeURIComponent(providerId)}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(settings),
+  });
 }
 
 export async function createManualUsage(input: ManualUsageInput): Promise<{

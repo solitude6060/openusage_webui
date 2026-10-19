@@ -9,8 +9,9 @@ import {
   type AllowanceEstimate,
   type AllowanceRange,
 } from "../lib/api";
-import { formatDate, formatMoney, formatNumber } from "../lib/format";
+import { formatApiMoney, formatDate, formatMoney, formatNumber, formatPercent } from "../lib/format";
 import { providerLabel } from "../provider-ui";
+import { BillingMonths } from "./allowance-billing";
 import { formatCompactTokenCount } from "./tokens-page";
 
 const NARROW_LAYOUT = "(max-width: 640px)";
@@ -39,6 +40,7 @@ export function AllowancePage({
   const [summaries, setSummaries] = useState<AllowanceCycleSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [reloads, setReloads] = useState(0);
   const narrow = useNarrowLayout();
   const names = useMemo(
     () => new Map(providers.map((provider) => [provider.providerId, provider.name])),
@@ -77,7 +79,7 @@ export function AllowancePage({
     return () => {
       cancelled = true;
     };
-  }, [range, refreshToken]);
+  }, [range, refreshToken, reloads]);
 
   return (
     <section className="page-grid">
@@ -138,6 +140,7 @@ export function AllowancePage({
                   key={`${summary.providerId}:${summary.windowKey}`}
                   summary={summary}
                   providerName={names.get(summary.providerId)}
+                  onBillingSaved={() => setReloads((count) => count + 1)}
                 />
               ))}
             </div>
@@ -261,20 +264,6 @@ function groupEstimates(estimates: AllowanceEstimate[]): Array<{
   return groups;
 }
 
-function formatApiMoney(value: number): string {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-}
-
-function formatPercent(value: number): string {
-  const rounded = Math.round(value * 10) / 10;
-  return `${rounded % 1 === 0 ? Math.round(rounded) : rounded}%`;
-}
-
 function formatLimit(cycle: AllowanceEstimate): string {
   if (cycle.statedLimit == null) return "";
   if (cycle.statedLimitUnit === "usd") return formatMoney(cycle.statedLimit);
@@ -294,9 +283,11 @@ function reasonLabel(reason: AllowanceEstimate["reason"]): string {
 function AllowancePeriod({
   summary,
   providerName,
+  onBillingSaved,
 }: {
   summary: AllowanceCycleSummary;
   providerName: string | undefined;
+  onBillingSaved: () => void;
 }) {
   const tokens = summary.baseline.tokens;
   const dollars = summary.baseline.apiDollars;
@@ -329,6 +320,9 @@ function AllowancePeriod({
         {summary.current ? <CurrentCycle current={summary.current} /> : <p className="allowance-reason">No Open Cycle</p>}
       </section>
       <CompletedCycles cycles={summary.cycles} />
+      {summary.billing ? (
+        <BillingMonths providerId={summary.providerId} billing={summary.billing} onSaved={onBillingSaved} />
+      ) : null}
     </article>
   );
 }
