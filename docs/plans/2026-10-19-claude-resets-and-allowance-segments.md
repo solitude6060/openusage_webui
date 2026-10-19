@@ -62,8 +62,13 @@ change excludes old-regime segments from the baseline.
 
 ## Open Questions For The User
 
-- Upgrade time to Max 20x (10/14?). Stored snapshots before the A3 fix all say `Max 5x`, so under B3
-  the 20x baseline appears after the first full 20x cycle unless historical labels are corrected.
+- Upgrade time to Max 20x. Answered 2026-10-19 by the user: 2026-10-14 12:33 Taiwan time
+  (04:33Z). This falls inside the observed weekly meter fall (04:22Z 96% → 04:42Z 1%), so the
+  10/14 segment boundary and the dollars-per-percent change (about 10 → 15.6) are the upgrade.
+  Stored snapshots before the A3 fix all say `Max 5x`, so B3 uses the dollars-per-percent ratio
+  rule instead of plan labels; it places the regime boundary at the same reset. The only finished
+  post-upgrade data is the 10/14–10/17 segment, so the baseline stays n=1 until the 10/17–10/24
+  cycle ends.
 - "整個訂閱期間" — weekly reset cycle (implemented) or the monthly billing period (not implemented).
 
 ## Deferred Upstream Candidates
