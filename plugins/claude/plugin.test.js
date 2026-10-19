@@ -154,7 +154,8 @@ describe("claude plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
-    expect(ctx.host.fs.readText).not.toHaveBeenCalled()
+    // Keychain wins, so the stale credentials file stays unread. The live cache file may still be read.
+    expect(ctx.host.fs.readText.mock.calls.some((call) => String(call[0]).endsWith("/.credentials.json"))).toBe(false)
     expect(ctx.host.http.request).toHaveBeenCalledWith(
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: "Bearer keychain-token" }),
@@ -2675,6 +2676,121 @@ describe("claude plugin", () => {
       expect(encoded).not.toContain(orgId)
       expect(encoded).not.toContain(email)
       expect(encoded).not.toContain("event_props")
+    })
+
+    const LIVE_CACHE_TOKEN = "sk-ant-live-cache-SECRET-token-value"
+    const LIVE_CACHE_PATH_SUFFIX = "/live-cache.json"
+
+    function seedFileCreds(ctx, accessToken) {
+      ctx.host.fs.writeText(
+        "~/.claude/.credentials.json",
+        JSON.stringify({
+          claudeAiOauth: {
+            accessToken: accessToken,
+            subscriptionType: "max",
+            rateLimitTier: "default_claude_max_5x",
+          },
+        }),
+      )
+    }
+
+    function liveCacheText(ctx) {
+      return ctx.host.fs.readText(ctx.app.pluginDataDir + LIVE_CACHE_PATH_SUFFIX)
+    }
+
+    function countUrl(ctx, part) {
+      return ctx.host.http.request.mock.calls.filter((call) => String(call[0].url).includes(part)).length
+    }
+
+    it("reuses the saved reset grant and profile plan after a fresh worker within one hour", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        seedFileCreds(ctx, LIVE_CACHE_TOKEN)
+        let resetsLeft = 1
+        let tier = "default_claude_max_20x"
+        route(ctx, {
+          usage: () => jsonResponse(200, USAGE),
+          profile: () => jsonResponse(200, { organization: { rate_limit_tier: tier } }),
+          cedar: () =>
+            jsonResponse(200, grantFixture([{ id: "test-grant-1", resets_left: resetsLeft, ends_at: GRANT_ENDS }])),
+        })
+        const plugin = await loadPlugin()
+
+        const first = plugin.probe(ctx)
+        expect(resetLine(first).value).toBe("1 available · by Oct 22")
+        expect(first.plan).toBe("Max 20x")
+        expect(countUrl(ctx, "cedar_ember=1")).toBe(1)
+        expect(countUrl(ctx, "/api/oauth/profile")).toBe(1)
+
+        resetsLeft = 9
+        tier = "default_claude_pro"
+        plugin._resetState()
+        vi.setSystemTime(new Date("2026-04-14T10:30:00.000Z"))
+        const second = plugin.probe(ctx)
+
+        expect(countUrl(ctx, "cedar_ember=1")).toBe(1)
+        expect(countUrl(ctx, "/api/oauth/profile")).toBe(1)
+        expect(resetLine(second).value).toBe("1 available · by Oct 22")
+        expect(second.plan).toBe("Max 20x")
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("does not write the access token into the live cache file", async () => {
+      const ctx = makeCtx()
+      seedFileCreds(ctx, LIVE_CACHE_TOKEN)
+      route(ctx, {
+        usage: () => jsonResponse(200, USAGE),
+        profile: () => jsonResponse(200, { organization: { rate_limit_tier: "default_claude_max_20x" } }),
+        cedar: () =>
+          jsonResponse(200, grantFixture([{ id: "test-grant-1", resets_left: 1, ends_at: GRANT_ENDS }])),
+      })
+      const plugin = await loadPlugin()
+      plugin.probe(ctx)
+
+      const cacheText = liveCacheText(ctx)
+      const hash = crypto.createHash("sha256").update(LIVE_CACHE_TOKEN).digest("hex")
+      expect(typeof cacheText).toBe("string")
+      const saved = JSON.parse(cacheText)
+      expect(saved.resetGrants[hash]).toMatchObject({ text: "1 available · by Oct 22" })
+      expect(saved.profilePlans[hash]).toBe("Max 20x")
+      expect(cacheText).not.toContain(LIVE_CACHE_TOKEN)
+    })
+
+    it("asks for reset grants again after more than one hour across a fresh worker", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        seedFileCreds(ctx, LIVE_CACHE_TOKEN)
+        route(ctx, {
+          usage: () => jsonResponse(200, USAGE),
+          profile: () => jsonResponse(200, { organization: { rate_limit_tier: "default_claude_max_20x" } }),
+          cedar: () =>
+            jsonResponse(200, grantFixture([{ id: "test-grant-1", resets_left: 1, ends_at: GRANT_ENDS }])),
+        })
+        const plugin = await loadPlugin()
+
+        plugin.probe(ctx)
+        expect(countUrl(ctx, "cedar_ember=1")).toBe(1)
+
+        plugin._resetState()
+        vi.setSystemTime(new Date("2026-04-14T10:30:00.000Z"))
+        plugin.probe(ctx)
+        expect(countUrl(ctx, "cedar_ember=1")).toBe(1)
+        expect(countUrl(ctx, "/api/oauth/profile")).toBe(1)
+
+        plugin._resetState()
+        vi.setSystemTime(new Date("2026-04-14T11:00:00.001Z"))
+        plugin.probe(ctx)
+        expect(countUrl(ctx, "cedar_ember=1")).toBe(2)
+        expect(countUrl(ctx, "/api/oauth/profile")).toBe(1)
+      } finally {
+        vi.useRealTimers()
+      }
     })
   })
 })
