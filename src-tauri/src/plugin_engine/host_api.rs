@@ -3857,6 +3857,29 @@ mod tests {
     }
 
     #[test]
+    fn redact_body_redacts_claude_profile_and_reset_grant_fields() {
+        let body = r#"{"account":{"uuid":"11111111-2222-4333-8444-555555555555","full_name":"Robin Ebers","display_name":"Robin"},"grants":[{"id":"grant_01AbCdEfGh","resets_left":1,"next_grant_id":"grant_02IjKlMnOp"}],"event_props":{"campaign":"spring-promo-secret","org":"org-uuid-secret"}}"#;
+        let redacted = redact_body(body);
+        for secret in [
+            "11111111-2222-4333-8444-555555555555",
+            "Robin Ebers",
+            "\"Robin\"",
+            "grant_01AbCdEfGh",
+            "grant_02IjKlMnOp",
+            "spring-promo-secret",
+            "org-uuid-secret",
+        ] {
+            assert!(
+                !redacted.contains(secret),
+                "{} should be redacted, got: {}",
+                secret,
+                redacted
+            );
+        }
+        assert!(redacted.contains("\"resets_left\":1"), "got: {}", redacted);
+    }
+
+    #[test]
     fn ccusage_runner_order_matches_expected_priority() {
         assert_eq!(
             ccusage_runner_order(),
