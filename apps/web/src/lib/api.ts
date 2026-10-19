@@ -142,7 +142,8 @@ export type AllowanceCycleExclusion =
   | "no-tokens"
   | "below-min-percent"
   | "edge-uncertain"
-  | "observation-gap";
+  | "observation-gap"
+  | "segment-unmeasured";
 
 export interface AllowanceCycleStat {
   median: number;

@@ -15,6 +15,8 @@ const EDGE_UNCERTAIN_RATIO = 1.25;
 const MID_CYCLE_RESET_DROP = 5;
 // Dollars per percent on the two sides of a reset differing by more than 30 percent mark a regime change.
 const REGIME_SHIFT_RATIO = 1.3;
+// A segment that climbs this much but has no tokens inside it cannot be measured.
+const SEGMENT_MIN_PERCENT = 5;
 
 export type AllowanceCycleExclusion =
   | "meter-fell"
@@ -23,7 +25,8 @@ export type AllowanceCycleExclusion =
   | "no-tokens"
   | "below-min-percent"
   | "edge-uncertain"
-  | "observation-gap";
+  | "observation-gap"
+  | "segment-unmeasured";
 
 export interface AllowanceCycleStat {
   median: number;
@@ -197,33 +200,47 @@ function measureCycle(
   const truncated = history != null && (
     cycle.start < history.observationStartMs || cycle.start < history.tokenStartMs
   );
-  const exclusion = cycleExclusion(meterFell, shared, truncated, tokensLow, tokensHigh, consumedPercent, observationGap);
+  const segments = spans.map((span, index) => ({
+    start: new Date(span.from).toISOString(),
+    end: new Date(span.to).toISOString(),
+    startPercent: span.startPercent,
+    endPercent: span.endPercent,
+    tokens: sides[index]!.tokens,
+    apiCost: sideCost(sides[index]!),
+    tokensPerPercent: perPercent(sides[index]!.tokens, span.endPercent - span.startPercent),
+    dollarsPerPercent: perPercent(sideCost(sides[index]!), span.endPercent - span.startPercent),
+  }));
+  // Ratios divide by the climbs of the segments whose numerator is measured; a cycle with none keeps the full sum.
+  const measured = measuredTotals(segments);
+  const tokenPercent = measured.tokenPercent > 0 ? measured.tokenPercent : consumedPercent;
+  const costPercent = measured.cost != null ? measured.costPercent : consumedPercent;
+  const exclusion = cycleExclusion({
+    meterFell,
+    shared,
+    historyTruncated: truncated,
+    tokensLow,
+    tokensHigh,
+    consumedPercent,
+    segmentUnmeasured: segments.some(climbsWithoutTokens),
+    observationGap,
+  });
   return {
     start: new Date(cycle.start).toISOString(),
     end: new Date(cycle.end).toISOString(),
     lengthMs: cycle.end - cycle.start,
     endPercent,
     consumedPercent,
-    segments: spans.map((span, index) => ({
-      start: new Date(span.from).toISOString(),
-      end: new Date(span.to).toISOString(),
-      startPercent: span.startPercent,
-      endPercent: span.endPercent,
-      tokens: sides[index]!.tokens,
-      apiCost: sideCost(sides[index]!),
-      tokensPerPercent: perPercent(sides[index]!.tokens, span.endPercent - span.startPercent),
-      dollarsPerPercent: perPercent(sideCost(sides[index]!), span.endPercent - span.startPercent),
-    })),
-    tokensPerPercent: perPercent(tokensLow, consumedPercent),
-    dollarsPerPercent: perPercent(apiCostLow, consumedPercent),
+    segments,
+    tokensPerPercent: perPercent(tokensLow, tokenPercent),
+    dollarsPerPercent: perPercent(measured.cost, costPercent),
     tokensLow,
     tokensHigh,
     apiCostLow,
     apiCostHigh,
-    allowanceLow: perFullMeter(tokensLow, consumedPercent),
-    allowanceHigh: perFullMeter(tokensHigh, consumedPercent),
-    apiDollarsLow: perFullMeter(apiCostLow, consumedPercent),
-    apiDollarsHigh: perFullMeter(apiCostHigh, consumedPercent),
+    allowanceLow: perFullMeter(tokensLow, tokenPercent),
+    allowanceHigh: perFullMeter(tokensHigh, tokenPercent),
+    apiDollarsLow: perFullMeter(measured.cost, costPercent),
+    apiDollarsHigh: perFullMeter(apiCostHigh, costPercent),
     included: exclusion == null,
     exclusion,
   };
@@ -279,8 +296,8 @@ function baselineFrom(
   const boundary = latestRegimeBoundary(sample);
   const units = (boundary ? sample.slice(0, boundary.cycle + 1) : sample).map((cycle, index) =>
     boundary && index === boundary.cycle
-      ? poolSegments(cycle.segments.slice(boundary.segment))
-      : unitFrom(cycle.tokensLow, cycle.apiCostLow, cycle.consumedPercent));
+      ? unitFrom(cycle.segments.slice(boundary.segment))
+      : { allowance: cycle.allowanceLow, dollars: cycle.apiDollarsLow, dollarsPerPercent: cycle.dollarsPerPercent });
   return {
     baseline: {
       tokens: stats(presentNumbers(units.map((unit) => unit.allowance))),
@@ -308,26 +325,42 @@ function regimeShift(before: AllowanceCycleSegment, after: AllowanceCycleSegment
   const right = after.dollarsPerPercent;
   if (left == null || right == null || !(left > 0) || !(right > 0)) return false;
   // Climbs under the 10 percent cycle minimum are too coarse to compare.
-  if (before.endPercent - before.startPercent < CYCLE_MIN_PERCENT) return false;
-  if (after.endPercent - after.startPercent < CYCLE_MIN_PERCENT) return false;
+  if (climbOf(before) < CYCLE_MIN_PERCENT || climbOf(after) < CYCLE_MIN_PERCENT) return false;
   return Math.max(left, right) / Math.min(left, right) > REGIME_SHIFT_RATIO;
 }
 
-function poolSegments(segments: AllowanceCycleSegment[]): BaselineUnit {
-  const costs = segments.map((segment) => segment.apiCost);
-  return unitFrom(
-    segments.reduce((sum, segment) => sum + segment.tokens, 0),
-    costs.some((cost) => cost == null) ? null : costs.reduce<number>((sum, cost) => sum + (cost ?? 0), 0),
-    segments.reduce((sum, segment) => sum + segment.endPercent - segment.startPercent, 0),
-  );
+// Totals over the segments whose numerator is measured: tokens above zero, and a known API cost.
+function measuredTotals(segments: AllowanceCycleSegment[]): {
+  tokens: number;
+  tokenPercent: number;
+  cost: number | null;
+  costPercent: number;
+} {
+  const withTokens = segments.filter((segment) => segment.tokens > 0);
+  const withCost = segments.filter((segment) => segment.apiCost != null);
+  return {
+    tokens: withTokens.reduce((sum, segment) => sum + segment.tokens, 0),
+    tokenPercent: withTokens.reduce((sum, segment) => sum + climbOf(segment), 0),
+    cost: withCost.length === 0 ? null : withCost.reduce((sum, segment) => sum + (segment.apiCost ?? 0), 0),
+    costPercent: withCost.reduce((sum, segment) => sum + climbOf(segment), 0),
+  };
 }
 
-function unitFrom(tokens: number, cost: number | null, percent: number): BaselineUnit {
+function unitFrom(segments: AllowanceCycleSegment[]): BaselineUnit {
+  const totals = measuredTotals(segments);
   return {
-    allowance: perFullMeter(tokens, percent),
-    dollars: perFullMeter(cost, percent),
-    dollarsPerPercent: perPercent(cost, percent),
+    allowance: perFullMeter(totals.tokens, totals.tokenPercent),
+    dollars: perFullMeter(totals.cost, totals.costPercent),
+    dollarsPerPercent: perPercent(totals.cost, totals.costPercent),
   };
+}
+
+function climbOf(segment: AllowanceCycleSegment): number {
+  return segment.endPercent - segment.startPercent;
+}
+
+function climbsWithoutTokens(segment: AllowanceCycleSegment): boolean {
+  return climbOf(segment) >= SEGMENT_MIN_PERCENT && segment.tokens <= 0;
 }
 
 function currentCycle(
@@ -397,22 +430,24 @@ function stats(values: number[]): AllowanceCycleStat | null {
   return { median, min: sorted[0]!, max: sorted[sorted.length - 1]!, n: sorted.length };
 }
 
-function cycleExclusion(
-  meterFell: boolean,
-  shared: boolean,
-  historyTruncated: boolean,
-  tokensLow: number,
-  tokensHigh: number,
-  consumedPercent: number,
-  observationGap: boolean,
-): AllowanceCycleExclusion | null {
-  if (meterFell) return "meter-fell";
-  if (shared) return "shared-log";
-  if (historyTruncated) return "history-truncated";
-  if (tokensLow <= 0) return "no-tokens";
-  if (consumedPercent < CYCLE_MIN_PERCENT) return "below-min-percent";
-  if (tokensHigh > tokensLow * EDGE_UNCERTAIN_RATIO) return "edge-uncertain";
-  if (observationGap) return "observation-gap";
+function cycleExclusion(input: {
+  meterFell: boolean;
+  shared: boolean;
+  historyTruncated: boolean;
+  tokensLow: number;
+  tokensHigh: number;
+  consumedPercent: number;
+  segmentUnmeasured: boolean;
+  observationGap: boolean;
+}): AllowanceCycleExclusion | null {
+  if (input.meterFell) return "meter-fell";
+  if (input.shared) return "shared-log";
+  if (input.historyTruncated) return "history-truncated";
+  if (input.tokensLow <= 0) return "no-tokens";
+  if (input.consumedPercent < CYCLE_MIN_PERCENT) return "below-min-percent";
+  if (input.segmentUnmeasured) return "segment-unmeasured";
+  if (input.tokensHigh > input.tokensLow * EDGE_UNCERTAIN_RATIO) return "edge-uncertain";
+  if (input.observationGap) return "observation-gap";
   return null;
 }
 

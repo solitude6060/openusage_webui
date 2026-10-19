@@ -109,7 +109,7 @@ export function AllowancePage({
                   A subscription period runs from one reset to the next. The baseline is the median of the last four included periods. That median uses only the usage fully inside each period. The lowest, the highest, and how many periods that median used sit beside it, for tokens and for API dollars.
                 </p>
                 <p className="settings-help muted">
-                  When the meter falls by 5 points or more while its stated reset stays put, the period was reset in place. Each stretch between resets is measured alone, and the period's consumed percent is the sum of their climbs, so it can pass 100. Dollars per percent is the API dollars divided by that consumed percent. When dollars per percent on the two sides of a reset differ by more than 30 percent, the baseline keeps only the newer side.
+                  When the meter falls by 5 points or more while its stated reset stays put, the period was reset in place. Each stretch between resets is measured alone, and the period's consumed percent is the sum of their climbs, so it can pass 100. Allowance and dollars per percent divide only by the climbs of stretches that have tokens or a known API cost. A stretch that climbs 5 points or more with no tokens inside it leaves the period out as Segment Unmeasured. When dollars per percent on the two sides of a reset differ by more than 30 percent, the baseline keeps only the newer side.
                 </p>
                 <p className="settings-help muted">
                   The current period shows the latest meter reading, the tokens and API dollars fully inside it so far, and what remains of the baseline. The projected end percent is that reading divided by how much of the period has passed. Unreliable means the period is less than a day old, the meter fell during this period, or one of the last four periods ended more than an hour before its stated reset.
@@ -455,5 +455,6 @@ function cycleReasonLabel(reason: AllowanceCycleExclusion | null): string {
   if (reason === "below-min-percent") return "Below 10 Percent";
   if (reason === "edge-uncertain") return "Edge Uncertain";
   if (reason === "observation-gap") return "Observation Gap";
+  if (reason === "segment-unmeasured") return "Segment Unmeasured";
   return "Included";
 }

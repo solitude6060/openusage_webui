@@ -219,6 +219,26 @@ describe("Subscription period", () => {
                   exclusion: "meter-fell",
                 },
                 {
+                  start: "2026-09-13T00:00:00.000Z",
+                  end: "2026-09-20T00:00:00.000Z",
+                  lengthMs: 7 * 24 * 60 * 60 * 1000,
+                  endPercent: 29,
+                  consumedPercent: 39,
+                  segments: [],
+                  tokensPerPercent: 100,
+                  dollarsPerPercent: 9.2,
+                  tokensLow: 2900,
+                  tokensHigh: 2900,
+                  apiCostLow: 267.5,
+                  apiCostHigh: 267.5,
+                  allowanceLow: 10000,
+                  allowanceHigh: 10000,
+                  apiDollarsLow: 922,
+                  apiDollarsHigh: 922,
+                  included: false,
+                  exclusion: "segment-unmeasured",
+                },
+                {
                   start: "2026-09-20T00:00:00.000Z",
                   end: "2026-09-27T00:00:00.000Z",
                   lengthMs: 7 * 24 * 60 * 60 * 1000,
@@ -259,6 +279,7 @@ describe("Subscription period", () => {
     expect(screen.getAllByText("Meter Fell")).toHaveLength(3);
     expect(screen.getByRole("heading", { name: "Current Cycle" }).closest("section")).toHaveTextContent("Meter Fell");
     expect(screen.getAllByText("Below 10 Percent")).toHaveLength(2);
+    expect(screen.getAllByText("Segment Unmeasured")).toHaveLength(2);
     expect(screen.getAllByText("$4.00–Unknown")).toHaveLength(2);
     expect(screen.getAllByText("$11.00")).toHaveLength(2);
     expect(screen.getByText("Unreliable")).toBeInTheDocument();
@@ -273,6 +294,7 @@ describe("Subscription period", () => {
     expect(details).toHaveTextContent("more than an hour before its stated reset");
     expect(details).toHaveTextContent("the meter fell during this period");
     expect(details).toHaveTextContent("reset in place");
+    expect(details).toHaveTextContent("Segment Unmeasured");
     expect(details).toHaveTextContent("the baseline keeps only the newer side");
     expect(details).not.toHaveTextContent("Daily totals cannot be split inside a day");
     expect(getAllowance).toHaveBeenCalledWith("cycles");
