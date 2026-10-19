@@ -162,6 +162,84 @@ describe("allowance cycle segments", () => {
   });
 });
 
+describe("allowance cycle segments whose numerator is unmeasured", () => {
+  test("excludes a cycle whose 10-point segment has no tokens and divides by the measured segment only", () => {
+    // Live shape: 0 -> 10 with no usage records, reset to 0, then 0 -> 29 with 2900 tokens and $267.5.
+    const summary = buildAllowanceCycleSummaries(
+      [
+        observation("2026-10-11T12:00:00.000Z", 10, RESET),
+        observation("2026-10-12T00:00:00.000Z", 0, RESET),
+        observation("2026-10-17T12:00:00.000Z", 29, RESET),
+        observation("2026-10-17T20:00:00.000Z", 1, "2026-10-24T19:00:00.000Z"),
+      ],
+      [hour("2026-10-14T00:00:00.000Z", 2900, 267.5)],
+      new Set(),
+      NOW,
+    );
+    const cycle = summary[0]?.cycles[0];
+
+    expect(cycle).toEqual(expect.objectContaining({
+      consumedPercent: 39,
+      included: false,
+      exclusion: "segment-unmeasured",
+      tokensPerPercent: 100,
+    }));
+    expect(cycle?.dollarsPerPercent).toBeCloseTo(267.5 / 29, 9);
+    expect(cycle?.allowanceLow).toBeCloseTo(10_000, 6);
+    expect(cycle?.apiDollarsLow).toBeCloseTo(267.5 / 0.29, 6);
+    expect(cycle?.segments.map((segment) => segment.tokens)).toEqual([0, 2900]);
+  });
+
+  test("ignores a segment with no tokens that climbs less than 5 points", () => {
+    const summary = buildAllowanceCycleSummaries(
+      [
+        observation("2026-10-12T00:00:00.000Z", 50, RESET),
+        observation("2026-10-14T00:00:00.000Z", 90, RESET),
+        observation("2026-10-15T00:00:00.000Z", 0, RESET),
+        observation("2026-10-17T12:00:00.000Z", 3, RESET),
+      ],
+      [hour("2026-10-12T00:00:00.000Z", 9000, 90)],
+      new Set(),
+      NOW,
+    )[0];
+
+    expect(summary?.cycles[0]).toEqual(expect.objectContaining({
+      included: true,
+      exclusion: null,
+      consumedPercent: 93,
+      tokensPerPercent: 100,
+      dollarsPerPercent: 1,
+    }));
+    expect(summary?.cycles[0]?.allowanceLow).toBeCloseTo(10_000, 6);
+    expect(summary?.baseline.tokens?.median).toBeCloseTo(10_000, 6);
+    expect(summary?.baseline.dollarsPerPercent?.median).toBeCloseTo(1, 9);
+  });
+
+  test("divides dollars by the segments whose cost is known and tokens by the segments that have tokens", () => {
+    const summary = buildAllowanceCycleSummaries(
+      [
+        observation("2026-10-12T00:00:00.000Z", 50, RESET),
+        observation("2026-10-13T00:00:00.000Z", 0, RESET),
+        observation("2026-10-17T12:00:00.000Z", 50, RESET),
+      ],
+      [
+        hour("2026-10-11T00:00:00.000Z", 5000, null),
+        hour("2026-10-15T00:00:00.000Z", 5000, 100),
+      ],
+      new Set(),
+      NOW,
+    )[0];
+
+    expect(summary?.cycles[0]).toEqual(expect.objectContaining({
+      included: true,
+      consumedPercent: 100,
+      tokensPerPercent: 100,
+      dollarsPerPercent: 2,
+    }));
+    expect(summary?.cycles[0]?.apiDollarsLow).toBeCloseTo(200, 6);
+  });
+});
+
 describe("allowance cycle falls that are not an in-place reset", () => {
   const nextCycle = observation("2026-10-09T00:00:00.000Z", 12, "2026-10-15T00:00:00.000Z");
   const rows = [hour("2026-10-03T00:00:00.000Z", 100, 1)];
@@ -205,7 +283,7 @@ describe("allowance cycle falls that are not an in-place reset", () => {
         observation("2026-10-07T12:00:00.000Z", 60, "2026-10-08T01:00:00.000Z"),
         nextCycle,
       ],
-      rows,
+      [...rows, hour("2026-10-07T00:00:00.000Z", 100, 1)],
       new Set(),
       new Date("2026-10-09T00:00:00.000Z"),
     )[0];
