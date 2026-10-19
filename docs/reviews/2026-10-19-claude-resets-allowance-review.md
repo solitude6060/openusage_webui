@@ -43,3 +43,16 @@ Raw verdicts: `../openusage_webui-artifacts/2026-10-19-claude-allowance/review-r
 | 3 | Codex `gpt-6.1-sol` | high | APPROVE, no findings |
 
 All three lanes confirm R1-1 to R1-6 and the R1-7 deferral. The code gate passes at `b549aa74`.
+
+## Rounds 3 And 4 (R1-7 Desktop Redaction)
+
+R1-7 was taken back into this PR. `src-tauri` does not build on Linux (`tauri-nspanel` is macOS-only), so the redaction functions and tests run in a standalone crate (`../openusage_webui-artifacts/redaction-harness/extract.sh`).
+Raw verdicts: `../openusage_webui-artifacts/2026-10-19-claude-allowance/review-r{3,4}/`.
+
+| Round | Revision | Grok | AGY | Codex | Repair |
+| --- | --- | --- | --- | --- | --- |
+| 3 | `fd2ded2` | APPROVE | APPROVE | REQUEST_CHANGES: escaped quote leaks a name tail; braces in a string stop the `event_props` match (MEDIUM) | `f4aa501` test, `2bdf3bf` fix |
+| 4 | `2bdf3bf` | APPROVE (LOW note on nested objects) | stopped at owner request | REQUEST_CHANGES: earlier rules can unbalance quotes before the `event_props` match (MEDIUM) | `4b5f968f` test, `044534a` fix |
+
+The round-4 repair (`044534a`: `event_props` removed first, one nested level) passes 25 harness tests and was not re-reviewed.
+The owner stopped further rounds: the change affects only desktop log previews, and the desktop app does not run on this host.
