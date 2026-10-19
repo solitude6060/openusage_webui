@@ -796,6 +796,8 @@
   function dollarCreditLabel(key, value) {
     if (value && typeof value.label === "string" && value.label.trim()) return value.label.trim()
     if (key === "cinder_cove") return "Claude Code And Cowork Credit"
+    // User-chosen name; Claude Code 2.1.303 has no label for this window.
+    if (key === "iguana_necktie") return "Cloud Credit"
     return "Credit"
   }
 

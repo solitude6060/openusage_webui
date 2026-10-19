@@ -348,7 +348,7 @@ CLAUDE_CONFIG_DIR/.credentials.json
 
 Claude 卡片除了 5 小時 Session、每週額度與額外用量，還會顯示這三項：
 
-- **美元額度**：用量回應裡，帶有金額上限的項目會顯示已用金額、上限與重置時間。金額單位是美元。額外用量（extra usage，以美分計）與 spend 不會被算進這些列。
+- **美元額度**：用量回應裡，帶有金額上限的項目會顯示已用金額、上限與重置時間。金額單位是美元。$250 那一項（API 代號 `iguana_necktie`）顯示為「Cloud Credit」。額外用量（extra usage，以美分計）與 spend 不會被算進這些列。
 - **Rate Limit Resets**（用量重置次數）：Anthropic 偶爾發放的重置次數。卡片顯示還剩幾次；若有使用期限，文字會帶最近的到期日，例如 `1 available · by Oct 22`。同一個 access token 最多一小時詢問一次。網路或伺服器錯誤會沿用上一次的文字，並寫進紀錄；以前沒有成功過就不顯示這列。回傳裡沒有這項資料，或其中一筆缺少 `id` 或 `resets_left` 時，顯示 `No data`。帳號不符合資格、而且沒有任何次數時，顯示 `0 available`。這列只讀取，不會代為使用重置。
 - **方案名稱**：用量讀取成功之後，從帳號 profile 讀 `rate_limit_tier`。例如 `default_claude_max_20x` 會顯示 Max 20x。每個 access token 只讀一次。讀不到時，沿用登入當下存下來的方案。
 

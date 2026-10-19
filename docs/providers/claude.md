@@ -84,7 +84,7 @@ Local `ccusage` data can also include Fable model rows such as `claude-fable-5`,
 
 A top-level object with a numeric `limit_dollars` becomes a dollar progress line. `used_dollars` is the used amount, or 0 when it is missing. `resets_at` is the reset time. These amounts are already dollars, not cents.
 
-The label is the object's `label`. If that text is missing, `cinder_cove` is shown as "Claude Code And Cowork Credit". Any other key is shown as "Credit". When two lines would share a label, the later one is named with a suffix, such as "Credit 2". A blank label is treated as missing. `extra_usage` and `spend` are skipped. `extra_usage` stays the separate cents row above. A limit that is not above zero is omitted, because a progress line needs a positive limit.
+The label is the object's `label`. If that text is missing, `cinder_cove` is shown as "Claude Code And Cowork Credit" and `iguana_necktie` as "Cloud Credit" (a name chosen by the owner; Claude Code 2.1.303 does not label this key). Any other key is shown as "Credit". When two lines would share a label, the later one is named with a suffix, such as "Credit 2". A blank label is treated as missing. `extra_usage` and `spend` are skipped. `extra_usage` stays the separate cents row above. A limit that is not above zero is omitted, because a progress line needs a positive limit.
 
 ### Rate limit resets
 
