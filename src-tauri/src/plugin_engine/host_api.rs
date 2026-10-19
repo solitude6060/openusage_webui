@@ -433,6 +433,11 @@ fn redact_body(body: &str) -> String {
         "login",
         "analytics_tracking_id",
         "label",
+        "id",
+        "uuid",
+        "full_name",
+        "display_name",
+        "next_grant_id",
     ];
     for key in sensitive_keys {
         // Match "key": "value" or "key":"value"
@@ -445,6 +450,13 @@ fn redact_body(body: &str) -> String {
                 })
                 .to_string();
         }
+    }
+
+    // Claude reset grants carry campaign data in event_props; drop the whole flat object.
+    if let Ok(event_props_re) = regex_lite::Regex::new(r#""event_props":\s*\{[^{}]*\}"#) {
+        result = event_props_re
+            .replace_all(&result, "\"event_props\": \"[REDACTED]\"")
+            .to_string();
     }
 
     if let Ok(path_re) =
