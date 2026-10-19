@@ -29,3 +29,17 @@ Repair order: R1-1 to R1-3 first (red tests `698db4f6`, repair `d27a299`), then 
 R1-1 to R1-3 were repaired before this record landed, which deviates from the review-doc-first rule.
 
 Fix evidence: [fix log](../fix-logs/2026-10-19-claude-resets-allowance-fix-log.md).
+
+## Round 2
+
+Reviewed revision: `b549aa74`. Repair diff `git diff 45d0741..b549aa7 -- packages apps`.
+Prompt: `../openusage_webui-wt-review/cards/review-r2.md`.
+Raw verdicts: `../openusage_webui-artifacts/2026-10-19-claude-allowance/review-r2/{grok,agy,codex}-verdict.md`.
+
+| Lane | Client And Model | Effort | Verdict |
+| --- | --- | --- | --- |
+| 1 | Grok Build `grok-4.7` | high | APPROVE, no findings |
+| 2 | AGY `gemini-3.8-flash-high` | high | APPROVE, no findings |
+| 3 | Codex `gpt-6.1-sol` | high | APPROVE, no findings |
+
+All three lanes confirm R1-1 to R1-6 and the R1-7 deferral. The code gate passes at `b549aa74`.
