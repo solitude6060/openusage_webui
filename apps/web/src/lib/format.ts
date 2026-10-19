@@ -25,6 +25,20 @@ export function formatMoney(value: number): string {
   }).format(value);
 }
 
+export function formatApiMoney(value: number): string {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+export function formatPercent(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  return `${rounded % 1 === 0 ? Math.round(rounded) : rounded}%`;
+}
+
 export function formatOptionalMoney(value: number | null | undefined): string {
   return typeof value === "number" && Number.isFinite(value) ? formatMoney(value) : "-";
 }

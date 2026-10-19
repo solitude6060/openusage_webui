@@ -5,6 +5,7 @@ import {
   type AllowanceObservation,
   type AllowanceTokenRow,
 } from "./allowance-estimate";
+import { buildBilling, type AllowanceBilling, type BillingCycle } from "./allowance-billing";
 import { aliasCodexSevenDaySessions } from "./quota-observations";
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -94,6 +95,8 @@ export interface AllowanceCycleSummary {
   regimeChanged: boolean;
   current: AllowanceCycleCurrent | null;
   cycles: AllowanceCompletedCycle[];
+  // Calendar or billing-date months; only a weekly window has them.
+  billing: AllowanceBilling | null;
 }
 
 export interface AllowanceCycleHistory {
@@ -107,6 +110,7 @@ export function buildAllowanceCycleSummaries(
   sharedProviderIds: ReadonlySet<string>,
   now: Date,
   history?: AllowanceCycleHistory,
+  billingAnchors?: ReadonlyMap<string, string>,
 ): AllowanceCycleSummary[] {
   const nowMs = now.getTime();
   const windows = aliasCodexSevenDaySessions(observations);
@@ -122,15 +126,30 @@ export function buildAllowanceCycleSummaries(
     const open = bounded
       .filter((cycle) => cycle.start <= nowMs && nowMs < cycle.end)
       .sort((left, right) => right.start - left.start)[0] ?? null;
-    const { baseline, regimeChanged } = baselineFrom(cycles);
+    const { baseline, regimeChanged, regimeAt } = baselineFrom(cycles);
+    const completed = bounded.filter((cycle) => cycle.end <= nowMs);
+    const current = open ? currentCycle(open, rows, nowMs, baseline, completed) : null;
+    // A Codex account that shares its session log would repeat the other account's tokens.
+    const billing = window.windowKey === "weekly" && !sharedProviderIds.has(window.providerId)
+      ? buildBilling({
+        anchor: billingAnchors?.get(window.providerId),
+        nowMs,
+        historyStartMs: history?.observationStartMs,
+        rows,
+        cycles: bounded.map(billingCycle),
+        regimeAt,
+        meterStable: !recentlyRestarted(completed) && !current?.meterFell,
+      })
+      : null;
     const summary = {
       providerId: window.providerId,
       windowKey: window.windowKey,
       windowLabel: window.windowLabel,
       baseline,
       regimeChanged,
-      current: open ? currentCycle(open, rows, nowMs, baseline, bounded.filter((cycle) => cycle.end <= nowMs)) : null,
+      current,
       cycles,
+      billing,
     };
     if (usableSummary(summary, points)) summaries.push(summary);
   }
@@ -168,9 +187,7 @@ function measureCycle(
   shared: boolean,
   history: AllowanceCycleHistory | undefined,
 ): AllowanceCompletedCycle {
-  const readings = cycle.points
-    .filter((point) => point.at >= cycle.start && point.at < cycle.end)
-    .sort((left, right) => left.at - right.at);
+  const readings = cycleReadings(cycle);
   const endPercent = readings.reduce((max, point) => Math.max(max, point.usedPercent), 0);
   const runs = splitRuns(readings);
   const meterFell = runs.some((run) => run.some((point, index) =>
@@ -246,6 +263,17 @@ function measureCycle(
   };
 }
 
+function cycleReadings(cycle: BoundedCycle): Reading[] {
+  return cycle.points
+    .filter((point) => point.at >= cycle.start && point.at < cycle.end)
+    .sort((left, right) => left.at - right.at);
+}
+
+function billingCycle(cycle: BoundedCycle): BillingCycle {
+  const readings = cycleReadings(cycle);
+  return { start: cycle.start, end: cycle.end, readings, spans: segmentSpans(splitRuns(readings), cycle) };
+}
+
 // A fall of at least 5 points under an unchanged stated reset starts a new run of readings.
 function splitRuns(readings: Reading[]): Reading[][] {
   const runs: Reading[][] = [[]];
@@ -291,7 +319,7 @@ interface BaselineUnit {
 
 function baselineFrom(
   cycles: AllowanceCompletedCycle[],
-): { baseline: AllowanceCycleSummary["baseline"]; regimeChanged: boolean } {
+): { baseline: AllowanceCycleSummary["baseline"]; regimeChanged: boolean; regimeAt: number | null } {
   const sample = cycles.filter((cycle) => cycle.included).slice(0, BASELINE_LIMIT);
   const boundary = latestRegimeBoundary(sample);
   const units = (boundary ? sample.slice(0, boundary.cycle + 1) : sample).map((cycle, index) =>
@@ -305,6 +333,8 @@ function baselineFrom(
       dollarsPerPercent: stats(presentNumbers(units.map((unit) => unit.dollarsPerPercent))),
     },
     regimeChanged: boundary != null,
+    // The first reading after the reset is the newer side's start.
+    regimeAt: boundary ? Date.parse(sample[boundary.cycle]!.segments[boundary.segment]!.start) : null,
   };
 }
 
@@ -379,11 +409,7 @@ function currentCycle(
   const usage = usageInside(rows, cycle.start, nowMs);
   const lengthMs = cycle.end - cycle.start;
   const elapsedFraction = lengthMs > 0 ? (nowMs - cycle.start) / lengthMs : 0;
-  const restarted = completed
-    .slice()
-    .sort((left, right) => right.end - left.end)
-    .slice(0, 4)
-    .some(restartedEarly);
+  const restarted = recentlyRestarted(completed);
   return {
     start: new Date(cycle.start).toISOString(),
     end: new Date(cycle.end).toISOString(),
@@ -406,6 +432,14 @@ function usageInside(rows: AllowanceTokenRow[], from: number, to: number): { tok
     if (bucketPlace(row, from, to) === "inside") addRow(side, row);
   }
   return { tokens: side.tokens, cost: sideCost(side) };
+}
+
+function recentlyRestarted(completed: BoundedCycle[]): boolean {
+  return completed
+    .slice()
+    .sort((left, right) => right.end - left.end)
+    .slice(0, 4)
+    .some(restartedEarly);
 }
 
 function restartedEarly(cycle: BoundedCycle): boolean {
