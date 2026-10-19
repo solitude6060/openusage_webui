@@ -126,7 +126,7 @@ export function buildAllowanceCycleSummaries(
     const open = bounded
       .filter((cycle) => cycle.start <= nowMs && nowMs < cycle.end)
       .sort((left, right) => right.start - left.start)[0] ?? null;
-    const { baseline, regimeChanged, regimeAt } = baselineFrom(cycles);
+    const { baseline, regimeChanged } = baselineFrom(cycles);
     const completed = bounded.filter((cycle) => cycle.end <= nowMs);
     const current = open ? currentCycle(open, rows, nowMs, baseline, completed) : null;
     // A Codex account that shares its session log would repeat the other account's tokens.
@@ -137,7 +137,8 @@ export function buildAllowanceCycleSummaries(
         historyStartMs: history?.observationStartMs,
         rows,
         cycles: bounded.map(billingCycle),
-        regimeAt,
+        // Every included cycle in the history window, not only the baseline sample, so an older month keeps its split.
+        regimeAt: regimeStart(cycles.filter((cycle) => cycle.included)),
         meterStable: !recentlyRestarted(completed) && !current?.meterFell,
       })
       : null;
@@ -319,7 +320,7 @@ interface BaselineUnit {
 
 function baselineFrom(
   cycles: AllowanceCompletedCycle[],
-): { baseline: AllowanceCycleSummary["baseline"]; regimeChanged: boolean; regimeAt: number | null } {
+): { baseline: AllowanceCycleSummary["baseline"]; regimeChanged: boolean } {
   const sample = cycles.filter((cycle) => cycle.included).slice(0, BASELINE_LIMIT);
   const boundary = latestRegimeBoundary(sample);
   const units = (boundary ? sample.slice(0, boundary.cycle + 1) : sample).map((cycle, index) =>
@@ -333,9 +334,13 @@ function baselineFrom(
       dollarsPerPercent: stats(presentNumbers(units.map((unit) => unit.dollarsPerPercent))),
     },
     regimeChanged: boundary != null,
-    // The first reading after the reset is the newer side's start.
-    regimeAt: boundary ? Date.parse(sample[boundary.cycle]!.segments[boundary.segment]!.start) : null,
   };
+}
+
+// The first reading after the newest regime-changing reset is the newer side's start.
+function regimeStart(cycles: AllowanceCompletedCycle[]): number | null {
+  const boundary = latestRegimeBoundary(cycles);
+  return boundary ? Date.parse(cycles[boundary.cycle]!.segments[boundary.segment]!.start) : null;
 }
 
 // The newest reset, scanning newest cycle first, whose two sides cost clearly different dollars per percent.

@@ -599,9 +599,14 @@ function sanitizeSettings(body: unknown): Record<string, string> {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new HttpError("BAD_REQUEST", "Settings body must be an object", 400);
   }
-  return Object.fromEntries(
+  const settings = Object.fromEntries(
     Object.entries(body).map(([key, value]) => [key, value === undefined ? "" : String(value)]),
   );
+  // An empty billingAnchor clears it; anything else must parse, or the months silently fall back to calendar months.
+  if (settings.billingAnchor && !Number.isFinite(Date.parse(settings.billingAnchor))) {
+    throw new HttpError("BAD_REQUEST", "billingAnchor must be an ISO timestamp", 400);
+  }
+  return settings;
 }
 
 function proxyHeaders(headers: Headers, target: URL): Headers {
