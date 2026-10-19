@@ -55,6 +55,42 @@ B4. Current-cycle projection stays the Pace formula (already matches upstream).
 Tests (red first): fixture with the 96 → 1 → 95 shape gives consumed 190 and is included; plan-label
 change excludes old-regime segments from the baseline.
 
+## Track C — Cloud Credit label and billing months (added 2026-10-19 after user answers)
+
+The user asked for both views of "the whole subscription period": weekly cycles (Track B) and the
+monthly billing period. Added to this branch before triple-review, so the review covers A, B and C.
+
+C1. `iguana_necktie` dollar window is labelled "Cloud Credit" (user choice). Other unlabeled keys
+    keep "Credit". Done in `532633c` (test) and `6b13473` (feat).
+C2. Billing months (owner: Claude Sonnet 5.5 / xhigh; files `packages/providers/src/allowance-cycles.ts`
+    or a new sibling module, `apps/server/src/quota-history.ts`, `apps/web/src/pages/allowance-page.tsx`,
+    `apps/web/src/lib/api.ts`, tests).
+    - Anchor: provider setting `billingAnchor` (ISO timestamp) in `provider_settings`, read and written
+      through the existing `/api/settings/:providerId` route. The API does not expose a renewal
+      date (`/api/oauth/profile` has only `subscription_created_at` 2025-09-06T14:19Z, and the
+      subscription lapsed 2026-09-09 and restarted 2026-10-01). Without the setting, months are
+      UTC calendar months and the page says so.
+    - Month k is [anchor + k months, anchor + k + 1 months); a day past the month's end clamps to
+      its last day.
+    - Each month reports API dollars and tokens from `token_hourly` rows whose `hour_start` falls in
+      the month (hour resolution), and the first hour with token data when it starts after the
+      month start (partial coverage).
+    - Weekly percent per month is reported per regime, never summed across a regime boundary,
+      because a percent under Max 5x and under Max 20x measure different amounts. Each part gives
+      consumed percent (segment climbs from Track B, clipped to the month using readings inside
+      it, no interpolation) and available percent (overlap days / 7 x 100).
+    - The current month adds the Pace projection of API dollars to month end
+      (`mtd / elapsed * length`), with the same reliability rule as the weekly projection.
+    - The page shows a billing-month table per provider and a date input that saves `billingAnchor`.
+    Tests (red first): anchor clamping (Jan 31 anchor), month token sums at the boundaries, a month
+    containing a regime change reports two parts, current-month projection, missing anchor falls
+    back to calendar months.
+
+Plan-label evidence (2026-10-19, read-only): stored Claude snapshots switch between `Pro` and
+`Max 5x` at 2026-07-24, 08-06, 10-01 and 10-07 with no change in the weekly meter (10-07: 34% before
+and after), so stored labels do not mark plan changes. The only observed plan change is the
+2026-10-14 upgrade, found by the dollars-per-percent rule.
+
 ## Docs
 
 `docs/providers/claude.md`, `docs/USER_GUIDE_WEBUI.zh-TW.md` §5.5 and Claude section, `README.md`
