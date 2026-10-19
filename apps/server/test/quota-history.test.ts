@@ -553,6 +553,35 @@ test("allowance span=cycles excludes the duplicate Codex session account", async
   }
 });
 
+test("allowance span=cycles reads the provider's billingAnchor setting for its billing months", async () => {
+  const storage = new SqliteStorage();
+  await storage.init();
+  const now = new Date("2026-10-19T00:00:00.000Z");
+  const week = 7 * 24 * 60 * 60 * 1000;
+  await storage.insertQuotaObservations([{
+    ...cycleObservation("grok", Date.parse("2026-10-22T00:00:00.000Z"), week),
+    observedAt: "2026-10-18T00:00:00.000Z",
+  }]);
+  await storage.upsertUsageRecords([cycleTokens("grok", Date.parse("2026-10-16T00:00:00.000Z"), 400, 4)]);
+
+  const calendar = await loadAllowanceCycleSummaries(storage, now);
+  expect(calendar.summaries[0]?.billing).toEqual(expect.objectContaining({ anchor: null, anchorSource: "calendar" }));
+
+  await storage.updateProviderSettings("grok", { billingAnchor: "2026-10-05T12:00:00.000Z" });
+  const anchored = await loadAllowanceCycleSummaries(storage, now);
+  expect(anchored.summaries[0]?.billing).toEqual(expect.objectContaining({
+    anchor: "2026-10-05T12:00:00.000Z",
+    anchorSource: "setting",
+  }));
+  expect(anchored.summaries[0]?.billing?.months[0]).toEqual(expect.objectContaining({
+    start: "2026-10-05T12:00:00.000Z",
+    end: "2026-11-05T12:00:00.000Z",
+    tokens: 400,
+    apiDollars: 4,
+  }));
+  storage.close();
+});
+
 function cycleObservation(providerId: string, resetMs: number, periodMs: number) {
   return {
     providerId,
