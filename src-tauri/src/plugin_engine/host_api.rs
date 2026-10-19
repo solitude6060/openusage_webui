@@ -441,7 +441,7 @@ fn redact_body(body: &str) -> String {
     ];
     for key in sensitive_keys {
         // Match "key": "value" or "key":"value"
-        let pattern = format!(r#""{}":\s*"([^"]+)""#, key);
+        let pattern = format!(r#""{}":\s*"((?:[^"\\]|\\.)+)""#, key);
         if let Ok(re) = regex_lite::Regex::new(&pattern) {
             result = re
                 .replace_all(&result, |caps: &regex_lite::Captures| {
@@ -453,7 +453,10 @@ fn redact_body(body: &str) -> String {
     }
 
     // Claude reset grants carry campaign data in event_props; drop the whole flat object.
-    if let Ok(event_props_re) = regex_lite::Regex::new(r#""event_props":\s*\{[^{}]*\}"#) {
+    // Strings inside it may contain braces or escaped quotes.
+    if let Ok(event_props_re) =
+        regex_lite::Regex::new(r#""event_props":\s*\{(?:[^{}"]|"(?:[^"\\]|\\.)*")*\}"#)
+    {
         result = event_props_re
             .replace_all(&result, "\"event_props\": \"[REDACTED]\"")
             .to_string();

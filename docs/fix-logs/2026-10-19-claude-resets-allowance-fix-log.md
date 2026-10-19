@@ -10,7 +10,7 @@ Review record: [round 1](../reviews/2026-10-19-claude-resets-allowance-review.md
 | R1-4 earlier peak counted again | `1bdfc9b` "does not count a peak from before the month again in the month": October 26, expected 22 | `1c3ea6a`: the segment maximum is used only when the whole segment lies inside the month | 1 | `packages/providers/src/allowance-billing.ts` |
 | R1-5 excluded cycle hides regime | `1bdfc9b` "keeps the regime change when the cycle that shows it is excluded": `regimeChanged` false | `1c3ea6a`: the boundary is searched in every completed cycle back to the oldest usable one; only included cycles pool | 1 | `packages/providers/src/allowance-cycles.ts` |
 | R1-6 gap hours dropped | `1bdfc9b` "counts an hour that lies wholly between a reset's readings in the earlier segment once": segment end 04:22 | `1c3ea6a`: a segment ends at the next run's first reading. A dropped run (one reading, no climb) keeps its own range out | 1 | `packages/providers/src/allowance-cycles.ts`, `allowance-billing.ts` (`reading.at < span.to`) |
-| R1-7 desktop log redaction | Not reproduced: `cargo test` fails to build `openssl-sys` (no `libssl-dev`) | Deferred | 0 | none |
+| R1-7 desktop log redaction | `8864176` "redact_body_redacts_claude_profile_and_reset_grant_fields": the uuid stayed in the redacted body | `fd2ded2`: `id`, `uuid`, `full_name`, `display_name`, `next_grant_id` join the sensitive keys; a flat `event_props` object becomes `[REDACTED]` | 1 | `src-tauri/src/plugin_engine/host_api.rs` |
 
 ## Notes
 
@@ -28,6 +28,8 @@ Review record: [round 1](../reviews/2026-10-19-claude-resets-allowance-review.md
   - Claude October parts are 224% of 188.5% and 129% of 73.8%.
   - The Claude baseline is 15.56 dollars per percent, n=1, with `regimeChanged` true, unchanged from `45d0741`.
 
-## Follow-Up
+## R1-7 Verification Limit
 
-- R1-7: in `redact_body`, redact `uuid`, `full_name`, `display_name`, grant `id`, `next_grant_id` and the `event_props` subtree. Build the change and test it on a host with `libssl-dev`.
+- `src-tauri` does not build on Linux. After the missing `-dev` packages were supplied from extracted `.deb` files, the build stopped at `tauri-nspanel`, which needs macOS `objc2_app_kit`. The earlier `libssl-dev` diagnosis was the first failure, not the only one.
+- The redaction functions and their tests were copied verbatim into a standalone crate (`../openusage_webui-artifacts/redaction-harness/extract.sh`). It ran red at `8864176` and 23 of 23 tests pass at `fd2ded2`.
+- A nested object inside `event_props` is not matched by the flat-object pattern.
