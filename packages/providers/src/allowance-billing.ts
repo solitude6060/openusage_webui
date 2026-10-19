@@ -112,7 +112,7 @@ function measureMonth(
     dollars = dollars != null && cost != null && Number.isFinite(cost) && cost >= 0 ? dollars + cost : null;
   }
   const apiDollars = count === 0 ? null : dollars;
-  const tokensFrom = firstRowMs > start && firstRowMs < Infinity ? new Date(firstRowMs).toISOString() : null;
+  const tokensFrom = firstRowMs > start && firstRowMs < end ? new Date(firstRowMs).toISOString() : null;
   const current = start <= input.nowMs && input.nowMs < end;
   const elapsed = input.nowMs - start;
   return {
