@@ -132,6 +132,8 @@ describe("OpenUsagePluginProvider original bundled plugin fixtures", () => {
       name: "Claude Code",
       scriptText,
       env: { CLAUDE_CONFIG_DIR: claudeDir },
+      // Keep the live cache out of the real ~/.openusage-webui/plugins directory.
+      pluginDataDir: join(claudeDir, "plugin-data"),
       ccusageQuery: () => ({ status: "no_runner", data: null }),
       now: () => "2026-06-17T10:00:00.000Z",
       request: (opts) => {
