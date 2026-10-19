@@ -3909,6 +3909,20 @@ mod tests {
     }
 
     #[test]
+    fn redact_body_redacts_event_props_before_key_redaction_and_one_nested_level() {
+        let body = r#"{"event_props":{"name":"abcdefghijkl\"abc","campaign":"secret-campaign"},"x":{"event_props":{"campaign":"spring } secret","nested":{"org":"secret-org"}}}}"#;
+        let redacted = redact_body(body);
+        for secret in ["secret-campaign", "spring", "secret-org"] {
+            assert!(
+                !redacted.contains(secret),
+                "{} should be redacted, got: {}",
+                secret,
+                redacted
+            );
+        }
+    }
+
+    #[test]
     fn ccusage_runner_order_matches_expected_priority() {
         assert_eq!(
             ccusage_runner_order(),
