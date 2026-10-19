@@ -158,6 +158,23 @@ describe("WebUI API", () => {
     expect(body.error.code).toBe("BAD_REQUEST");
   });
 
+  test("rejects a billingAnchor that is not a timestamp and keeps the saved one", async () => {
+    const put = (billingAnchor: unknown) => handleRequest(new Request("http://127.0.0.1:6736/api/settings/ccusage", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ billingAnchor }),
+    }));
+
+    expect((await put("2026-10-01T04:00:00.000Z")).status).toBe(200);
+    const rejected = await put("not-a-date");
+
+    expect(rejected.status).toBe(400);
+    expect((await rejected.json()).error.code).toBe("BAD_REQUEST");
+    expect(await storage.getProviderSettings("ccusage")).toEqual({ billingAnchor: "2026-10-01T04:00:00.000Z" });
+    expect((await put("")).status).toBe(200);
+    expect(await storage.getProviderSettings("ccusage")).toEqual({ billingAnchor: "" });
+  });
+
   test("rejects MiniMax provider settings writes", async () => {
     const response = await handleRequest(new Request("http://127.0.0.1:6736/api/settings/minimax", {
       method: "PUT",

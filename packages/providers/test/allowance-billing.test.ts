@@ -255,6 +255,79 @@ describe("billing months weekly parts", () => {
   });
 });
 
+describe("billing months review fixes", () => {
+  const EDGE_RESET = "2026-10-04T19:00:00.000Z";
+
+  // A weekly cycle 9/27 19:00 to 10/4 19:00 whose meter is reset ten minutes after the month starts.
+  // The next cycle's first reading adds 2 percent to October.
+  function edgeCycle(boundaryPercent: number, septemberPeak: number) {
+    return build(
+      [
+        observation("2026-09-29T00:00:00.000Z", 40, EDGE_RESET),
+        observation("2026-09-30T00:00:00.000Z", septemberPeak, EDGE_RESET),
+        observation("2026-10-01T00:00:00.000Z", boundaryPercent, EDGE_RESET),
+        observation("2026-10-01T00:10:00.000Z", 0, EDGE_RESET),
+        observation("2026-10-04T12:00:00.000Z", 25, EDGE_RESET),
+        // The open next cycle keeps the summary usable when the edge cycle is excluded.
+        observation("2026-10-04T23:00:00.000Z", 2, "2026-10-11T19:00:00.000Z"),
+      ],
+      [hour("2026-09-29T00:00:00.000Z", 1000, 10), hour("2026-10-02T00:00:00.000Z", 1000, 10)],
+      "2026-10-05T00:00:00.000Z",
+    );
+  }
+  const consumed = (summary: ReturnType<typeof build>, start: string) =>
+    summary?.billing?.months.find((month) => month.start === start)?.weeklyParts
+      .reduce((sum, part) => sum + part.consumedPercent, 0);
+
+  test("leaves a reading at the month end out of the earlier month", () => {
+    const summary = edgeCycle(80, 40);
+
+    expect(consumed(summary, "2026-09-01T00:00:00.000Z")).toBe(40);
+    expect(consumed(summary, "2026-10-01T00:00:00.000Z")).toBe(27);
+  });
+
+  test("adds no climb to a month from a segment that ends at its start", () => {
+    const summary = edgeCycle(94, 96);
+
+    expect(consumed(summary, "2026-09-01T00:00:00.000Z")).toBe(96);
+    expect(consumed(summary, "2026-10-01T00:00:00.000Z")).toBe(27);
+  });
+
+  test("keeps splitting a month at a regime change after four newer cycles", () => {
+    const later = [
+      "2026-10-24T19:00:00.000Z",
+      "2026-10-31T19:00:00.000Z",
+      "2026-11-07T19:00:00.000Z",
+      "2026-11-14T19:00:00.000Z",
+    ];
+    const observations = [
+      observation("2026-10-10T20:00:00.000Z", 0, "2026-10-17T19:00:00.000Z"),
+      observation("2026-10-12T00:00:00.000Z", 50, "2026-10-17T19:00:00.000Z"),
+      observation("2026-10-14T04:22:00.000Z", 96, "2026-10-17T19:00:00.000Z"),
+      observation("2026-10-14T04:42:00.000Z", 1, "2026-10-17T19:00:00.000Z"),
+      observation("2026-10-16T00:00:00.000Z", 50, "2026-10-17T19:00:00.000Z"),
+      observation("2026-10-17T12:00:00.000Z", 95, "2026-10-17T19:00:00.000Z"),
+      ...later.flatMap((reset) => [
+        observation(new Date(Date.parse(reset) - 6 * DAY_MS).toISOString(), 10, reset),
+        observation(new Date(Date.parse(reset) - 12 * HOUR_MS).toISOString(), 60, reset),
+      ]),
+    ];
+    const rows = [
+      hour("2026-10-11T00:00:00.000Z", 9600, 96),
+      hour("2026-10-15T00:00:00.000Z", 9400, 188),
+      ...later.map((reset) => hour(new Date(Date.parse(reset) - 3 * DAY_MS).toISOString(), 6000, 120)),
+    ];
+    const summary = build(observations, rows, "2026-11-15T00:00:00.000Z");
+    const october = summary?.billing?.months.find((month) => month.start === "2026-10-01T00:00:00.000Z");
+
+    expect(summary?.cycles.filter((cycle) => cycle.included).length).toBeGreaterThan(4);
+    expect(october?.weeklyParts.map((part) => part.from)).toEqual([
+      "2026-10-10T19:00:00.000Z",
+      "2026-10-14T04:42:00.000Z",
+    ]);
+  });
+});
+
 describe("billing months current month projection", () => {
   test("projects the month's API dollars from the dollars so far and marks it reliable after a day", () => {
     const summary = build(
