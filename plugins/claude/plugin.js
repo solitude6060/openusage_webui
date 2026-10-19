@@ -18,6 +18,20 @@
   let rateLimitedUntilMs = 0  // epoch ms; 0 = not rate-limited
   let lastUsageFetchMs = 0    // epoch ms of the most-recent API attempt
   let cachedUsageData = null  // last successful API response body (parsed JSON)
+  const RESET_GRANT_INTERVAL_MS = 60 * 60 * 1000
+  const RESET_GRANT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
+  const MAX_PROFILE_PLANS = 20
+  // Claude Code answers the reset-grant read only for this CLI user agent.
+  const CLAUDE_CLI_VERSION = "2.1.303"
+  const CLAUDE_CLI_USER_AGENT = "claude-cli/" + CLAUDE_CLI_VERSION + " (external, cli)"
+  const USAGE_USER_AGENT = "claude-code/2.1.69"
+  // In-process layer. The key is sha256Hex(token) when the host can hash, so the
+  // on-disk copy never contains the access token. Without a hash, the key is the
+  // token itself and nothing is written.
+  let resetGrantByToken = {} // cache key -> { fetchedAtMs, text }
+  let profilePlanByToken = {} // cache key -> plan label, or null after a failed read
+  let liveCacheLoaded = false
+  let liveCacheDirty = false
 
   function utf8DecodeBytes(bytes) {
     // Prefer native TextDecoder when available (QuickJS may not expose it).
@@ -467,20 +481,362 @@
     }
   }
 
+  function oauthApiHeaders(accessToken, userAgent) {
+    return {
+      Authorization: "Bearer " + accessToken.trim(),
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "anthropic-beta": "oauth-2025-04-20",
+      "User-Agent": userAgent,
+    }
+  }
+
   function fetchUsage(ctx, accessToken) {
     const oauthConfig = getOauthConfig(ctx)
     return ctx.util.request({
       method: "GET",
       url: oauthConfig.usageUrl,
-      headers: {
-        Authorization: "Bearer " + accessToken.trim(),
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        "anthropic-beta": "oauth-2025-04-20",
-        "User-Agent": "claude-code/2.1.69",
-      },
+      headers: oauthApiHeaders(accessToken, USAGE_USER_AGENT),
       timeoutMs: 10000,
     })
+  }
+
+  function planLabelFromRateLimitTier(tier) {
+    if (typeof tier !== "string" || !tier.trim()) return null
+    const lower = tier.toLowerCase()
+    let base = null
+    if (lower.indexOf("max") !== -1) base = "Max"
+    else if (lower.indexOf("enterprise") !== -1) base = "Enterprise"
+    else if (lower.indexOf("team") !== -1) base = "Team"
+    else if (lower.indexOf("pro") !== -1) base = "Pro"
+    if (!base) return null
+    const tierMatch = lower.match(/(\d+)x/)
+    return tierMatch ? base + " " + tierMatch[1] + "x" : base
+  }
+
+  function resolveLiveCacheKey(ctx, accessToken) {
+    const cryptoApi = ctx.host && ctx.host.crypto
+    const sha256Hex = cryptoApi && cryptoApi.sha256Hex
+    if (typeof sha256Hex !== "function") return { id: accessToken, persist: false }
+    try {
+      const id = sha256Hex(accessToken)
+      if (typeof id !== "string" || !id) return { id: accessToken, persist: false }
+      return { id: id, persist: true }
+    } catch (e) {
+      ctx.host.log.warn("live cache hash failed: " + String(e))
+      return { id: accessToken, persist: false }
+    }
+  }
+
+  function liveCachePath(ctx) {
+    return ctx.app.pluginDataDir + "/live-cache.json"
+  }
+
+  function plainObject(value) {
+    return !!value && typeof value === "object" && !Array.isArray(value)
+  }
+
+  function emptyLiveCache(dropped) {
+    return { resetGrants: {}, profilePlans: {}, dropped: !!dropped }
+  }
+
+  function copyResetGrants(value, state) {
+    const out = {}
+    if (value === undefined) return out
+    if (!plainObject(value)) {
+      state.dropped = true
+      return out
+    }
+    const keys = Object.keys(value)
+    for (let i = 0; i < keys.length; i++) {
+      const entry = value[keys[i]]
+      if (!plainObject(entry)) {
+        state.dropped = true
+        continue
+      }
+      const fetchedAtMs = entry.fetchedAtMs
+      const text = entry.text
+      if (typeof fetchedAtMs !== "number" || !Number.isFinite(fetchedAtMs) || (text !== null && typeof text !== "string")) {
+        state.dropped = true
+        continue
+      }
+      out[keys[i]] = { fetchedAtMs: fetchedAtMs, text: text }
+    }
+    return out
+  }
+
+  function copyProfilePlans(value, state) {
+    const out = {}
+    if (value === undefined) return out
+    if (!plainObject(value)) {
+      state.dropped = true
+      return out
+    }
+    const keys = Object.keys(value)
+    for (let i = 0; i < keys.length; i++) {
+      const plan = value[keys[i]]
+      if (plan !== null && typeof plan !== "string") {
+        state.dropped = true
+        continue
+      }
+      out[keys[i]] = plan
+    }
+    return out
+  }
+
+  // A missing file is an empty cache. Unparseable JSON is an empty cache plus a warning.
+  function readLiveCache(ctx) {
+    const path = liveCachePath(ctx)
+    let text = null
+    try {
+      if (!ctx.host.fs.exists(path)) return emptyLiveCache(false)
+      text = ctx.host.fs.readText(path)
+    } catch (e) {
+      ctx.host.log.warn("live cache read failed: " + String(e))
+      return emptyLiveCache(false)
+    }
+    const parsed = ctx.util.tryParseJson(text)
+    if (!plainObject(parsed)) {
+      ctx.host.log.warn("live cache unparseable: " + path)
+      return emptyLiveCache(true)
+    }
+    const state = { dropped: false }
+    return {
+      resetGrants: copyResetGrants(parsed.resetGrants, state),
+      profilePlans: copyProfilePlans(parsed.profilePlans, state),
+      dropped: state.dropped,
+    }
+  }
+
+  function pruneLiveCache(nowMs) {
+    let removed = false
+    const resetKeys = Object.keys(resetGrantByToken)
+    for (let i = 0; i < resetKeys.length; i++) {
+      const entry = resetGrantByToken[resetKeys[i]]
+      if (!entry || nowMs - entry.fetchedAtMs > RESET_GRANT_RETENTION_MS) {
+        delete resetGrantByToken[resetKeys[i]]
+        removed = true
+      }
+    }
+    const planKeys = Object.keys(profilePlanByToken)
+    if (planKeys.length > MAX_PROFILE_PLANS) {
+      const extra = planKeys.length - MAX_PROFILE_PLANS
+      for (let i = 0; i < extra; i++) {
+        delete profilePlanByToken[planKeys[i]]
+        removed = true
+      }
+    }
+    return removed
+  }
+
+  function writeLiveCache(ctx) {
+    try {
+      ctx.host.fs.writeText(liveCachePath(ctx), JSON.stringify({
+        resetGrants: resetGrantByToken,
+        profilePlans: profilePlanByToken,
+      }))
+      return true
+    } catch (e) {
+      ctx.host.log.warn("live cache write failed: " + String(e))
+      return false
+    }
+  }
+
+  function ensureLiveCache(ctx, liveKey, nowMs) {
+    if (liveCacheLoaded) return
+    liveCacheLoaded = true
+    if (!liveKey.persist) return
+    const disk = readLiveCache(ctx)
+    const resetKeys = Object.keys(disk.resetGrants)
+    for (let i = 0; i < resetKeys.length; i++) {
+      const key = resetKeys[i]
+      if (!Object.prototype.hasOwnProperty.call(resetGrantByToken, key)) {
+        resetGrantByToken[key] = disk.resetGrants[key]
+      }
+    }
+    const planKeys = Object.keys(disk.profilePlans)
+    for (let i = 0; i < planKeys.length; i++) {
+      const key = planKeys[i]
+      if (!Object.prototype.hasOwnProperty.call(profilePlanByToken, key)) {
+        profilePlanByToken[key] = disk.profilePlans[key]
+      }
+    }
+    if (disk.dropped || pruneLiveCache(nowMs)) liveCacheDirty = true
+  }
+
+  function flushLiveCache(ctx, liveKey, nowMs) {
+    if (!liveCacheDirty || !liveKey.persist) return
+    pruneLiveCache(nowMs)
+    if (writeLiveCache(ctx)) liveCacheDirty = false
+  }
+
+  function rememberProfilePlan(ctx, accessToken, liveKey) {
+    if (Object.prototype.hasOwnProperty.call(profilePlanByToken, liveKey.id)) return
+    profilePlanByToken[liveKey.id] = null
+    try {
+      const oauthConfig = getOauthConfig(ctx)
+      const resp = ctx.util.request({
+        method: "GET",
+        url: oauthConfig.baseApiUrl + "/api/oauth/profile",
+        headers: oauthApiHeaders(accessToken, USAGE_USER_AGENT),
+        timeoutMs: 10000,
+      })
+      if (!resp || resp.status < 200 || resp.status >= 300) {
+        ctx.host.log.warn("profile request failed: status=" + (resp && resp.status))
+      } else {
+        const body = ctx.util.tryParseJson(resp.bodyText)
+        const organization = body && body.organization
+        const tier = organization && organization.rate_limit_tier
+        const label = planLabelFromRateLimitTier(tier)
+        if (!label) {
+          ctx.host.log.warn("profile response missing rate_limit_tier")
+        } else {
+          profilePlanByToken[liveKey.id] = label
+        }
+      }
+    } catch (e) {
+      ctx.host.log.warn("profile request failed: " + String(e))
+    }
+    if (liveKey.persist) liveCacheDirty = true
+  }
+
+  function cedarGrantBlock(body) {
+    if (!body || typeof body !== "object" || Array.isArray(body)) return null
+    if (Object.prototype.hasOwnProperty.call(body, "cedar_ember")) {
+      const block = body.cedar_ember
+      if (!block || typeof block !== "object" || Array.isArray(block)) return null
+      return block
+    }
+    if (Array.isArray(body.grants) || typeof body.eligible === "boolean") return body
+    return null
+  }
+
+  function parseResetGrants(ctx, block) {
+    const grants = block.grants
+    if (grants == null) {
+      if (block.eligible === false || block.eligible === true) return { count: 0, endsAt: null }
+      return null
+    }
+    if (!Array.isArray(grants)) return null
+    let count = 0
+    let soonestMs = null
+    let soonestIso = null
+    for (let i = 0; i < grants.length; i++) {
+      const grant = grants[i]
+      if (!grant || typeof grant !== "object" || Array.isArray(grant)) return null
+      if (typeof grant.id !== "string") return null
+      if (typeof grant.resets_left !== "number" || !Number.isFinite(grant.resets_left)) return null
+      count += grant.resets_left
+      if (grant.ends_at == null || grant.ends_at === "") continue
+      const iso = ctx.util.toIso(grant.ends_at)
+      const ms = typeof iso === "string" ? Date.parse(iso) : NaN
+      if (!iso || !Number.isFinite(ms)) continue
+      if (soonestMs == null || ms < soonestMs) {
+        soonestMs = ms
+        soonestIso = iso
+      }
+    }
+    return { count: count, endsAt: soonestIso }
+  }
+
+  function formatUtcMonthDay(iso) {
+    const ms = Date.parse(iso)
+    if (!Number.isFinite(ms)) return null
+    const date = new Date(ms)
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    return months[date.getUTCMonth()] + " " + String(date.getUTCDate())
+  }
+
+  function formatResetGrantValue(count, endsAtIso) {
+    let value = String(count) + " available"
+    if (!endsAtIso) return value
+    const day = formatUtcMonthDay(endsAtIso)
+    if (!day) return value
+    // Text lines cannot carry resetsAt in the host line API, so the deadline stays in the value.
+    return value + " \u00b7 by " + day
+  }
+
+  function describeResetGrants(ctx, body) {
+    const block = cedarGrantBlock(body)
+    if (!block) return "No data"
+    const parsed = parseResetGrants(ctx, block)
+    if (!parsed) return "No data"
+    return formatResetGrantValue(parsed.count, parsed.endsAt)
+  }
+
+  function rememberResetGrants(ctx, accessToken, liveKey, nowMs) {
+    const cached = resetGrantByToken[liveKey.id]
+    if (cached && nowMs - cached.fetchedAtMs < RESET_GRANT_INTERVAL_MS) return
+    let text = cached ? cached.text : null
+    try {
+      const oauthConfig = getOauthConfig(ctx)
+      const resp = ctx.util.request({
+        method: "GET",
+        url: oauthConfig.usageUrl + "?cedar_ember=1&skip_spend=1",
+        headers: oauthApiHeaders(accessToken, CLAUDE_CLI_USER_AGENT),
+        timeoutMs: 10000,
+      })
+      if (!resp || resp.status < 200 || resp.status >= 300) {
+        ctx.host.log.warn("reset grants request failed: status=" + (resp && resp.status))
+      } else {
+        const body = ctx.util.tryParseJson(resp.bodyText)
+        if (!body || typeof body !== "object") {
+          ctx.host.log.warn("reset grants response invalid")
+        } else {
+          text = describeResetGrants(ctx, body)
+        }
+      }
+    } catch (e) {
+      ctx.host.log.warn("reset grants request failed: " + String(e))
+    }
+    resetGrantByToken[liveKey.id] = { fetchedAtMs: nowMs, text: text }
+    if (liveKey.persist) liveCacheDirty = true
+  }
+
+  function dollarCreditLabel(key, value) {
+    if (value && typeof value.label === "string" && value.label.trim()) return value.label.trim()
+    if (key === "cinder_cove") return "Claude Code And Cowork Credit"
+    // User-chosen name; Claude Code 2.1.303 has no label for this window.
+    if (key === "iguana_necktie") return "Cloud Credit"
+    return "Credit"
+  }
+
+  function nextDollarLabel(usedLabels, label) {
+    if (!usedLabels[label]) {
+      usedLabels[label] = true
+      return label
+    }
+    let n = 2
+    while (usedLabels[label + " " + n]) n += 1
+    const next = label + " " + n
+    usedLabels[next] = true
+    return next
+  }
+
+  function pushDollarCreditLines(lines, ctx, data) {
+    if (!data || typeof data !== "object") return
+    const usedLabels = {}
+    const keys = Object.keys(data)
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i]
+      if (key === "extra_usage" || key === "spend") continue
+      const value = data[key]
+      if (!value || typeof value !== "object" || Array.isArray(value)) continue
+      const limit = value.limit_dollars
+      // The host progress line rejects a limit that is not greater than zero.
+      if (typeof limit !== "number" || !Number.isFinite(limit) || limit <= 0) continue
+      let used = value.used_dollars
+      if (typeof used !== "number" || !Number.isFinite(used)) used = 0
+      const progress = {
+        label: nextDollarLabel(usedLabels, dollarCreditLabel(key, value)),
+        used: used,
+        limit: limit,
+        format: { kind: "dollars" },
+      }
+      const resetsAt = ctx.util.toIso(value.resets_at)
+      if (resetsAt) progress.resetsAt = resetsAt
+      lines.push(ctx.line.progress(progress))
+    }
   }
 
   function parseRetryAfterSeconds(headers) {
@@ -896,6 +1252,7 @@
   }
 
   function probe(ctx) {
+    liveCacheLoaded = false
     const creds = loadCredentials(ctx)
     if (!creds || !creds.oauth || !creds.oauth.accessToken || !creds.oauth.accessToken.trim()) {
       ctx.host.log.error("probe failed: not logged in")
@@ -1023,6 +1380,22 @@
       }
     }
 
+    const liveToken = String(creds.oauth.accessToken || "").trim()
+    const liveKey = liveToken ? resolveLiveCacheKey(ctx, liveToken) : null
+    if (liveKey) {
+      ensureLiveCache(ctx, liveKey, nowMs)
+      if (canFetchLiveUsage && data && !rateLimited) {
+        rememberProfilePlan(ctx, liveToken, liveKey)
+        rememberResetGrants(ctx, liveToken, liveKey, nowMs)
+      }
+      flushLiveCache(ctx, liveKey, nowMs)
+    }
+    if (liveKey && profilePlanByToken[liveKey.id]) {
+      plan = profilePlanByToken[liveKey.id]
+    }
+    const resetGrantState = liveKey ? resetGrantByToken[liveKey.id] : null
+    const resetGrantText = resetGrantState ? resetGrantState.text : null
+
     if (data) {
       pushPercentUsageLine(lines, ctx, "Session", data.five_hour, FIVE_HOUR_MS)
       pushPercentUsageLine(lines, ctx, "Weekly", data.seven_day, SEVEN_DAY_MS)
@@ -1040,6 +1413,7 @@
         SEVEN_DAY_MS
       )
       pushScopedWeeklyLimits(lines, ctx, data)
+      pushDollarCreditLines(lines, ctx, data)
 
       if (data.extra_usage && data.extra_usage.is_enabled) {
         const used = data.extra_usage.used_credits
@@ -1054,6 +1428,10 @@
         } else if (typeof used === "number" && used > 0) {
           lines.push(ctx.line.text({ label: "Extra usage spent", value: "$" + String(ctx.fmt.dollars(used)) }))
         }
+      }
+
+      if (resetGrantText) {
+        lines.push(ctx.line.text({ label: "Rate Limit Resets", value: resetGrantText }))
       }
     }
 
@@ -1133,6 +1511,10 @@
     rateLimitedUntilMs = 0
     lastUsageFetchMs = 0
     cachedUsageData = null
+    resetGrantByToken = {}
+    profilePlanByToken = {}
+    liveCacheLoaded = false
+    liveCacheDirty = false
   }
 
   globalThis.__openusage_plugin = { id: "claude", probe, _resetState }

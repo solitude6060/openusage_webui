@@ -208,11 +208,16 @@ export async function loadAllowanceCycleSummaries(
   const tokenRows = await storage.listAllowanceTokenRows(
     new Date(historyStart - 24 * 60 * 60 * 1000).toISOString(),
   );
+  const billingAnchors = new Map<string, string>();
+  for (const providerId of new Set(observations.map((observation) => observation.providerId))) {
+    const anchor = (await storage.getProviderSettings(providerId)).billingAnchor;
+    if (anchor) billingAnchors.set(providerId, anchor);
+  }
   return {
     span: "cycles",
     summaries: buildAllowanceCycleSummaries(observations, tokenRows, sharedProviderIds, now, {
       observationStartMs: historyStart,
       tokenStartMs: historyStart - 24 * 60 * 60 * 1000,
-    }),
+    }, billingAnchors),
   };
 }

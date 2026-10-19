@@ -5,12 +5,19 @@ import {
   type AllowanceObservation,
   type AllowanceTokenRow,
 } from "./allowance-estimate";
+import { buildBilling, type AllowanceBilling, type BillingCycle } from "./allowance-billing";
 import { aliasCodexSevenDaySessions } from "./quota-observations";
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BASELINE_LIMIT = 4;
 const CYCLE_MIN_PERCENT = 10;
 const EDGE_UNCERTAIN_RATIO = 1.25;
+// A meter that falls this many points while its stated reset holds was reset inside the cycle.
+const MID_CYCLE_RESET_DROP = 5;
+// Dollars per percent on the two sides of a reset differing by more than 30 percent mark a regime change.
+const REGIME_SHIFT_RATIO = 1.3;
+// A segment that climbs this much but has no tokens inside it cannot be measured.
+const SEGMENT_MIN_PERCENT = 5;
 
 export type AllowanceCycleExclusion =
   | "meter-fell"
@@ -19,7 +26,8 @@ export type AllowanceCycleExclusion =
   | "no-tokens"
   | "below-min-percent"
   | "edge-uncertain"
-  | "observation-gap";
+  | "observation-gap"
+  | "segment-unmeasured";
 
 export interface AllowanceCycleStat {
   median: number;
@@ -28,11 +36,26 @@ export interface AllowanceCycleStat {
   n: number;
 }
 
+export interface AllowanceCycleSegment {
+  start: string;
+  end: string;
+  startPercent: number;
+  endPercent: number;
+  tokens: number;
+  apiCost: number | null;
+  tokensPerPercent: number | null;
+  dollarsPerPercent: number | null;
+}
+
 export interface AllowanceCompletedCycle {
   start: string;
   end: string;
   lengthMs: number;
   endPercent: number;
+  consumedPercent: number;
+  segments: AllowanceCycleSegment[];
+  tokensPerPercent: number | null;
+  dollarsPerPercent: number | null;
   tokensLow: number;
   tokensHigh: number;
   apiCostLow: number | null;
@@ -67,9 +90,13 @@ export interface AllowanceCycleSummary {
   baseline: {
     tokens: AllowanceCycleStat | null;
     apiDollars: AllowanceCycleStat | null;
+    dollarsPerPercent: AllowanceCycleStat | null;
   };
+  regimeChanged: boolean;
   current: AllowanceCycleCurrent | null;
   cycles: AllowanceCompletedCycle[];
+  // Calendar or billing-date months; only a weekly window has them.
+  billing: AllowanceBilling | null;
 }
 
 export interface AllowanceCycleHistory {
@@ -83,6 +110,7 @@ export function buildAllowanceCycleSummaries(
   sharedProviderIds: ReadonlySet<string>,
   now: Date,
   history?: AllowanceCycleHistory,
+  billingAnchors?: ReadonlyMap<string, string>,
 ): AllowanceCycleSummary[] {
   const nowMs = now.getTime();
   const windows = aliasCodexSevenDaySessions(observations);
@@ -98,14 +126,31 @@ export function buildAllowanceCycleSummaries(
     const open = bounded
       .filter((cycle) => cycle.start <= nowMs && nowMs < cycle.end)
       .sort((left, right) => right.start - left.start)[0] ?? null;
-    const baseline = baselineFrom(cycles);
+    const { baseline, regimeChanged } = baselineFrom(cycles);
+    const completed = bounded.filter((cycle) => cycle.end <= nowMs);
+    const current = open ? currentCycle(open, rows, nowMs, baseline, completed) : null;
+    // A Codex account that shares its session log would repeat the other account's tokens.
+    const billing = window.windowKey === "weekly" && !sharedProviderIds.has(window.providerId)
+      ? buildBilling({
+        anchor: billingAnchors?.get(window.providerId),
+        nowMs,
+        historyStartMs: history?.observationStartMs,
+        rows,
+        cycles: bounded.map(billingCycle),
+        // Every completed cycle in the history window, not only the baseline sample, so an older month keeps its split.
+        regimeAt: regimeStart(cycles),
+        meterStable: !recentlyRestarted(completed) && !current?.meterFell,
+      })
+      : null;
     const summary = {
       providerId: window.providerId,
       windowKey: window.windowKey,
       windowLabel: window.windowLabel,
       baseline,
-      current: open ? currentCycle(open, rows, nowMs, baseline, bounded.filter((cycle) => cycle.end <= nowMs)) : null,
+      regimeChanged,
+      current,
       cycles,
+      billing,
     };
     if (usableSummary(summary, points)) summaries.push(summary);
   }
@@ -124,26 +169,47 @@ interface UsageSide {
   rows: number;
 }
 
+interface Reading {
+  at: number;
+  usedPercent: number;
+  resetsAt: string;
+}
+
+interface SegmentSpan {
+  from: number;
+  to: number;
+  startPercent: number;
+  endPercent: number;
+}
+
 function measureCycle(
   cycle: BoundedCycle,
   rows: AllowanceTokenRow[],
   shared: boolean,
   history: AllowanceCycleHistory | undefined,
 ): AllowanceCompletedCycle {
-  const readings = cycle.points
-    .filter((point) => point.at >= cycle.start && point.at < cycle.end)
-    .sort((left, right) => left.at - right.at);
+  const readings = cycleReadings(cycle);
   const endPercent = readings.reduce((max, point) => Math.max(max, point.usedPercent), 0);
-  const meterFell = readings.some((point, index) =>
-    index > 0 && point.usedPercent < readings[index - 1]!.usedPercent);
+  const runs = splitRuns(readings);
+  const meterFell = runs.some((run) => run.some((point, index) =>
+    index > 0 && point.usedPercent < run[index - 1]!.usedPercent));
+  const spans = segmentSpans(runs, cycle);
+  const consumedPercent = spans.reduce((sum, span) => sum + span.endPercent - span.startPercent, 0);
   const latest = readings.at(-1)?.at;
   const observationGap = latest == null || cycle.end - latest > DAY_MS;
+  const sides = spans.map(emptySide);
   const inside = emptySide();
   const straddle = emptySide();
   for (const row of rows) {
-    const place = bucketPlace(row, cycle.start, cycle.end);
-    if (place === "inside") addRow(inside, row);
-    else if (place === "straddle") addRow(straddle, row);
+    const places = spans.map((span) => bucketPlace(row, span.from, span.to));
+    const index = places.indexOf("inside");
+    if (index >= 0) {
+      addRow(sides[index]!, row);
+      addRow(inside, row);
+    } else if (places.includes("straddle")) {
+      // A row that crosses both edges of a mid-cycle reset still counts once.
+      addRow(straddle, row);
+    }
   }
   const tokensLow = inside.tokens;
   const tokensHigh = inside.tokens + straddle.tokens;
@@ -152,23 +218,90 @@ function measureCycle(
   const truncated = history != null && (
     cycle.start < history.observationStartMs || cycle.start < history.tokenStartMs
   );
-  const exclusion = cycleExclusion(meterFell, shared, truncated, tokensLow, tokensHigh, endPercent, observationGap);
+  const segments = spans.map((span, index) => ({
+    start: new Date(span.from).toISOString(),
+    end: new Date(span.to).toISOString(),
+    startPercent: span.startPercent,
+    endPercent: span.endPercent,
+    tokens: sides[index]!.tokens,
+    apiCost: sideCost(sides[index]!),
+    tokensPerPercent: perPercent(sides[index]!.tokens, span.endPercent - span.startPercent),
+    dollarsPerPercent: perPercent(sideCost(sides[index]!), span.endPercent - span.startPercent),
+  }));
+  // Ratios divide by the climbs of the segments whose numerator is measured; a cycle with none keeps the full sum.
+  const measured = measuredTotals(segments);
+  const tokenPercent = measured.tokenPercent > 0 ? measured.tokenPercent : consumedPercent;
+  const costPercent = measured.cost != null ? measured.costPercent : consumedPercent;
+  const exclusion = cycleExclusion({
+    meterFell,
+    shared,
+    historyTruncated: truncated,
+    tokensLow,
+    tokensHigh,
+    consumedPercent,
+    segmentUnmeasured: segments.some(climbsWithoutTokens),
+    observationGap,
+  });
   return {
     start: new Date(cycle.start).toISOString(),
     end: new Date(cycle.end).toISOString(),
     lengthMs: cycle.end - cycle.start,
     endPercent,
+    consumedPercent,
+    segments,
+    tokensPerPercent: perPercent(tokensLow, tokenPercent),
+    dollarsPerPercent: perPercent(measured.cost, costPercent),
     tokensLow,
     tokensHigh,
     apiCostLow,
     apiCostHigh,
-    allowanceLow: perFullMeter(tokensLow, endPercent),
-    allowanceHigh: perFullMeter(tokensHigh, endPercent),
-    apiDollarsLow: perFullMeter(apiCostLow, endPercent),
-    apiDollarsHigh: perFullMeter(apiCostHigh, endPercent),
+    allowanceLow: perFullMeter(tokensLow, tokenPercent),
+    allowanceHigh: perFullMeter(tokensHigh, tokenPercent),
+    apiDollarsLow: perFullMeter(measured.cost, costPercent),
+    apiDollarsHigh: perFullMeter(apiCostHigh, costPercent),
     included: exclusion == null,
     exclusion,
   };
+}
+
+function cycleReadings(cycle: BoundedCycle): Reading[] {
+  return cycle.points
+    .filter((point) => point.at >= cycle.start && point.at < cycle.end)
+    .sort((left, right) => left.at - right.at);
+}
+
+function billingCycle(cycle: BoundedCycle): BillingCycle {
+  const readings = cycleReadings(cycle);
+  return { start: cycle.start, end: cycle.end, readings, spans: segmentSpans(splitRuns(readings), cycle) };
+}
+
+// A fall of at least 5 points under an unchanged stated reset starts a new run of readings.
+function splitRuns(readings: Reading[]): Reading[][] {
+  const runs: Reading[][] = [[]];
+  readings.forEach((point, index) => {
+    const before = readings[index - 1];
+    if (before && before.usedPercent - point.usedPercent >= MID_CYCLE_RESET_DROP
+      && Math.abs(Date.parse(point.resetsAt) - Date.parse(before.resetsAt)) <= HOUR_MS) {
+      runs.push([]);
+    }
+    runs.at(-1)!.push(point);
+  });
+  return runs;
+}
+
+// The first segment keeps the cycle's assumed 0 percent at its start and the last runs to the cycle's end.
+// A later segment starts at its first reading; one without a climb cannot be measured and is left out.
+// A segment ends at the next run's first reading, so an hour between a reset's two readings lands in the earlier
+// segment. A dropped run (no climb) keeps its own span out, because its climb is not measured.
+function segmentSpans(runs: Reading[][], cycle: BoundedCycle): SegmentSpan[] {
+  return runs
+    .map((run, index) => ({
+      from: index === 0 ? cycle.start : run[0]!.at,
+      to: index === runs.length - 1 ? cycle.end : runs[index + 1]![0]!.at,
+      startPercent: index === 0 ? 0 : run[0]!.usedPercent,
+      endPercent: run.reduce((max, point) => Math.max(max, point.usedPercent), 0),
+    }))
+    .filter((span, index) => index === 0 || span.endPercent > span.startPercent);
 }
 
 function usableSummary(
@@ -181,12 +314,98 @@ function usableSummary(
   return !(points.length > 0 && points.every((point) => point.usedPercent === 0));
 }
 
-function baselineFrom(cycles: AllowanceCompletedCycle[]): AllowanceCycleSummary["baseline"] {
-  const sample = cycles.filter((cycle) => cycle.included).slice(0, BASELINE_LIMIT);
+interface BaselineUnit {
+  allowance: number | null;
+  dollars: number | null;
+  dollarsPerPercent: number | null;
+}
+
+function baselineFrom(
+  cycles: AllowanceCompletedCycle[],
+): { baseline: AllowanceCycleSummary["baseline"]; regimeChanged: boolean } {
+  // Every completed cycle back to the oldest one the baseline could use, excluded ones included: an excluded
+  // cycle can still show the reset where dollars per percent changed.
+  const lastUsable = cycles.map((cycle) => cycle.included).reduce(
+    (found, included, index) => found.count < BASELINE_LIMIT && included ? { count: found.count + 1, index } : found,
+    { count: 0, index: cycles.length - 1 },
+  );
+  const window = cycles.slice(0, lastUsable.count === BASELINE_LIMIT ? lastUsable.index + 1 : cycles.length);
+  const boundary = latestRegimeBoundary(window);
+  const regimeCycle = boundary ? window[boundary.cycle] : undefined;
+  const sample = (boundary ? window.slice(0, boundary.cycle + 1) : window).filter((cycle) => cycle.included);
+  const units = sample.map((cycle) =>
+    cycle === regimeCycle
+      ? unitFrom(cycle.segments.slice(boundary!.segment))
+      : { allowance: cycle.allowanceLow, dollars: cycle.apiDollarsLow, dollarsPerPercent: cycle.dollarsPerPercent });
   return {
-    tokens: stats(presentNumbers(sample.map((cycle) => cycle.allowanceLow))),
-    apiDollars: stats(presentNumbers(sample.map((cycle) => cycle.apiDollarsLow))),
+    baseline: {
+      tokens: stats(presentNumbers(units.map((unit) => unit.allowance))),
+      apiDollars: stats(presentNumbers(units.map((unit) => unit.dollars))),
+      dollarsPerPercent: stats(presentNumbers(units.map((unit) => unit.dollarsPerPercent))),
+    },
+    regimeChanged: boundary != null,
   };
+}
+
+// The first reading after the newest regime-changing reset is the newer side's start.
+function regimeStart(cycles: AllowanceCompletedCycle[]): number | null {
+  const boundary = latestRegimeBoundary(cycles);
+  return boundary ? Date.parse(cycles[boundary.cycle]!.segments[boundary.segment]!.start) : null;
+}
+
+// The newest reset, scanning newest cycle first, whose two sides cost clearly different dollars per percent.
+// ponytail: only a reset inside a cycle counts; a rate change exactly at a cycle edge is not detected.
+function latestRegimeBoundary(sample: AllowanceCompletedCycle[]): { cycle: number; segment: number } | null {
+  for (let cycle = 0; cycle < sample.length; cycle += 1) {
+    const { segments } = sample[cycle]!;
+    for (let segment = segments.length - 1; segment > 0; segment -= 1) {
+      if (regimeShift(segments[segment - 1]!, segments[segment]!)) return { cycle, segment };
+    }
+  }
+  return null;
+}
+
+function regimeShift(before: AllowanceCycleSegment, after: AllowanceCycleSegment): boolean {
+  const left = before.dollarsPerPercent;
+  const right = after.dollarsPerPercent;
+  if (left == null || right == null || !(left > 0) || !(right > 0)) return false;
+  // Climbs under the 10 percent cycle minimum are too coarse to compare.
+  if (climbOf(before) < CYCLE_MIN_PERCENT || climbOf(after) < CYCLE_MIN_PERCENT) return false;
+  return Math.max(left, right) / Math.min(left, right) > REGIME_SHIFT_RATIO;
+}
+
+// Totals over the segments whose numerator is measured: tokens above zero, and a known API cost.
+function measuredTotals(segments: AllowanceCycleSegment[]): {
+  tokens: number;
+  tokenPercent: number;
+  cost: number | null;
+  costPercent: number;
+} {
+  const withTokens = segments.filter((segment) => segment.tokens > 0);
+  const withCost = segments.filter((segment) => segment.apiCost != null);
+  return {
+    tokens: withTokens.reduce((sum, segment) => sum + segment.tokens, 0),
+    tokenPercent: withTokens.reduce((sum, segment) => sum + climbOf(segment), 0),
+    cost: withCost.length === 0 ? null : withCost.reduce((sum, segment) => sum + (segment.apiCost ?? 0), 0),
+    costPercent: withCost.reduce((sum, segment) => sum + climbOf(segment), 0),
+  };
+}
+
+function unitFrom(segments: AllowanceCycleSegment[]): BaselineUnit {
+  const totals = measuredTotals(segments);
+  return {
+    allowance: perFullMeter(totals.tokens, totals.tokenPercent),
+    dollars: perFullMeter(totals.cost, totals.costPercent),
+    dollarsPerPercent: perPercent(totals.cost, totals.costPercent),
+  };
+}
+
+function climbOf(segment: AllowanceCycleSegment): number {
+  return segment.endPercent - segment.startPercent;
+}
+
+function climbsWithoutTokens(segment: AllowanceCycleSegment): boolean {
+  return climbOf(segment) >= SEGMENT_MIN_PERCENT && segment.tokens <= 0;
 }
 
 function currentCycle(
@@ -205,11 +424,7 @@ function currentCycle(
   const usage = usageInside(rows, cycle.start, nowMs);
   const lengthMs = cycle.end - cycle.start;
   const elapsedFraction = lengthMs > 0 ? (nowMs - cycle.start) / lengthMs : 0;
-  const restarted = completed
-    .slice()
-    .sort((left, right) => right.end - left.end)
-    .slice(0, 4)
-    .some(restartedEarly);
+  const restarted = recentlyRestarted(completed);
   return {
     start: new Date(cycle.start).toISOString(),
     end: new Date(cycle.end).toISOString(),
@@ -234,6 +449,14 @@ function usageInside(rows: AllowanceTokenRow[], from: number, to: number): { tok
   return { tokens: side.tokens, cost: sideCost(side) };
 }
 
+function recentlyRestarted(completed: BoundedCycle[]): boolean {
+  return completed
+    .slice()
+    .sort((left, right) => right.end - left.end)
+    .slice(0, 4)
+    .some(restartedEarly);
+}
+
 function restartedEarly(cycle: BoundedCycle): boolean {
   const stated = Math.max(...cycle.points.map((point) => Date.parse(point.resetsAt)));
   return Number.isFinite(stated) && stated - cycle.end > HOUR_MS;
@@ -256,22 +479,24 @@ function stats(values: number[]): AllowanceCycleStat | null {
   return { median, min: sorted[0]!, max: sorted[sorted.length - 1]!, n: sorted.length };
 }
 
-function cycleExclusion(
-  meterFell: boolean,
-  shared: boolean,
-  historyTruncated: boolean,
-  tokensLow: number,
-  tokensHigh: number,
-  endPercent: number,
-  observationGap: boolean,
-): AllowanceCycleExclusion | null {
-  if (meterFell) return "meter-fell";
-  if (shared) return "shared-log";
-  if (historyTruncated) return "history-truncated";
-  if (tokensLow <= 0) return "no-tokens";
-  if (endPercent < CYCLE_MIN_PERCENT) return "below-min-percent";
-  if (tokensHigh > tokensLow * EDGE_UNCERTAIN_RATIO) return "edge-uncertain";
-  if (observationGap) return "observation-gap";
+function cycleExclusion(input: {
+  meterFell: boolean;
+  shared: boolean;
+  historyTruncated: boolean;
+  tokensLow: number;
+  tokensHigh: number;
+  consumedPercent: number;
+  segmentUnmeasured: boolean;
+  observationGap: boolean;
+}): AllowanceCycleExclusion | null {
+  if (input.meterFell) return "meter-fell";
+  if (input.shared) return "shared-log";
+  if (input.historyTruncated) return "history-truncated";
+  if (input.tokensLow <= 0) return "no-tokens";
+  if (input.consumedPercent < CYCLE_MIN_PERCENT) return "below-min-percent";
+  if (input.segmentUnmeasured) return "segment-unmeasured";
+  if (input.tokensHigh > input.tokensLow * EDGE_UNCERTAIN_RATIO) return "edge-uncertain";
+  if (input.observationGap) return "observation-gap";
   return null;
 }
 
@@ -300,9 +525,14 @@ function combinedCost(low: UsageSide, extra: UsageSide): number | null {
   return (low.rows === 0 ? 0 : low.cost ?? 0) + (extra.rows === 0 ? 0 : extra.cost ?? 0);
 }
 
-function perFullMeter(amount: number | null, endPercent: number): number | null {
-  if (amount == null || !(endPercent > 0)) return null;
-  return amount / (endPercent / 100);
+function perFullMeter(amount: number | null, percent: number): number | null {
+  if (amount == null || !(percent > 0)) return null;
+  return amount / (percent / 100);
+}
+
+function perPercent(amount: number | null, percent: number): number | null {
+  if (amount == null || !(percent > 0)) return null;
+  return amount / percent;
 }
 
 function bucketPlace(row: AllowanceTokenRow, cycleStart: number, cycleEnd: number): "inside" | "straddle" | "out" {

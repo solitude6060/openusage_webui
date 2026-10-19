@@ -206,12 +206,22 @@ Allowance 頁用你這段時間的實際 token，除以同一個額度表移動�
 
 - 時間可選 1 Day、3 Days、5 Days、7 Days、30 Days、This Month、This Period、Previous Period、Subscription Period
 - This Period 是目前這個重設週期，從週期開始算到現在。週期已經結束時，這一項留空。Previous Period 是再前一個週期；目前沒有進行中的週期時，改顯示最近結束的那一個
-- Subscription Period 列出最近 120 天的每一次重設週期，不使用其他區間的對齊方式。基準是最近四個納入的週期，只用完整落在週期內的用量，顯示 token 與記下的 API 金額的中位數、最低到最高，以及用了幾個週期
+- Subscription Period 列出最近 120 天的每一次重設週期，不使用其他區間的對齊方式。基準是最近四個納入的週期，只用完整落在週期內的用量，顯示 token 與記下的 API 金額的中位數、最低到最高，以及用了幾個週期；另外顯示每 1% 的 API 金額（API Dollars Per Percent）的中位數
+- 週期中途額度表下降 5 個百分點以上，而且表上寫的重設時間與前一筆讀數相差不超過 1 小時，視為週期內被重設，不再以 Meter Fell 排除。這個週期在重設處切成幾段，每一段單獨測量：第一段從週期開始（視為 0%）到重設前最後一筆讀數；之後每一段從重設後第一筆讀數，到下一次重設前最後一筆讀數；最後一段算到週期結束。重設前最後一筆與重設後第一筆之間的用量不屬於任何一段。重設後只有一筆讀數、沒有增加的段落無法測量，不列入。已結束週期表格的 Consumed 欄是各段增加的百分點加總，可以超過 100%；有多段時另標段數。Allowance、API Value 與每 1% 的 API 金額不直接除以 Consumed：token 只除以有 token 的段落增加的百分點，API 金額只除以 API 金額已知的段落增加的百分點，沒有分子的段落不放進分母。橫跨重設前後兩端的用量紀錄，只在較高的數字計一次
+- 重設前後兩段的每 1% API 金額都已知、各自增加至少 10 個百分點，而且較大值除以較小值大於 1.3（相差超過 30%），視為額度大小改變（regime change）。基準只計入最近一次這種重設之後的那一段，同一週期重設前的段落與更舊的週期不計入，基準區塊標 Rate Changed At A Mid-Period Reset，n 仍以週期為單位計。資料庫沒有保存方案名稱的歷史，所以這項判斷只看每 1% 的 API 金額，也偵測不到剛好落在週期交界的改變。目前週期的推估結束百分比仍用原公式，週期中途被重設時照舊標 Unreliable
 - 目前週期顯示最新額度讀數、完整落在週期內的用量、對照基準還剩多少，以及推估的結束百分比。標成 Unreliable 時，這個週期還不滿一天、目前週期的額度表中途下降，或最近四個週期有一個比原本的重設時間早超過一小時結束。目前週期的額度表下降時，讀數旁會標 Meter Fell
-- 不進入基準的週期仍會列出，並標上原因：Meter Fell（額度表中途下降）、Shared Session Log（與另一個帳號共用 session，而且這個帳號沒有自己的事件）、History Truncated（週期起點早於這次載入的紀錄）、No Tokens、Below 10 Percent（結束時低於 10%）、Edge Uncertain（跨過邊界的用量超過週期內用量的 25%）、Observation Gap（結束前最後一天沒有讀數）
+- 不進入基準的週期仍會列出，並標上原因：Meter Fell（額度表下降不到 5 個百分點，或下降時表上寫的重設時間同時移動超過 1 小時）、Shared Session Log（與另一個帳號共用 session，而且這個帳號沒有自己的事件）、History Truncated（週期起點早於這次載入的紀錄）、No Tokens、Below 10 Percent（Consumed 低於 10%）、Edge Uncertain（跨過邊界的用量超過週期內用量的 25%）、Observation Gap（結束前最後一天沒有讀數）、Segment Unmeasured（有一段增加 5 個百分點以上，但完整落在該段內的 token 為 0）
 - 沒有進行中的週期、也沒有納入的週期時，這個帳號不列出。每一筆讀數都是 0% 時也不列出，除非目前這個週期已經有記下的 token
 - 較低的數字只加總完整落在週期裡的用量。跨過起點或終點的用量只加進較高的數字。API 金額只有一側有值時，另一側顯示 Unknown。目前週期不算跨過起點或現在的用量
 - 窄螢幕把已結束的週期改成卡片，寬螢幕用表格
+- Subscription Period 的每個 Weekly 帳號最下方有一張 Billing Months 表，把用量按計費月加總。從第一筆 token 紀錄或額度讀數所在的月份，列到目前這個月，新的月份在上
+  - 計費月從 Billing Date 起算：第 k 個月是 Billing Date 加 k 個月，到加 k+1 個月，保留 Billing Date 的時分。日數超過該月天數時，改用該月最後一天，例如 1 月 31 日起算的下一個月從 2 月 28 日（閏年 29 日）開始，再下一個月仍從 3 月 31 日開始
+  - API 沒有提供續訂日，所以要自己填：在表上方的 Billing Date 欄選日期與時間（以這台電腦的當地時間輸入），按 Save。存好後重新載入，值以 UTC 時間戳記存成該帳號的 provider setting `billingAnchor`。沒有設定，或設定的值無法解讀時，用 UTC 日曆月，表上方標示 Calendar months; set your billing date
+  - 欄位為 Month（起訖時間，終點不含）、API Dollars、Tokens、Weekly Used。API Dollars 與 Tokens 加總每小時起點落在該月內的用量紀錄，資料與週期表相同；只有每日紀錄的日子，以該日的起點歸入月份。月內有任何一筆紀錄沒有價格時，API Dollars 顯示 —。Token 資料的開頭晚於月初時，該列標 Token Data From 與第一筆紀錄的時間，月初到那個時間的用量沒有紀錄
+  - Weekly Used 寫成「已用 % of 可用 %」。已用是月內各週期段增加的百分點加總，只採用月內的讀數，不做內插；週期跨過月界時，月界前最後一筆讀數到月界後第一筆讀數之間的增加，不計入任何一個月。可用是該月與週期重疊的天數除以 7 再乘 100，當月只算到現在
+  - 月內有額度大小改變（上面的 regime change）時，改變前後的百分點代表不同的量，所以分成兩行各自列出，不相加。只認得最近一次額度大小改變，更早的改變不會拆開
+  - 當月的 API Dollars 下方另列 Projected：到目前為止的金額除以已過的時間，再乘以整個月的長度。這個月不滿一天、目前週期的額度表中途下降、最近四個週期有一個比原本的重設時間早超過一小時結束，或 Token 資料開頭晚於月初時，標 Unreliable
+  - 與另一個帳號共用 session 的 Codex 帳號沒有這張表
 - This Month 用這台電腦的本地日曆
 - 每個帳號用至少一天的額度窗口。有 Weekly 就用 Weekly；Cursor 用 Total usage。Codex 以前存成 7 天 Session 的讀數，會和較新的 Weekly 讀數放在同一個系列。幾小時後就重設的 Session 不算。沒有 Weekly 時，重設時間超過一天、期間不是剛好 7 天的 Session，仍可用來算
 - 區間裡額度重設時，重設前後各算一次，方便比較配額有沒有變小。新週期提早開始時，舊週期算到新週期開始為止
@@ -343,6 +353,14 @@ Claude 會讀：
 CLAUDE_CONFIG_DIR/.credentials.json
 ~/.claude/.credentials.json
 ```
+
+Claude 卡片除了 5 小時 Session、每週額度與額外用量，還會顯示這三項：
+
+- **美元額度**：用量回應裡，帶有金額上限的項目會顯示已用金額、上限與重置時間。金額單位是美元。$250 那一項（API 代號 `iguana_necktie`）顯示為「Cloud Credit」。額外用量（extra usage，以美分計）與 spend 不會被算進這些列。
+- **Rate Limit Resets**（用量重置次數）：Anthropic 偶爾發放的重置次數。卡片顯示還剩幾次；若有使用期限，文字會帶最近的到期日，例如 `1 available · by Oct 22`。同一個 access token 最多一小時詢問一次。網路或伺服器錯誤會沿用上一次的文字，並寫進紀錄；以前沒有成功過就不顯示這列。回傳裡沒有這項資料，或其中一筆缺少 `id` 或 `resets_left` 時，顯示 `No data`。帳號不符合資格、而且沒有任何次數時，顯示 `0 available`。這列只讀取，不會代為使用重置。
+- **方案名稱**：用量讀取成功之後，從帳號 profile 讀 `rate_limit_tier`。例如 `default_claude_max_20x` 會顯示 Max 20x。每個 access token 只讀一次。讀不到時，沿用登入當下存下來的方案。
+
+卡片不會顯示 grant id、組織 id、電子郵件，也不會顯示 `event_props`。
 
 Codex 會讀：
 

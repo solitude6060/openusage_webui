@@ -364,6 +364,16 @@ fn redact_url(url: &str) -> String {
 fn redact_body(body: &str) -> String {
     let mut result = body.to_string();
 
+    // Claude reset grants carry campaign data in event_props; drop the whole object
+    // (one nested level) before the other rules, whose replacements can unbalance quotes.
+    if let Ok(event_props_re) = regex_lite::Regex::new(
+        r#""event_props":\s*\{(?:[^{}"]|"(?:[^"\\]|\\.)*"|\{(?:[^{}"]|"(?:[^"\\]|\\.)*")*\})*\}"#,
+    ) {
+        result = event_props_re
+            .replace_all(&result, "\"event_props\": \"[REDACTED]\"")
+            .to_string();
+    }
+
     // Redact JWTs (eyJ... pattern with dots)
     let jwt_pattern =
         regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+").unwrap();
@@ -433,10 +443,15 @@ fn redact_body(body: &str) -> String {
         "login",
         "analytics_tracking_id",
         "label",
+        "id",
+        "uuid",
+        "full_name",
+        "display_name",
+        "next_grant_id",
     ];
     for key in sensitive_keys {
         // Match "key": "value" or "key":"value"
-        let pattern = format!(r#""{}":\s*"([^"]+)""#, key);
+        let pattern = format!(r#""{}":\s*"((?:[^"\\]|\\.)+)""#, key);
         if let Ok(re) = regex_lite::Regex::new(&pattern) {
             result = re
                 .replace_all(&result, |caps: &regex_lite::Captures| {
@@ -3854,6 +3869,57 @@ mod tests {
             "name should show [REDACTED], got: {}",
             redacted
         );
+    }
+
+    #[test]
+    fn redact_body_redacts_claude_profile_and_reset_grant_fields() {
+        let body = r#"{"account":{"uuid":"11111111-2222-4333-8444-555555555555","full_name":"Robin Ebers","display_name":"Robin"},"grants":[{"id":"grant_01AbCdEfGh","resets_left":1,"next_grant_id":"grant_02IjKlMnOp"}],"event_props":{"campaign":"spring-promo-secret","org":"org-uuid-secret"}}"#;
+        let redacted = redact_body(body);
+        for secret in [
+            "11111111-2222-4333-8444-555555555555",
+            "Robin Ebers",
+            "\"Robin\"",
+            "grant_01AbCdEfGh",
+            "grant_02IjKlMnOp",
+            "spring-promo-secret",
+            "org-uuid-secret",
+        ] {
+            assert!(
+                !redacted.contains(secret),
+                "{} should be redacted, got: {}",
+                secret,
+                redacted
+            );
+        }
+        assert!(redacted.contains("\"resets_left\":1"), "got: {}", redacted);
+    }
+
+    #[test]
+    fn redact_body_redacts_escaped_quotes_and_braces_in_strings() {
+        let body = r#"{"full_name":"Jane \"Private\" Smith","event_props":{"campaign":"spring {private}","org":"secret-org"}}"#;
+        let redacted = redact_body(body);
+        for secret in ["Private", "Smith", "spring", "secret-org"] {
+            assert!(
+                !redacted.contains(secret),
+                "{} should be redacted, got: {}",
+                secret,
+                redacted
+            );
+        }
+    }
+
+    #[test]
+    fn redact_body_redacts_event_props_before_key_redaction_and_one_nested_level() {
+        let body = r#"{"event_props":{"name":"abcdefghijkl\"abc","campaign":"secret-campaign"},"x":{"event_props":{"campaign":"spring } secret","nested":{"org":"secret-org"}}}}"#;
+        let redacted = redact_body(body);
+        for secret in ["secret-campaign", "spring", "secret-org"] {
+            assert!(
+                !redacted.contains(secret),
+                "{} should be redacted, got: {}",
+                secret,
+                redacted
+            );
+        }
     }
 
     #[test]

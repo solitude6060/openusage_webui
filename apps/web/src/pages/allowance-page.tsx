@@ -9,8 +9,9 @@ import {
   type AllowanceEstimate,
   type AllowanceRange,
 } from "../lib/api";
-import { formatDate, formatMoney, formatNumber } from "../lib/format";
+import { formatApiMoney, formatDate, formatMoney, formatNumber, formatPercent } from "../lib/format";
 import { providerLabel } from "../provider-ui";
+import { BillingMonths } from "./allowance-billing";
 import { formatCompactTokenCount } from "./tokens-page";
 
 const NARROW_LAYOUT = "(max-width: 640px)";
@@ -39,6 +40,7 @@ export function AllowancePage({
   const [summaries, setSummaries] = useState<AllowanceCycleSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [reloads, setReloads] = useState(0);
   const narrow = useNarrowLayout();
   const names = useMemo(
     () => new Map(providers.map((provider) => [provider.providerId, provider.name])),
@@ -77,7 +79,7 @@ export function AllowancePage({
     return () => {
       cancelled = true;
     };
-  }, [range, refreshToken]);
+  }, [range, refreshToken, reloads]);
 
   return (
     <section className="page-grid">
@@ -109,6 +111,9 @@ export function AllowancePage({
                   A subscription period runs from one reset to the next. The baseline is the median of the last four included periods. That median uses only the usage fully inside each period. The lowest, the highest, and how many periods that median used sit beside it, for tokens and for API dollars.
                 </p>
                 <p className="settings-help muted">
+                  When the meter falls by 5 points or more while its stated reset stays put, the period was reset in place. Each stretch between resets is measured alone, and the period's consumed percent is the sum of their climbs, so it can pass 100. Allowance and dollars per percent divide only by the climbs of stretches that have tokens or a known API cost. A stretch that climbs 5 points or more with no tokens inside it leaves the period out as Segment Unmeasured. When dollars per percent on the two sides of a reset differ by more than 30 percent, the baseline keeps only the newer side.
+                </p>
+                <p className="settings-help muted">
                   The current period shows the latest meter reading, the tokens and API dollars fully inside it so far, and what remains of the baseline. The projected end percent is that reading divided by how much of the period has passed. Unreliable means the period is less than a day old, the meter fell during this period, or one of the last four periods ended more than an hour before its stated reset.
                 </p>
               </>
@@ -135,6 +140,7 @@ export function AllowancePage({
                   key={`${summary.providerId}:${summary.windowKey}`}
                   summary={summary}
                   providerName={names.get(summary.providerId)}
+                  onBillingSaved={() => setReloads((count) => count + 1)}
                 />
               ))}
             </div>
@@ -258,20 +264,6 @@ function groupEstimates(estimates: AllowanceEstimate[]): Array<{
   return groups;
 }
 
-function formatApiMoney(value: number): string {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-}
-
-function formatPercent(value: number): string {
-  const rounded = Math.round(value * 10) / 10;
-  return `${rounded % 1 === 0 ? Math.round(rounded) : rounded}%`;
-}
-
 function formatLimit(cycle: AllowanceEstimate): string {
   if (cycle.statedLimit == null) return "";
   if (cycle.statedLimitUnit === "usd") return formatMoney(cycle.statedLimit);
@@ -291,12 +283,15 @@ function reasonLabel(reason: AllowanceEstimate["reason"]): string {
 function AllowancePeriod({
   summary,
   providerName,
+  onBillingSaved,
 }: {
   summary: AllowanceCycleSummary;
   providerName: string | undefined;
+  onBillingSaved: () => void;
 }) {
   const tokens = summary.baseline.tokens;
   const dollars = summary.baseline.apiDollars;
+  const perPercent = summary.baseline.dollarsPerPercent;
   return (
     <article className="allowance-account">
       <div className="allowance-account-header">
@@ -315,12 +310,19 @@ function AllowancePeriod({
         )}
         {tokens ? <p className="allowance-meta">{statRange(tokens, formatCompactTokenCount)}</p> : null}
         {dollars ? <p className="allowance-api">API Dollars {statRange(dollars, formatApiMoney)}</p> : null}
+        {perPercent ? <p className="allowance-api">API Dollars Per Percent {statRange(perPercent, formatApiMoney)}</p> : null}
+        {summary.regimeChanged ? (
+          <p className="allowance-meta">Rate Changed At A Mid-Period Reset · Baseline Uses Only The Newer Side</p>
+        ) : null}
       </section>
       <section className="allowance-cycle-block">
         <h5>Current Cycle</h5>
         {summary.current ? <CurrentCycle current={summary.current} /> : <p className="allowance-reason">No Open Cycle</p>}
       </section>
       <CompletedCycles cycles={summary.cycles} />
+      {summary.billing ? (
+        <BillingMonths providerId={summary.providerId} billing={summary.billing} onSaved={onBillingSaved} />
+      ) : null}
     </article>
   );
 }
@@ -400,12 +402,17 @@ function completedFields(cycle: AllowanceCompletedCycle): Array<{ label: string;
   return [
     { label: "Period", value: `${formatDate(cycle.start)} – ${formatDate(cycle.end)}` },
     { label: "Length", value: formatCycleLength(cycle.lengthMs) },
-    { label: "End Percent", value: formatPercent(cycle.endPercent) },
+    { label: "Consumed", value: consumedLabel(cycle) },
     { label: "Tokens", value: formatTokenSpan(cycle.tokensLow, cycle.tokensHigh) },
     { label: "Allowance", value: formatTokenSpan(cycle.allowanceLow, cycle.allowanceHigh) },
     { label: "API Dollars", value: formatMoneySpan(cycle.apiDollarsLow, cycle.apiDollarsHigh) },
     { label: "Reason", value: cycleReasonLabel(cycle.exclusion) },
   ];
+}
+
+function consumedLabel(cycle: AllowanceCompletedCycle): string {
+  const percent = formatPercent(cycle.consumedPercent);
+  return cycle.segments.length > 1 ? `${percent} · ${cycle.segments.length} Segments` : percent;
 }
 
 function statRange(stat: AllowanceCycleStat, format: (value: number) => string): string {
@@ -442,5 +449,6 @@ function cycleReasonLabel(reason: AllowanceCycleExclusion | null): string {
   if (reason === "below-min-percent") return "Below 10 Percent";
   if (reason === "edge-uncertain") return "Edge Uncertain";
   if (reason === "observation-gap") return "Observation Gap";
+  if (reason === "segment-unmeasured") return "Segment Unmeasured";
   return "Included";
 }

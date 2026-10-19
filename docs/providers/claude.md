@@ -80,6 +80,36 @@ After each refresh, OpenUsage also runs `ccusage claude blocks --json --session-
 
 Local `ccusage` data can also include Fable model rows such as `claude-fable-5`, but OpenUsage does not infer remaining Fable weekly quota from local logs. If the live usage API does not return a separate Fable weekly quota window, the dashboard does not show a Fable weekly line.
 
+### Dollar credits
+
+A top-level object with a numeric `limit_dollars` becomes a dollar progress line. `used_dollars` is the used amount, or 0 when it is missing. `resets_at` is the reset time. These amounts are already dollars, not cents.
+
+The label is the object's `label`. If that text is missing, `cinder_cove` is shown as "Claude Code And Cowork Credit" and `iguana_necktie` as "Cloud Credit" (a name chosen by the owner; Claude Code 2.1.303 does not label this key). Any other key is shown as "Credit". When two lines would share a label, the later one is named with a suffix, such as "Credit 2". A blank label is treated as missing. `extra_usage` and `spend` are skipped. `extra_usage` stays the separate cents row above. A limit that is not above zero is omitted, because a progress line needs a positive limit.
+
+### Rate limit resets
+
+OpenUsage also sends:
+
+```text
+GET {baseApiUrl}/api/oauth/usage?cedar_ember=1&skip_spend=1
+```
+
+Headers match the usage request, except `User-Agent` is `claude-cli/2.1.303 (external, cli)`. With the usage request's older user agent, Anthropic can answer `eligible: false` and `ineligible_reason: "surface"`.
+
+The `cedar_ember` object holds the grants. If that key is absent and the body itself has `eligible` or `grants`, that body is the block. OpenUsage adds up each grant's `resets_left` and shows `N available`. If any grant has `ends_at`, the text includes the soonest deadline in UTC, for example `1 available · by Oct 22`. This row is text. The host does not keep a separate reset time on a text line.
+
+`eligible: false` with no grants shows `0 available`. The row shows `No data` when the block is missing, or when any grant lacks a string `id` or a numeric `resets_left`. One bad grant rejects the whole block.
+
+The same access token is checked at most once an hour. OpenUsage saves the last result in its plugin data folder, so a later refresh can reuse it instead of asking again. The access token is not written there. A failed request keeps the previous text and is logged. If there was no previous text, the row is left off until a later check succeeds. Switching to another access token starts its own check.
+
+The row is display only. OpenUsage never sends the claim that spends a grant.
+
+### Plan badge
+
+After a usage fetch succeeds, OpenUsage calls `GET {baseApiUrl}/api/oauth/profile` once for that access token. The badge is saved with the reset check above, so a later refresh reuses it. The badge reads `organization.rate_limit_tier`. For example, `default_claude_max_20x` is shown as "Max 20x". If the profile cannot be read, the badge stays on the plan saved with the Claude login.
+
+Grant ids, organization ids, email addresses, and `event_props` are not copied onto the card.
+
 ## Authentication
 
 ### Token Location

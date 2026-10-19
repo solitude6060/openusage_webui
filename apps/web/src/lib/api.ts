@@ -142,7 +142,8 @@ export type AllowanceCycleExclusion =
   | "no-tokens"
   | "below-min-percent"
   | "edge-uncertain"
-  | "observation-gap";
+  | "observation-gap"
+  | "segment-unmeasured";
 
 export interface AllowanceCycleStat {
   median: number;
@@ -151,11 +152,26 @@ export interface AllowanceCycleStat {
   n: number;
 }
 
+export interface AllowanceCycleSegment {
+  start: string;
+  end: string;
+  startPercent: number;
+  endPercent: number;
+  tokens: number;
+  apiCost: number | null;
+  tokensPerPercent: number | null;
+  dollarsPerPercent: number | null;
+}
+
 export interface AllowanceCompletedCycle {
   start: string;
   end: string;
   lengthMs: number;
   endPercent: number;
+  consumedPercent: number;
+  segments: AllowanceCycleSegment[];
+  tokensPerPercent: number | null;
+  dollarsPerPercent: number | null;
   tokensLow: number;
   tokensHigh: number;
   apiCostLow: number | null;
@@ -183,6 +199,31 @@ export interface AllowanceCycleCurrent {
   meterFell: boolean;
 }
 
+export interface AllowanceBillingPart {
+  from: string;
+  to: string;
+  consumedPercent: number;
+  availablePercent: number;
+}
+
+export interface AllowanceBillingMonth {
+  start: string;
+  end: string;
+  current: boolean;
+  apiDollars: number | null;
+  tokens: number;
+  tokensFrom: string | null;
+  weeklyParts: AllowanceBillingPart[];
+  projectedApiDollars: number | null;
+  projectionReliable: boolean | null;
+}
+
+export interface AllowanceBilling {
+  anchor: string | null;
+  anchorSource: "setting" | "calendar";
+  months: AllowanceBillingMonth[];
+}
+
 export interface AllowanceCycleSummary {
   providerId: string;
   windowKey: string;
@@ -190,9 +231,12 @@ export interface AllowanceCycleSummary {
   baseline: {
     tokens: AllowanceCycleStat | null;
     apiDollars: AllowanceCycleStat | null;
+    dollarsPerPercent: AllowanceCycleStat | null;
   };
+  regimeChanged: boolean;
   current: AllowanceCycleCurrent | null;
   cycles: AllowanceCompletedCycle[];
+  billing: AllowanceBilling | null;
 }
 
 export interface AllowanceEstimate {
@@ -221,6 +265,17 @@ export async function getAllowance(range: AllowanceRange): Promise<
 > {
   const named = range === "month" || range === "period" || range === "previous" || range === "cycles";
   return request(`/api/usage/allowance?${named ? `span=${range}` : `days=${range}`}`);
+}
+
+export async function updateProviderSettings(
+  providerId: string,
+  settings: Record<string, string>,
+): Promise<Record<string, string>> {
+  return request(`/api/settings/${encodeURIComponent(providerId)}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(settings),
+  });
 }
 
 export async function createManualUsage(input: ManualUsageInput): Promise<{
