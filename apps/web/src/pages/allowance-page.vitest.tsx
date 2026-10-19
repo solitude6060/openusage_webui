@@ -1,11 +1,13 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { getAllowance, type AllowanceEstimate } from "../lib/api";
-import { formatMoney } from "../lib/format";
+import { getAllowance, updateProviderSettings, type AllowanceEstimate } from "../lib/api";
+import { formatDate, formatMoney } from "../lib/format";
 import { AllowancePage } from "./allowance-page";
+import { formatCompactTokenCount } from "./tokens-page";
 
 vi.mock("../lib/api", () => ({
   getAllowance: vi.fn(),
+  updateProviderSettings: vi.fn(),
 }));
 
 function mockViewport(narrow: boolean) {
@@ -298,5 +300,117 @@ describe("Subscription period", () => {
     expect(details).toHaveTextContent("the baseline keeps only the newer side");
     expect(details).not.toHaveTextContent("Daily totals cannot be split inside a day");
     expect(getAllowance).toHaveBeenCalledWith("cycles");
+  });
+});
+
+describe("Billing months", () => {
+  const OCTOBER = "2026-10-01T00:00:00.000Z";
+  const NOVEMBER = "2026-11-01T00:00:00.000Z";
+
+  function cyclesWith(billing: unknown) {
+    vi.mocked(getAllowance).mockImplementation(async (range) => {
+      if (String(range) !== "cycles") return { span: "7", days: 7, estimates: [] };
+      return {
+        span: "cycles",
+        summaries: [{
+          providerId: "claude",
+          windowKey: "weekly",
+          windowLabel: "Weekly",
+          baseline: { tokens: null, apiDollars: null, dollarsPerPercent: null },
+          regimeChanged: false,
+          current: null,
+          cycles: [],
+          billing,
+        }],
+      } as never;
+    });
+  }
+
+  function month(overrides: Record<string, unknown>) {
+    return {
+      start: OCTOBER,
+      end: NOVEMBER,
+      current: false,
+      apiDollars: null,
+      tokens: 0,
+      tokensFrom: null,
+      weeklyParts: [],
+      projectedApiDollars: null,
+      projectionReliable: null,
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    vi.mocked(getAllowance).mockReset();
+    vi.mocked(updateProviderSettings).mockReset();
+    vi.mocked(updateProviderSettings).mockResolvedValue({});
+    mockViewport(false);
+  });
+
+  test("shows each month with its weekly parts and tells the reader the months are calendar months", async () => {
+    cyclesWith({
+      anchor: null,
+      anchorSource: "calendar",
+      months: [
+        month({
+          current: true,
+          apiDollars: 250,
+          tokens: 5_000_000,
+          tokensFrom: "2026-10-05T03:00:00.000Z",
+          weeklyParts: [
+            { from: OCTOBER, to: "2026-10-14T04:42:00.000Z", consumedPercent: 150, availablePercent: 200 },
+            { from: "2026-10-14T04:42:00.000Z", to: "2026-10-20T00:00:00.000Z", consumedPercent: 94, availablePercent: 50 },
+          ],
+          projectedApiDollars: 310,
+          projectionReliable: false,
+        }),
+        month({ start: "2026-09-01T00:00:00.000Z", end: OCTOBER, apiDollars: null, tokens: 0 }),
+      ],
+    });
+    render(<AllowancePage providers={[]} refreshToken={0} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Subscription Period" }));
+
+    const block = (await screen.findByRole("heading", { name: "Billing Months" })).closest("section")!;
+    expect(within(block).getAllByRole("columnheader").map((cell) => cell.textContent))
+      .toEqual(["Month", "API Dollars", "Tokens", "Weekly Used"]);
+    expect(within(block).getByText(`${formatDate(OCTOBER)} – ${formatDate(NOVEMBER)}`)).toBeInTheDocument();
+    expect(within(block).getByText("$250.00")).toBeInTheDocument();
+    expect(within(block).getByText("Projected $310.00 · Unreliable")).toBeInTheDocument();
+    expect(within(block).getByText(formatCompactTokenCount(5_000_000))).toBeInTheDocument();
+    expect(within(block).getByText(`Token Data From ${formatDate("2026-10-05T03:00:00.000Z")}`)).toBeInTheDocument();
+    expect(within(block).getByText(/^150% of 200%/)).toBeInTheDocument();
+    expect(within(block).getByText(/^94% of 50%/)).toBeInTheDocument();
+    expect(within(block).getByText("Calendar months; set your billing date")).toBeInTheDocument();
+    expect(within(block).getByLabelText("Billing Date")).toHaveAttribute("type", "datetime-local");
+  });
+
+  test("saves the billing date as an ISO timestamp and loads the cycles again", async () => {
+    cyclesWith({ anchor: "2026-10-05T12:00:00.000Z", anchorSource: "setting", months: [month({ tokens: 10 })] });
+    render(<AllowancePage providers={[]} refreshToken={0} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Subscription Period" }));
+
+    const input = await screen.findByLabelText("Billing Date");
+    expect((input as HTMLInputElement).value).toMatch(/^2026-10-0[56]T\d\d:\d\d$/);
+    expect(screen.queryByText("Calendar months; set your billing date")).not.toBeInTheDocument();
+    const loads = () => vi.mocked(getAllowance).mock.calls.filter(([range]) => range === "cycles").length;
+    const before = loads();
+
+    fireEvent.change(input, { target: { value: "2026-11-02T08:30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(updateProviderSettings).toHaveBeenCalledWith("claude", {
+      billingAnchor: new Date("2026-11-02T08:30").toISOString(),
+    }));
+    await waitFor(() => expect(loads()).toBe(before + 1));
+  });
+
+  test("shows no billing section when the summary has none", async () => {
+    cyclesWith(null);
+    render(<AllowancePage providers={[]} refreshToken={0} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Subscription Period" }));
+
+    expect(await screen.findByRole("heading", { name: "Baseline" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Billing Months" })).not.toBeInTheDocument();
   });
 });
