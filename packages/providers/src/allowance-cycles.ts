@@ -137,8 +137,8 @@ export function buildAllowanceCycleSummaries(
         historyStartMs: history?.observationStartMs,
         rows,
         cycles: bounded.map(billingCycle),
-        // Every included cycle in the history window, not only the baseline sample, so an older month keeps its split.
-        regimeAt: regimeStart(cycles.filter((cycle) => cycle.included)),
+        // Every completed cycle in the history window, not only the baseline sample, so an older month keeps its split.
+        regimeAt: regimeStart(cycles),
         meterStable: !recentlyRestarted(completed) && !current?.meterFell,
       })
       : null;
@@ -291,11 +291,13 @@ function splitRuns(readings: Reading[]): Reading[][] {
 
 // The first segment keeps the cycle's assumed 0 percent at its start and the last runs to the cycle's end.
 // A later segment starts at its first reading; one without a climb cannot be measured and is left out.
+// A segment ends at the next run's first reading, so an hour between a reset's two readings lands in the earlier
+// segment. A dropped run (no climb) keeps its own span out, because its climb is not measured.
 function segmentSpans(runs: Reading[][], cycle: BoundedCycle): SegmentSpan[] {
   return runs
     .map((run, index) => ({
       from: index === 0 ? cycle.start : run[0]!.at,
-      to: index === runs.length - 1 ? cycle.end : run.at(-1)!.at,
+      to: index === runs.length - 1 ? cycle.end : runs[index + 1]![0]!.at,
       startPercent: index === 0 ? 0 : run[0]!.usedPercent,
       endPercent: run.reduce((max, point) => Math.max(max, point.usedPercent), 0),
     }))
@@ -321,11 +323,19 @@ interface BaselineUnit {
 function baselineFrom(
   cycles: AllowanceCompletedCycle[],
 ): { baseline: AllowanceCycleSummary["baseline"]; regimeChanged: boolean } {
-  const sample = cycles.filter((cycle) => cycle.included).slice(0, BASELINE_LIMIT);
-  const boundary = latestRegimeBoundary(sample);
-  const units = (boundary ? sample.slice(0, boundary.cycle + 1) : sample).map((cycle, index) =>
-    boundary && index === boundary.cycle
-      ? unitFrom(cycle.segments.slice(boundary.segment))
+  // Every completed cycle back to the oldest one the baseline could use, excluded ones included: an excluded
+  // cycle can still show the reset where dollars per percent changed.
+  const lastUsable = cycles.map((cycle) => cycle.included).reduce(
+    (found, included, index) => found.count < BASELINE_LIMIT && included ? { count: found.count + 1, index } : found,
+    { count: 0, index: cycles.length - 1 },
+  );
+  const window = cycles.slice(0, lastUsable.count === BASELINE_LIMIT ? lastUsable.index + 1 : cycles.length);
+  const boundary = latestRegimeBoundary(window);
+  const regimeCycle = boundary ? window[boundary.cycle] : undefined;
+  const sample = (boundary ? window.slice(0, boundary.cycle + 1) : window).filter((cycle) => cycle.included);
+  const units = sample.map((cycle) =>
+    cycle === regimeCycle
+      ? unitFrom(cycle.segments.slice(boundary!.segment))
       : { allowance: cycle.allowanceLow, dollars: cycle.apiDollarsLow, dollarsPerPercent: cycle.dollarsPerPercent });
   return {
     baseline: {

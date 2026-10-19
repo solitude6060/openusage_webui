@@ -89,7 +89,7 @@ describe("allowance cycle segments", () => {
     expect(cycle?.segments).toEqual([
       {
         start: "2026-10-10T19:00:00.000Z",
-        end: "2026-10-14T04:22:00.000Z",
+        end: "2026-10-14T04:42:00.000Z",
         startPercent: 0,
         endPercent: 96,
         tokens: 9600,
@@ -364,7 +364,7 @@ describe("allowance cycle segment review fixes", () => {
     const cycle = buildAllowanceCycleSummaries(observations, rows, new Set(), NOW)[0]?.cycles[0];
 
     expect(cycle?.segments[0]?.end).toBe("2026-10-14T08:00:00.000Z");
-    expect(cycle?.segments[0]?.tokens).toBe(10_100);
+    expect(cycle?.segments[0]?.tokens).toBe(10_150);
     expect(cycle?.tokensHigh).toBe(19_550);
   });
 

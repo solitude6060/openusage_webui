@@ -172,9 +172,10 @@ function climbWithin(cycle: BillingCycle, from: number, to: number): number {
   for (const span of cycle.spans) {
     if (span.to <= from || span.from >= to) continue;
     const inside = cycle.readings.filter((reading) =>
-      reading.at >= Math.max(from, span.from) && reading.at < to && reading.at <= span.to);
+      reading.at >= Math.max(from, span.from) && reading.at < to && reading.at < span.to);
     const startPercent = span.from >= from ? span.startPercent : inside[0]?.usedPercent;
-    const endPercent = span.to < to
+    // The segment's own maximum may be a reading before `from`, so it is used only when the whole segment is inside.
+    const endPercent = span.from >= from && span.to < to
       ? span.endPercent
       : inside.length > 0 ? Math.max(...inside.map((reading) => reading.usedPercent)) : undefined;
     if (startPercent != null && endPercent != null) climb += Math.max(0, endPercent - startPercent);
