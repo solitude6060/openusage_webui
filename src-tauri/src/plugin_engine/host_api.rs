@@ -364,6 +364,16 @@ fn redact_url(url: &str) -> String {
 fn redact_body(body: &str) -> String {
     let mut result = body.to_string();
 
+    // Claude reset grants carry campaign data in event_props; drop the whole object
+    // (one nested level) before the other rules, whose replacements can unbalance quotes.
+    if let Ok(event_props_re) = regex_lite::Regex::new(
+        r#""event_props":\s*\{(?:[^{}"]|"(?:[^"\\]|\\.)*"|\{(?:[^{}"]|"(?:[^"\\]|\\.)*")*\})*\}"#,
+    ) {
+        result = event_props_re
+            .replace_all(&result, "\"event_props\": \"[REDACTED]\"")
+            .to_string();
+    }
+
     // Redact JWTs (eyJ... pattern with dots)
     let jwt_pattern =
         regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+").unwrap();
@@ -450,16 +460,6 @@ fn redact_body(body: &str) -> String {
                 })
                 .to_string();
         }
-    }
-
-    // Claude reset grants carry campaign data in event_props; drop the whole flat object.
-    // Strings inside it may contain braces or escaped quotes.
-    if let Ok(event_props_re) =
-        regex_lite::Regex::new(r#""event_props":\s*\{(?:[^{}"]|"(?:[^"\\]|\\.)*")*\}"#)
-    {
-        result = event_props_re
-            .replace_all(&result, "\"event_props\": \"[REDACTED]\"")
-            .to_string();
     }
 
     if let Ok(path_re) =
