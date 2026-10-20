@@ -26,7 +26,7 @@ export interface AllowanceBillingMonth {
 
 export interface AllowanceBilling {
   anchor: string | null;
-  anchorSource: "setting" | "calendar";
+  anchorSource: "setting" | "upgrade" | "calendar";
   months: AllowanceBillingMonth[];
 }
 
@@ -39,6 +39,8 @@ export interface BillingCycle {
 
 export interface BillingInput {
   anchor: string | undefined;
+  // Start of the latest detected upgrade, used when no billing date is set.
+  upgradeAt: number | null;
   nowMs: number;
   historyStartMs: number | undefined;
   rows: AllowanceTokenRow[];
@@ -52,7 +54,9 @@ export interface BillingInput {
 export function buildBilling(input: BillingInput): AllowanceBilling {
   const parsed = input.anchor ? Date.parse(input.anchor) : Number.NaN;
   const fromSetting = Number.isFinite(parsed);
-  const anchorMs = fromSetting ? parsed : CALENDAR_ANCHOR_MS;
+  const derived = fromSetting ? null : input.upgradeAt;
+  const anchorMs = fromSetting ? parsed : derived ?? CALENDAR_ANCHOR_MS;
+  const anchorSource = fromSetting ? "setting" : derived != null ? "upgrade" : "calendar";
   const firstRowMs = input.rows.reduce((first, row) => Math.min(first, Date.parse(row.startedAt) || Infinity), Infinity);
   // Months before the provider's first token row or meter reading hold no data.
   const firstDataMs = input.cycles.reduce(
@@ -66,7 +70,7 @@ export function buildBilling(input: BillingInput): AllowanceBilling {
       months.push(measureMonth(monthStart(anchorMs, k), monthStart(anchorMs, k + 1), firstRowMs, input));
     }
   }
-  return { anchor: fromSetting ? new Date(parsed).toISOString() : null, anchorSource: fromSetting ? "setting" : "calendar", months };
+  return { anchor: anchorSource === "calendar" ? null : new Date(anchorMs).toISOString(), anchorSource, months };
 }
 
 // Every boundary is the anchor plus k months, so a clamped short month does not shift the later ones.

@@ -111,6 +111,8 @@ export function buildAllowanceCycleSummaries(
   now: Date,
   history?: AllowanceCycleHistory,
   billingAnchors?: ReadonlyMap<string, string>,
+  // Upgrade anchors found earlier, kept because a boundary leaves the history window.
+  savedUpgradeAnchors?: ReadonlyMap<string, string>,
 ): AllowanceCycleSummary[] {
   const nowMs = now.getTime();
   const windows = aliasCodexSevenDaySessions(observations);
@@ -133,6 +135,7 @@ export function buildAllowanceCycleSummaries(
     const billing = window.windowKey === "weekly" && !sharedProviderIds.has(window.providerId)
       ? buildBilling({
         anchor: billingAnchors?.get(window.providerId),
+        upgradeAt: latestOf(upgradeStart(cycles), savedUpgradeAnchors?.get(window.providerId)),
         nowMs,
         historyStartMs: history?.observationStartMs,
         rows,
@@ -353,13 +356,33 @@ function regimeStart(cycles: AllowanceCompletedCycle[]): number | null {
   return boundary ? Date.parse(cycles[boundary.cycle]!.segments[boundary.segment]!.start) : null;
 }
 
+// An upgrade restarts the billing period, and more dollars per percent after a regime boundary means a larger plan.
+// A downgrade usually waits for the period end, so it is not an anchor.
+// ponytail: the time is the first reading after the upgrade, late by up to one poll interval.
+function upgradeStart(cycles: AllowanceCompletedCycle[]): number | null {
+  const boundary = latestRegimeBoundary(cycles, true);
+  return boundary ? Date.parse(cycles[boundary.cycle]!.segments[boundary.segment]!.start) : null;
+}
+
+function latestOf(found: number | null, saved: string | undefined): number | null {
+  const savedMs = saved ? Date.parse(saved) : Number.NaN;
+  if (!Number.isFinite(savedMs)) return found;
+  return found == null ? savedMs : Math.max(found, savedMs);
+}
+
 // The newest reset, scanning newest cycle first, whose two sides cost clearly different dollars per percent.
 // ponytail: only a reset inside a cycle counts; a rate change exactly at a cycle edge is not detected.
-function latestRegimeBoundary(sample: AllowanceCompletedCycle[]): { cycle: number; segment: number } | null {
+function latestRegimeBoundary(
+  sample: AllowanceCompletedCycle[],
+  risingOnly = false,
+): { cycle: number; segment: number } | null {
   for (let cycle = 0; cycle < sample.length; cycle += 1) {
     const { segments } = sample[cycle]!;
     for (let segment = segments.length - 1; segment > 0; segment -= 1) {
-      if (regimeShift(segments[segment - 1]!, segments[segment]!)) return { cycle, segment };
+      const before = segments[segment - 1]!;
+      const after = segments[segment]!;
+      if (!regimeShift(before, after)) continue;
+      if (!risingOnly || after.dollarsPerPercent! > before.dollarsPerPercent!) return { cycle, segment };
     }
   }
   return null;
