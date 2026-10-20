@@ -22,3 +22,15 @@ The orchestrator is Claude Code (Anthropic); no reviewer shares its family.
 | R1-2 | An upgrade in the open cycle waits until the cycle ends | Codex | MEDIUM | Yes: an upgrade two days into the open cycle returned calendar months | Fixed in `9bd657b3` and `72fb1fa7` |
 | R1-3 | A manual billing date stops the detected upgrade from being saved | Grok | LOW | Yes: the server saves only when the source is `upgrade` | Deferred; see the fix log |
 | R1-4 | The guide says an unreadable manual date forces calendar months; an upgrade still applies | Grok | LOW | Yes: `buildBilling` treats it as no setting | Fixed in the guide |
+
+## Round 2
+
+Target `f66e7694`, remediation diff `2f970753..f66e7694`. Raw verdicts are in the same artifact directory (`*-r2-verdict.md`).
+
+| Lane | Client and model | Verdict |
+| --- | --- | --- |
+| 1 | Grok Build `grok-4.7`, xhigh | APPROVE |
+| 2 | AGY `gemini-3.8-flash-high`, high | APPROVE |
+| 3 | Codex `gpt-6.1-sol`, high | APPROVE |
+
+All three confirmed R1-1 and R1-2 are fixed, the new tests fail without the fix, and the R1-3 deferral and R1-4 wording match the code.
