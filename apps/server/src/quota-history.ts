@@ -209,15 +209,22 @@ export async function loadAllowanceCycleSummaries(
     new Date(historyStart - 24 * 60 * 60 * 1000).toISOString(),
   );
   const billingAnchors = new Map<string, string>();
+  const upgradeAnchors = new Map<string, string>();
   for (const providerId of new Set(observations.map((observation) => observation.providerId))) {
-    const anchor = (await storage.getProviderSettings(providerId)).billingAnchor;
-    if (anchor) billingAnchors.set(providerId, anchor);
+    const settings = await storage.getProviderSettings(providerId);
+    if (settings.billingAnchor) billingAnchors.set(providerId, settings.billingAnchor);
+    if (settings.upgradeBillingAnchor) upgradeAnchors.set(providerId, settings.upgradeBillingAnchor);
   }
-  return {
-    span: "cycles",
-    summaries: buildAllowanceCycleSummaries(observations, tokenRows, sharedProviderIds, now, {
-      observationStartMs: historyStart,
-      tokenStartMs: historyStart - 24 * 60 * 60 * 1000,
-    }, billingAnchors),
-  };
+  const summaries = buildAllowanceCycleSummaries(observations, tokenRows, sharedProviderIds, now, {
+    observationStartMs: historyStart,
+    tokenStartMs: historyStart - 24 * 60 * 60 * 1000,
+  }, billingAnchors, upgradeAnchors);
+  // The upgrade leaves the cycle history after 120 days, so the anchor found from it is kept.
+  for (const summary of summaries) {
+    const anchor = summary.billing?.anchorSource === "upgrade" ? summary.billing.anchor : null;
+    if (anchor && anchor !== upgradeAnchors.get(summary.providerId)) {
+      await storage.updateProviderSettings(summary.providerId, { upgradeBillingAnchor: anchor });
+    }
+  }
+  return { span: "cycles", summaries };
 }

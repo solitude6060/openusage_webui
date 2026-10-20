@@ -37,6 +37,11 @@ export function BillingMonths({
       {billing.anchorSource === "calendar" ? (
         <p className="settings-help muted">Calendar months; set your billing date</p>
       ) : null}
+      {billing.anchorSource === "upgrade" && billing.anchor ? (
+        <p className="settings-help muted">
+          {`Billing date taken from your upgrade on ${formatDate(billing.anchor)}; earlier months are approximate`}
+        </p>
+      ) : null}
       <form className="allowance-billing-form" onSubmit={(event) => void save(event)}>
         <label>
           Billing Date

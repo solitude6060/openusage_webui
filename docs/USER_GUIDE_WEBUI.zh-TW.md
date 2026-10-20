@@ -216,7 +216,8 @@ Allowance 頁用你這段時間的實際 token，除以同一個額度表移動�
 - 窄螢幕把已結束的週期改成卡片，寬螢幕用表格
 - Subscription Period 的每個 Weekly 帳號最下方有一張 Billing Months 表，把用量按計費月加總。從第一筆 token 紀錄或額度讀數所在的月份，列到目前這個月，新的月份在上
   - 計費月從 Billing Date 起算：第 k 個月是 Billing Date 加 k 個月，到加 k+1 個月，保留 Billing Date 的時分。日數超過該月天數時，改用該月最後一天，例如 1 月 31 日起算的下一個月從 2 月 28 日（閏年 29 日）開始，再下一個月仍從 3 月 31 日開始
-  - API 沒有提供續訂日，所以要自己填：在表上方的 Billing Date 欄選日期與時間（以這台電腦的當地時間輸入），按 Save。存好後重新載入，值以 UTC 時間戳記存成該帳號的 provider setting `billingAnchor`。沒有設定，或設定的值無法解讀時，用 UTC 日曆月，表上方標示 Calendar months; set your billing date
+  - API 沒有提供續訂日。升級方案時帳期會從升級那一刻重新起算，所以系統偵測到升級後，會自動用升級時間當 Billing Date。判斷升級的方法：某次週期中途的額度重置，重置後每 1% 額度對應的 API 金額比重置前高 30% 以上，而且前後兩段各用掉至少 10%。降級通常等到帳期結束才生效，reset grant 重置前後的每 1% 金額不變，所以這兩種都不會改帳單日。偵測到的時間是升級後的第一筆讀數，最多晚一次輪詢間隔。表上方標示 Billing date taken from your upgrade on ⋯; earlier months are approximate，因為升級前的月份是從升級時間往回推，不一定是當時真正的帳期。偵測到的時間存成 provider setting `upgradeBillingAnchor`，超過 120 天的週期歷史後仍會沿用；之後再偵測到更新的升級時，改用新的
+  - 也可以自己填：在表上方的 Billing Date 欄選日期與時間（以這台電腦的當地時間輸入），按 Save。存好後重新載入，值以 UTC 時間戳記存成該帳號的 provider setting `billingAnchor`，優先於偵測到的升級。設定的值無法解讀時視同沒有設定。沒有可用的設定也沒偵測到升級時，用 UTC 日曆月，表上方標示 Calendar months; set your billing date
   - 欄位為 Month（起訖時間，終點不含）、API Dollars、Tokens、Weekly Used。API Dollars 與 Tokens 加總每小時起點落在該月內的用量紀錄，資料與週期表相同；只有每日紀錄的日子，以該日的起點歸入月份。月內有任何一筆紀錄沒有價格時，API Dollars 顯示 —。Token 資料的開頭晚於月初時，該列標 Token Data From 與第一筆紀錄的時間，月初到那個時間的用量沒有紀錄
   - Weekly Used 寫成「已用 % of 可用 %」。已用是月內各週期段增加的百分點加總，只採用月內的讀數，不做內插；週期跨過月界時，月界前最後一筆讀數到月界後第一筆讀數之間的增加，不計入任何一個月。可用是該月與週期重疊的天數除以 7 再乘 100，當月只算到現在
   - 月內有額度大小改變（上面的 regime change）時，改變前後的百分點代表不同的量，所以分成兩行各自列出，不相加。只認得最近一次額度大小改變，更早的改變不會拆開

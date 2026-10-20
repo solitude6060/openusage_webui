@@ -582,6 +582,49 @@ test("allowance span=cycles reads the provider's billingAnchor setting for its b
   storage.close();
 });
 
+test("allowance span=cycles saves an upgrade billing anchor and reads it back once the upgrade leaves the history", async () => {
+  const week = 7 * 24 * 60 * 60 * 1000;
+  const reset = "2026-10-17T19:00:00.000Z";
+  const upgraded = new SqliteStorage();
+  await upgraded.init();
+  // Dollars per percent are 0.01 before the 04:42 meter reset and 0.02 after it.
+  await upgraded.insertQuotaObservations([
+    observation("2026-10-10T20:00:00.000Z", 0, week, reset),
+    observation("2026-10-14T04:22:00.000Z", 96, week, reset),
+    observation("2026-10-14T04:42:00.000Z", 1, week, reset),
+    observation("2026-10-17T12:00:00.000Z", 95, week, reset),
+  ]);
+  await upgraded.upsertUsageRecords([
+    cycleTokens("grok", Date.parse("2026-10-11T00:00:00.000Z"), 9600, 0.96),
+    cycleTokens("grok", Date.parse("2026-10-15T00:00:00.000Z"), 9400, 1.88),
+  ]);
+
+  const found = await loadAllowanceCycleSummaries(upgraded, new Date("2026-10-18T00:00:00.000Z"));
+  expect(found.summaries[0]?.billing).toEqual(expect.objectContaining({
+    anchor: "2026-10-14T04:42:00.000Z",
+    anchorSource: "upgrade",
+  }));
+  expect((await upgraded.getProviderSettings("grok")).upgradeBillingAnchor).toBe("2026-10-14T04:42:00.000Z");
+  upgraded.close();
+
+  const aged = new SqliteStorage();
+  await aged.init();
+  await aged.insertQuotaObservations([{
+    ...cycleObservation("grok", Date.parse("2027-03-22T00:00:00.000Z"), week),
+    observedAt: "2027-03-18T00:00:00.000Z",
+  }]);
+  await aged.upsertUsageRecords([cycleTokens("grok", Date.parse("2027-03-16T00:00:00.000Z"), 400, 4)]);
+  await aged.updateProviderSettings("grok", { upgradeBillingAnchor: "2026-10-14T04:42:00.000Z" });
+
+  const later = await loadAllowanceCycleSummaries(aged, new Date("2027-03-19T00:00:00.000Z"));
+  expect(later.summaries[0]?.billing).toEqual(expect.objectContaining({
+    anchor: "2026-10-14T04:42:00.000Z",
+    anchorSource: "upgrade",
+  }));
+  expect(later.summaries[0]?.billing?.months[0]?.start).toBe("2027-03-14T04:42:00.000Z");
+  aged.close();
+});
+
 function cycleObservation(providerId: string, resetMs: number, periodMs: number) {
   return {
     providerId,

@@ -44,9 +44,11 @@ function build(
   rows: AllowanceTokenRow[],
   now: string,
   billingAnchor?: string,
+  savedUpgradeAnchor?: string,
 ) {
   const nowMs = Date.parse(now);
   const anchors = new Map(billingAnchor === undefined ? [] : [["claude", billingAnchor]]);
+  const saved = new Map(savedUpgradeAnchor === undefined ? [] : [["claude", savedUpgradeAnchor]]);
   return buildAllowanceCycleSummaries(
     observations,
     rows,
@@ -54,6 +56,7 @@ function build(
     new Date(nowMs),
     { observationStartMs: nowMs - 120 * DAY_MS, tokenStartMs: nowMs - 121 * DAY_MS },
     anchors,
+    saved,
   )[0];
 }
 
@@ -101,6 +104,89 @@ describe("billing months anchor", () => {
         current: true,
       }));
     }
+  });
+});
+
+describe("billing months anchor from an upgrade", () => {
+  const RESET = "2026-10-17T19:00:00.000Z";
+  const NOW = "2026-10-18T00:00:00.000Z";
+  const observations = [
+    observation("2026-10-10T20:00:00.000Z", 0, RESET),
+    observation("2026-10-12T00:00:00.000Z", 50, RESET),
+    observation("2026-10-14T04:22:00.000Z", 96, RESET),
+    observation("2026-10-14T04:42:00.000Z", 1, RESET),
+    observation("2026-10-16T00:00:00.000Z", 50, RESET),
+    observation("2026-10-17T12:00:00.000Z", 95, RESET),
+  ];
+  // Dollars per percent before and after the 04:42 meter reset.
+  function rows(before: number, after: number): AllowanceTokenRow[] {
+    return [
+      hour("2026-10-11T00:00:00.000Z", 9600, 96 * before),
+      hour("2026-10-15T00:00:00.000Z", 9400, 94 * after),
+    ];
+  }
+
+  test("starts the billing months at an upgrade, where dollars per percent rose", () => {
+    const billing = build(observations, rows(1, 2), NOW)?.billing;
+
+    expect(billing).toEqual(expect.objectContaining({ anchor: "2026-10-14T04:42:00.000Z", anchorSource: "upgrade" }));
+    expect(billing?.months[0]).toEqual(expect.objectContaining({
+      start: "2026-10-14T04:42:00.000Z",
+      end: "2026-11-14T04:42:00.000Z",
+      current: true,
+      apiDollars: 188,
+    }));
+  });
+
+  test("keeps calendar months after a downgrade, where dollars per percent fell", () => {
+    const billing = build(observations, rows(2, 1), NOW)?.billing;
+
+    expect(billing).toEqual(expect.objectContaining({ anchor: null, anchorSource: "calendar" }));
+  });
+
+  test("keeps calendar months after a reset grant, where dollars per percent did not change", () => {
+    const billing = build(observations, rows(1, 1), NOW)?.billing;
+
+    expect(billing).toEqual(expect.objectContaining({ anchor: null, anchorSource: "calendar" }));
+  });
+
+  test("ignores a reset grant in a cycle whose token history is cut off by the history window", () => {
+    // Only part of the first side's dollars is inside the window, so its dollars per percent look low.
+    const cut = Date.parse("2026-10-11T12:00:00.000Z");
+    const billing = buildAllowanceCycleSummaries(
+      [...observations, observation("2026-10-17T23:00:00.000Z", 2, "2026-10-24T19:00:00.000Z")],
+      [hour("2026-10-12T00:00:00.000Z", 2600, 26), hour("2026-10-15T00:00:00.000Z", 9400, 94)],
+      new Set(),
+      new Date(NOW),
+      { observationStartMs: cut, tokenStartMs: cut },
+    )[0]?.billing;
+
+    expect(billing).toEqual(expect.objectContaining({ anchor: null, anchorSource: "calendar" }));
+  });
+
+  test("finds an upgrade inside the open cycle before that cycle ends", () => {
+    const billing = build(
+      observations.filter((item) => item.observedAt <= "2026-10-16T00:00:00.000Z"),
+      [hour("2026-10-11T00:00:00.000Z", 9600, 96), hour("2026-10-15T00:00:00.000Z", 4900, 98)],
+      "2026-10-16T01:00:00.000Z",
+    )?.billing;
+
+    expect(billing).toEqual(expect.objectContaining({ anchor: "2026-10-14T04:42:00.000Z", anchorSource: "upgrade" }));
+  });
+
+  test("lets a billing date setting override the upgrade", () => {
+    const billing = build(observations, rows(1, 2), NOW, "2026-10-05T12:00:00.000Z")?.billing;
+
+    expect(billing).toEqual(expect.objectContaining({ anchor: "2026-10-05T12:00:00.000Z", anchorSource: "setting" }));
+  });
+
+  test("uses a saved upgrade after it leaves the history window, and a newer upgrade over it", () => {
+    const aged = build(openCycle(NOW, "2026-10-22T00:00:00.000Z"), rows(1, 1), NOW, undefined, "2026-06-14T04:42:00.000Z")?.billing;
+    const newer = build(observations, rows(1, 2), NOW, undefined, "2026-06-14T04:42:00.000Z")?.billing;
+
+    expect(aged).toEqual(expect.objectContaining({ anchor: "2026-06-14T04:42:00.000Z", anchorSource: "upgrade" }));
+    expect(aged?.months[0]?.start).toBe("2026-10-14T04:42:00.000Z");
+    expect(newer?.anchor).toBe("2026-10-14T04:42:00.000Z");
   });
 });
 
@@ -198,7 +284,8 @@ describe("billing months weekly parts", () => {
 
   test("reports two parts for a month that contains a regime change and never sums across it", () => {
     const { observations, rows } = regimeChange();
-    const summary = build(observations, rows, "2026-10-18T00:00:00.000Z");
+    // A month start anchor keeps October whole; without it the upgrade would become the anchor.
+    const summary = build(observations, rows, "2026-10-18T00:00:00.000Z", "2026-10-01T00:00:00.000Z");
     const month = summary?.billing?.months[0];
 
     expect(summary?.regimeChanged).toBe(true);
@@ -256,6 +343,8 @@ describe("billing months weekly parts", () => {
 });
 
 describe("billing months review fixes", () => {
+  // The meter reset inside these cycles reads as an upgrade, so a month start anchor keeps calendar months.
+  const MONTH_START = "2026-10-01T00:00:00.000Z";
   const EDGE_RESET = "2026-10-04T19:00:00.000Z";
 
   // A weekly cycle 9/27 19:00 to 10/4 19:00 whose meter is reset ten minutes after the month starts.
@@ -273,6 +362,7 @@ describe("billing months review fixes", () => {
       ],
       [hour("2026-09-29T00:00:00.000Z", 1000, 10), hour("2026-10-02T00:00:00.000Z", 1000, 10)],
       "2026-10-05T00:00:00.000Z",
+      MONTH_START,
     );
   }
   const consumed = (summary: ReturnType<typeof build>, start: string) =>
@@ -307,6 +397,7 @@ describe("billing months review fixes", () => {
       ],
       [hour("2026-09-29T00:00:00.000Z", 1000, 10), hour("2026-10-02T00:00:00.000Z", 1000, 10)],
       "2026-10-05T00:00:00.000Z",
+      MONTH_START,
     );
 
     expect(consumed(summary, "2026-09-01T00:00:00.000Z")).toBe(80);
@@ -338,7 +429,7 @@ describe("billing months review fixes", () => {
       hour("2026-10-15T00:00:00.000Z", 9400, 188),
       ...later.map((reset) => hour(new Date(Date.parse(reset) - 3 * DAY_MS).toISOString(), 6000, 120)),
     ];
-    const summary = build(observations, rows, "2026-11-15T00:00:00.000Z");
+    const summary = build(observations, rows, "2026-11-15T00:00:00.000Z", "2026-10-01T00:00:00.000Z");
     const october = summary?.billing?.months.find((month) => month.start === "2026-10-01T00:00:00.000Z");
 
     expect(summary?.cycles.filter((cycle) => cycle.included).length).toBeGreaterThan(4);

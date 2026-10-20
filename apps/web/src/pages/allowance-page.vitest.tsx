@@ -385,6 +385,17 @@ describe("Billing months", () => {
     expect(within(block).getByLabelText("Billing Date")).toHaveAttribute("type", "datetime-local");
   });
 
+  test("says when the billing date comes from a detected upgrade", async () => {
+    cyclesWith({ anchor: "2026-10-14T04:42:00.000Z", anchorSource: "upgrade", months: [month({ tokens: 10 })] });
+    render(<AllowancePage providers={[]} refreshToken={0} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Subscription Period" }));
+
+    expect(await screen.findByText(
+      `Billing date taken from your upgrade on ${formatDate("2026-10-14T04:42:00.000Z")}; earlier months are approximate`,
+    )).toBeInTheDocument();
+    expect(screen.queryByText("Calendar months; set your billing date")).not.toBeInTheDocument();
+  });
+
   test("saves the billing date as an ISO timestamp and loads the cycles again", async () => {
     cyclesWith({ anchor: "2026-10-05T12:00:00.000Z", anchorSource: "setting", months: [month({ tokens: 10 })] });
     render(<AllowancePage providers={[]} refreshToken={0} />);

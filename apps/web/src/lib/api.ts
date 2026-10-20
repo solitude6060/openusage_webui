@@ -220,7 +220,7 @@ export interface AllowanceBillingMonth {
 
 export interface AllowanceBilling {
   anchor: string | null;
-  anchorSource: "setting" | "calendar";
+  anchorSource: "setting" | "upgrade" | "calendar";
   months: AllowanceBillingMonth[];
 }
 
