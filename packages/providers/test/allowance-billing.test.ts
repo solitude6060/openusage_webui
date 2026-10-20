@@ -150,6 +150,30 @@ describe("billing months anchor from an upgrade", () => {
     expect(billing).toEqual(expect.objectContaining({ anchor: null, anchorSource: "calendar" }));
   });
 
+  test("ignores a reset grant in a cycle whose token history is cut off by the history window", () => {
+    // Only part of the first side's dollars is inside the window, so its dollars per percent look low.
+    const cut = Date.parse("2026-10-11T12:00:00.000Z");
+    const billing = buildAllowanceCycleSummaries(
+      [...observations, observation("2026-10-17T23:00:00.000Z", 2, "2026-10-24T19:00:00.000Z")],
+      [hour("2026-10-12T00:00:00.000Z", 2600, 26), hour("2026-10-15T00:00:00.000Z", 9400, 94)],
+      new Set(),
+      new Date(NOW),
+      { observationStartMs: cut, tokenStartMs: cut },
+    )[0]?.billing;
+
+    expect(billing).toEqual(expect.objectContaining({ anchor: null, anchorSource: "calendar" }));
+  });
+
+  test("finds an upgrade inside the open cycle before that cycle ends", () => {
+    const billing = build(
+      observations.filter((item) => item.observedAt <= "2026-10-16T00:00:00.000Z"),
+      [hour("2026-10-11T00:00:00.000Z", 9600, 96), hour("2026-10-15T00:00:00.000Z", 4900, 98)],
+      "2026-10-16T01:00:00.000Z",
+    )?.billing;
+
+    expect(billing).toEqual(expect.objectContaining({ anchor: "2026-10-14T04:42:00.000Z", anchorSource: "upgrade" }));
+  });
+
   test("lets a billing date setting override the upgrade", () => {
     const billing = build(observations, rows(1, 2), NOW, "2026-10-05T12:00:00.000Z")?.billing;
 
