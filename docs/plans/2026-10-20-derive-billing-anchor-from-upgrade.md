@@ -27,7 +27,7 @@ The open cycle so far is scanned too, so an upgrade applies before its weekly cy
 ## Changes
 
 - `packages/providers/src/allowance-cycles.ts`: `upgradeStart` (rising regime boundary), passed to billing.
-- `packages/providers/src/allowance-billing.ts`: `derivedAnchor` input, `anchorSource: "upgrade"`.
+- `packages/providers/src/allowance-billing.ts`: `upgradeAt` input, `anchorSource: "upgrade"`.
 - `apps/server/src/quota-history.ts`: read and save `upgradeBillingAnchor`.
 - `apps/web/src/lib/api.ts`, `apps/web/src/pages/allowance-billing.tsx`: the new source and its help line.
 - Docs: `docs/USER_GUIDE_WEBUI.zh-TW.md`.
