@@ -20,6 +20,8 @@ Billing months on the Allowance page fall back to UTC calendar months until the 
 
 The detected time is the first reading after the upgrade, so it is late by at most one poll interval.
 
+The open cycle so far is scanned too, so an upgrade applies before its weekly cycle ends. A cycle that starts before the history window is skipped: only part of a side's dollars is inside the window, so its dollars per percent can look like an upgrade.
+
 `regimeStart` only sees cycles inside the 120-day cycle history, so the server saves the derived anchor as the provider setting `upgradeBillingAnchor` and uses the newer of the saved and the live value. Months before the anchor repeat it backward and may not match the earlier real periods; the page says so.
 
 ## Changes
@@ -37,6 +39,8 @@ The detected time is the first reading after the upgrade, so it is late by at mo
 - A reset grant gives calendar months.
 - A manual setting overrides the derived anchor.
 - A saved anchor is used after the boundary leaves the history window.
+- A reset grant in a cycle cut by the history window gives calendar months.
+- An upgrade inside the open cycle applies before the cycle ends.
 
 ## Not In Scope
 

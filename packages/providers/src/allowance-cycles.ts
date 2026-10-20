@@ -115,6 +115,8 @@ export function buildAllowanceCycleSummaries(
   savedUpgradeAnchors?: ReadonlyMap<string, string>,
 ): AllowanceCycleSummary[] {
   const nowMs = now.getTime();
+  // The same test as a history-truncated cycle, which another exclusion can outrank.
+  const historyEdge = history ? Math.max(history.observationStartMs, history.tokenStartMs) : -Infinity;
   const windows = aliasCodexSevenDaySessions(observations);
   const summaries: AllowanceCycleSummary[] = [];
   for (const window of chooseWindows(windows)) {
@@ -131,11 +133,17 @@ export function buildAllowanceCycleSummaries(
     const { baseline, regimeChanged } = baselineFrom(cycles);
     const completed = bounded.filter((cycle) => cycle.end <= nowMs);
     const current = open ? currentCycle(open, rows, nowMs, baseline, completed) : null;
+    // The open cycle so far counts too, so an upgrade applies before its cycle ends.
+    // A cycle cut by the history window holds only part of a side's dollars, which can look like an upgrade.
+    const upgradeSample = [
+      ...(open ? [measureCycle({ ...open, end: nowMs }, rows, sharedProviderIds.has(window.providerId), history)] : []),
+      ...cycles,
+    ].filter((cycle) => Date.parse(cycle.start) >= historyEdge);
     // A Codex account that shares its session log would repeat the other account's tokens.
     const billing = window.windowKey === "weekly" && !sharedProviderIds.has(window.providerId)
       ? buildBilling({
         anchor: billingAnchors?.get(window.providerId),
-        upgradeAt: latestOf(upgradeStart(cycles), savedUpgradeAnchors?.get(window.providerId)),
+        upgradeAt: latestOf(upgradeStart(upgradeSample), savedUpgradeAnchors?.get(window.providerId)),
         nowMs,
         historyStartMs: history?.observationStartMs,
         rows,
