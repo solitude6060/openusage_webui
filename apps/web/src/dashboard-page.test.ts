@@ -163,21 +163,26 @@ describe("Dashboard line grouping", () => {
     expect(result.detailLines.map((line) => line.label)).toEqual(["Last 7 Days"]);
   });
 
-  test("keeps Antigravity Account badge in the card summary", () => {
+  test("keeps Antigravity Account badge and pool windows in the card summary", () => {
     const result = splitDashboardLines([
       { type: "badge", label: "Account", text: "user@example.com" },
-      { type: "progress", label: "Gemini Pro", used: 10, limit: 100, format: { kind: "percent" } },
-      { type: "progress", label: "Gemini Flash", used: 20, limit: 100, format: { kind: "percent" } },
+      { type: "progress", label: "Session", used: 10, limit: 100, format: { kind: "percent" } },
+      { type: "progress", label: "Weekly", used: 20, limit: 100, format: { kind: "percent" } },
+      { type: "progress", label: "Argon Weekly", used: 25, limit: 100, format: { kind: "percent" } },
       { type: "progress", label: "Claude", used: 30, limit: 100, format: { kind: "percent" } },
+      { type: "progress", label: "Claude Weekly", used: 40, limit: 100, format: { kind: "percent" } },
       { type: "progress", label: "Other Model", used: 5, limit: 100, format: { kind: "percent" } },
     ]);
 
-    expect(result.summaryLines.map((line) => line.label)).toEqual(["Account", "Gemini Pro"]);
-    expect(result.detailLines.map((line) => line.label)).toEqual([
-      "Gemini Flash",
+    expect(result.summaryLines.map((line) => line.label)).toEqual([
+      "Account",
+      "Session",
+      "Weekly",
+      "Argon Weekly",
       "Claude",
-      "Other Model",
+      "Claude Weekly",
     ]);
+    expect(result.detailLines.map((line) => line.label)).toEqual(["Other Model"]);
   });
 
   test("promotes first progress line when summary is empty but details have progress", () => {

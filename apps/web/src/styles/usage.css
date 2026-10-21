@@ -326,3 +326,75 @@
     overflow-wrap: anywhere;
   }
 }
+
+/* One provider with several accounts: one card, one column per account. */
+.dashboard-provider-grid > .account-group-card {
+  grid-column: span 2;
+}
+
+@media (max-width: 640px) {
+  .dashboard-provider-grid > .account-group-card {
+    grid-column: auto;
+  }
+}
+
+.account-group-card .provider-title-row {
+  align-items: center;
+}
+
+.account-group-card .provider-title-row h3 {
+  margin-right: auto;
+}
+
+.account-count {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.account-group-note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.account-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.account-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.account-column .usage-lines {
+  margin-top: 10px;
+}
+
+.account-column-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.account-column-title strong {
+  overflow: hidden;
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-column .usage-detail-lines {
+  margin-top: 10px;
+  background: var(--paper);
+}
