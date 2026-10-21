@@ -25,3 +25,17 @@ The orchestrator is Claude Opus 5.5; the three reviewers are xAI, Google and Ope
 | R1-6 | Summary 401/403 after a successful `loadCodeAssist` is treated as a dead token: refresh, legacy calls skipped. | Grok | HIGH | Yes | Fix | Token accepted by `loadCodeAssist`; auth failure must come from `loadCodeAssist` or the legacy calls. |
 | R1-7 | Account columns follow snapshot recency, so they reorder after a refresh. | Grok | MEDIUM | Yes (`listLatestUsageSnapshots` orders by `started_at DESC`) | Fix | Stable order by account id. |
 | R1-8 | Unpinned home: a parsed per-model body with no lines now falls through to the shared keychain. | Grok | LOW | Yes | Fix | Restores the earlier behavior (login error, no keychain). |
+
+## Round 2
+
+- Remediation diff `ca511375..80bb311a`. Card: `review-card-r2.md`.
+
+| Lane | Client and model | Verdict | Raw output |
+|---|---|---|---|
+| 1 | Grok Build `grok-4.7`, effort xhigh | APPROVE | `grok-r2-verdict.md` |
+| 2 | AGY `gemini-3.8-flash-high`, effort high | APPROVE | `agy-r2-verdict.md` |
+| 3 | Codex `gpt-6.1-sol`, effort high | APPROVE | `codex-r2-verdict.md`, `codex-r2.jsonl` |
+
+All lanes report R1-1 to R1-8 resolved and no new defects. Codex ran the new regression tests in memory against both revisions: 10 fail before the fixes and pass after; "appends new cards by name" checks existing behavior and passes on both. Grok and Codex both judged the narrower R1-5 rule correct.
+
+This record is a review-record-only commit and keeps the approval bound to `80bb311a`.
