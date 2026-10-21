@@ -2771,4 +2771,47 @@ describe("antigravity quota summary", () => {
 
     expect(lines.map((l) => [l.label, l.used])).toEqual([["Claude", 20]])
   })
+
+  it("uses per-model quota without refreshing when only the summary is rejected", async () => {
+    const ctx = pinnedCtx()
+    let refreshCalls = 0
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("oauth2.googleapis.com")) {
+        refreshCalls += 1
+        return { status: 200, bodyText: JSON.stringify({ access_token: "ya29.new", expires_in: 3600 }) }
+      }
+      if (url.includes("loadCodeAssist")) return { status: 200, bodyText: JSON.stringify(makeAgyLoadResponse()) }
+      if (url.includes("retrieveUserQuotaSummary")) return { status: 403, bodyText: "" }
+      if (url.includes("fetchAvailableModels")) return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      return { status: 404, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const labels = plugin.probe(ctx).lines.map((l) => l.label)
+
+    expect(labels).toEqual(["Session", "Claude"])
+    expect(refreshCalls).toBe(0)
+  })
+
+  it("does not fall back to the keychain when per-model quota has no lines", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    setupSqliteMock(ctx, makeOAuthSentinelB64(ctx, { accessToken: "ya29.db", expirySeconds: futureExpiry }))
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.keychain.readGenericPassword.mockImplementation(() =>
+      "go-keyring-base64:" + ctx.base64.encode(JSON.stringify({ tokens: { access_token: "keychain-token" } })))
+    const auths = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      auths.push(opts.headers && opts.headers.Authorization)
+      if (url.includes("fetchAvailableModels")) return { status: 200, bodyText: JSON.stringify({ models: {} }) }
+      return { status: 404, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+
+    expect(() => plugin.probe(ctx)).toThrow(LOGIN_MESSAGE)
+    expect(auths).not.toContain("Bearer keychain-token")
+  })
 })

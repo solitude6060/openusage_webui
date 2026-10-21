@@ -305,3 +305,11 @@ describe("Dashboard same quota note", () => {
     ])).toBe(false);
   });
 });
+
+describe("Dashboard account column order", () => {
+  test("orders a group's accounts by id, not by which snapshot is newer", () => {
+    const groups = groupProviderCards([member("antigravity:acct2", []), member("antigravity:acct1", [])]);
+
+    expect(groups[0].members.map((item) => item.providerId)).toEqual(["antigravity:acct1", "antigravity:acct2"]);
+  });
+});
