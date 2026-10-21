@@ -2679,4 +2679,96 @@ describe("antigravity quota summary", () => {
 
     expect(lines.map((l) => [l.label, l.used])).toEqual([["Session", 40], ["Claude", 10]])
   })
+
+  it("reads the local summary even when both per-model calls fail", async () => {
+    const ctx = makeCtx()
+    ctx.host.ls.discover.mockReturnValue(makeDiscovery())
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("GetUnleashData")) return { status: 200, bodyText: "{}" }
+      if (url.includes("RetrieveUserQuotaSummary")) {
+        return { status: 200, bodyText: JSON.stringify({ response: { groups: sharedGroups() } }) }
+      }
+      return { status: 404, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.map((l) => l.label)).toEqual(["Session", "Weekly", "Claude", "Claude Weekly"])
+  })
+
+  it("keeps an empty local summary instead of falling back", async () => {
+    const ctx = makeCtx()
+    ctx.host.ls.discover.mockReturnValue(makeDiscovery())
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("GetUnleashData")) return { status: 200, bodyText: "{}" }
+      if (url.includes("RetrieveUserQuotaSummary")) return { status: 200, bodyText: JSON.stringify({ response: { groups: [] } }) }
+      if (url.includes("GetUserStatus")) {
+        return { status: 200, bodyText: JSON.stringify(makeUserStatusResponse({ userTier: { name: "Google AI Pro" } })) }
+      }
+      return { status: 404, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Google AI Pro")
+    expect(result.lines).toEqual([])
+  })
+
+  it("skips Argon placeholders in the Cloud Code per-model fallback", async () => {
+    const ctx = pinnedCtx()
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("loadCodeAssist")) return { status: 200, bodyText: JSON.stringify(makeAgyLoadResponse()) }
+      if (url.includes("fetchAvailableModels")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            models: {
+              "claude-opus": { displayName: "Claude Opus 5.5", model: "M402", quotaInfo: { remainingFraction: 0.8 } },
+              "argon-x": { displayName: "Preview Model", model: "MODEL_PLACEHOLDER_M421", quotaInfo: { remainingFraction: 0.1 } },
+            },
+          }),
+        }
+      }
+      return { status: 404, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const lines = plugin.probe(ctx).lines
+
+    expect(lines.map((l) => [l.label, l.used])).toEqual([["Claude", 20]])
+  })
+
+  it("skips Argon buckets in the agy keychain per-model fallback", async () => {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.keychain.readGenericPassword.mockImplementation(() =>
+      "go-keyring-base64:" + ctx.base64.encode(JSON.stringify({ tokens: { access_token: "agy-token" } })))
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("loadCodeAssist")) return { status: 200, bodyText: JSON.stringify(makeAgyLoadResponse()) }
+      if (url.endsWith(":retrieveUserQuota")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            buckets: [
+              { modelId: "claude-opus-5-5-high", remainingFraction: 0.8 },
+              { modelId: "MODEL_PLACEHOLDER_M421", remainingFraction: 0.1 },
+            ],
+          }),
+        }
+      }
+      return { status: 404, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const lines = plugin.probe(ctx).lines
+
+    expect(lines.map((l) => [l.label, l.used])).toEqual([["Claude", 20]])
+  })
 })

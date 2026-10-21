@@ -4,6 +4,7 @@ import {
   accountHeading,
   dashboardRecordsForProviders,
   groupProviderCards,
+  orderCardGroups,
   sameQuotaAcrossAccounts,
   splitDashboardLines,
 } from "./pages/dashboard-page";
@@ -264,6 +265,43 @@ describe("Dashboard account groups", () => {
     expect(sameQuotaAcrossAccounts([
       member("antigravity:a", [weekly(0, "2026-10-28T00:00:01Z")]),
       member("antigravity:b", [weekly(0, "2026-10-28T00:00:03Z")]),
+    ])).toBe(false);
+  });
+});
+
+describe("Dashboard card order", () => {
+  test("keeps a saved position when accounts become one group card", () => {
+    const groups = groupProviderCards([
+      member("codex", []),
+      member("antigravity:acct1", []),
+      member("antigravity:acct2", []),
+    ]);
+
+    expect(orderCardGroups(["antigravity:acct1", "codex", "antigravity:acct2"], groups)).toEqual([
+      "antigravity",
+      "codex",
+    ]);
+  });
+
+  test("keeps a group's position when it shrinks to one account", () => {
+    const groups = groupProviderCards([member("codex", []), member("antigravity:acct1", [])]);
+
+    expect(orderCardGroups(["antigravity", "codex"], groups)).toEqual(["antigravity:acct1", "codex"]);
+  });
+
+  test("appends new cards by name", () => {
+    const groups = groupProviderCards([member("grok", []), member("cursor", [])]);
+
+    expect(orderCardGroups([], groups)).toEqual(["cursor", "grok"]);
+  });
+});
+
+describe("Dashboard same quota note", () => {
+  test("does not flag accounts whose used windows reset at different times", () => {
+    const session = (resetsAt: string) => ({ type: "progress", label: "Session", used: 10, limit: 100, resetsAt });
+    expect(sameQuotaAcrossAccounts([
+      member("codex:a", [session("2026-10-21T05:00:00Z"), weekly(6, "2026-10-24T00:00:00Z")]),
+      member("codex:b", [session("2026-10-21T05:00:00Z"), weekly(6, "2026-10-26T00:00:00Z")]),
     ])).toBe(false);
   });
 });
