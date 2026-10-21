@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -15,6 +15,8 @@ export interface AccountHomeCandidate {
   homePath: string;
   label: string;
   hasAuth: boolean;
+  /** Signed-in account, when the home records it (Antigravity only). */
+  email?: string;
 }
 
 function expandHome(path: string, homeDir = homedir()): string {
@@ -108,6 +110,31 @@ function antigravityStateHasOAuth(configDir: string): boolean {
       }`,
     );
     return false;
+  }
+}
+
+function antigravityCliEmail(homePath: string): string | undefined {
+  try {
+    const parsed = JSON.parse(readFileSync(antigravityCliOauthPath(homePath), "utf8")) as { id_token?: unknown };
+    if (typeof parsed.id_token !== "string") return undefined;
+    const payload = JSON.parse(Buffer.from(parsed.id_token.split(".")[1] ?? "", "base64url").toString("utf8"));
+    return typeof payload?.email === "string" && payload.email ? payload.email : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function antigravityIdeEmail(configDir: string): string | undefined {
+  try {
+    const rows = JSON.parse(querySqlite(
+      cursorStateDb(configDir),
+      "SELECT value FROM ItemTable WHERE key = 'antigravityAuthStatus' LIMIT 1",
+    )) as Array<{ value?: unknown }>;
+    const value = rows[0]?.value;
+    const email = typeof value === "string" ? (JSON.parse(value) as { email?: unknown }).email : undefined;
+    return typeof email === "string" && email ? email : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -220,11 +247,15 @@ function detectAntigravityHomes(options: {
       const hasAuth = isCli
         ? existsSync(antigravityCliOauthPath(candidate.homePath))
         : antigravityStateHasOAuth(candidate.homePath);
+      const email = !hasAuth
+        ? undefined
+        : isCli ? antigravityCliEmail(candidate.homePath) : antigravityIdeEmail(candidate.homePath);
       return {
         providerId: "antigravity" as const,
         homePath: candidate.homePath,
         label: antigravityDetectLabel(candidate.label),
         hasAuth,
+        ...(email ? { email } : {}),
       };
     })
     .filter((candidate) => candidate.hasAuth);
