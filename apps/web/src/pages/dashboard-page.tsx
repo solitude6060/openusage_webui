@@ -28,6 +28,9 @@ const SUMMARY_PROGRESS_LABELS = new Set([
   "Usage",
   "Fable",
   "Fable Weekly",
+  "Argon Weekly",
+  "Claude",
+  "Claude Weekly",
   "Credits",
   "Total usage",
   "Auto usage",
@@ -45,7 +48,7 @@ type ProviderData = {
   status?: ProviderStatus;
 };
 
-function loadCardOrder(): ProviderId[] {
+function loadCardOrder(): string[] {
   try {
     const raw = localStorage.getItem(CARD_ORDER_KEY);
     if (!raw) return [];
@@ -56,7 +59,7 @@ function loadCardOrder(): ProviderId[] {
   }
 }
 
-function saveCardOrder(order: ProviderId[]): void {
+function saveCardOrder(order: string[]): void {
   try {
     localStorage.setItem(CARD_ORDER_KEY, JSON.stringify(order));
   } catch { /* quota exceeded — ignore */ }
@@ -119,6 +122,158 @@ export function splitDashboardLines(lines: DashboardLine[]): {
   }
 
   return { summaryLines, detailLines };
+}
+
+export type ProviderCardGroup = { id: string; members: ProviderData[] };
+
+function baseProviderId(providerId: ProviderId): string {
+  return providerId.split(":")[0];
+}
+
+// Accounts of one provider share a card; a provider with one account keeps its own id.
+export function groupProviderCards(items: ProviderData[]): ProviderCardGroup[] {
+  const byBase = new Map<string, ProviderData[]>();
+  for (const item of items) {
+    const base = baseProviderId(item.providerId);
+    byBase.set(base, [...(byBase.get(base) ?? []), item]);
+  }
+  // Snapshots arrive newest first, so columns are ordered by account id to stay put across refreshes.
+  return [...byBase.entries()].map(([base, members]) => ({
+    id: members.length > 1 ? base : members[0].providerId,
+    members: [...members].sort((a, b) => a.providerId.localeCompare(b.providerId)),
+  }));
+}
+
+function isAccountBadge(line: DashboardLine): boolean {
+  return line.type === "badge" && lineLabel(line) === "Account";
+}
+
+export function accountHeading({ providerId, lines, status }: ProviderData): string {
+  const badge = lines.find(isAccountBadge);
+  if (badge && typeof badge.text === "string" && badge.text.trim()) return badge.text.trim();
+  const name = status?.name?.trim() || providerId;
+  return name.replace(/^[^·]+·\s*/, "");
+}
+
+function progressKey(lines: DashboardLine[]): string {
+  return JSON.stringify(
+    lines
+      .filter((line) => line.type === "progress")
+      .map((line) => [lineLabel(line), line.used, line.limit])
+      .sort(),
+  );
+}
+
+// Unused windows read 0% everywhere and roll their reset forward, so only windows with use are
+// compared, and each of them must reset at the same time on every account.
+export function sameQuotaAcrossAccounts(members: ProviderData[]): boolean {
+  if (members.length < 2) return false;
+  const [first, ...rest] = members;
+  const key = progressKey(first.lines);
+  if (key === "[]" || rest.some((item) => progressKey(item.lines) !== key)) return false;
+  const used = first.lines.filter((line) => line.type === "progress" && Number(line.used) > 0);
+  return used.length > 0 && used.every((line) =>
+    typeof line.resetsAt === "string"
+    && rest.every((item) => item.lines.some((other) =>
+      other.type === "progress" && lineLabel(other) === lineLabel(line) && other.resetsAt === line.resetsAt)));
+}
+
+// A saved id may name an account of a group card, or a group that is now one account.
+export function orderCardGroups(saved: string[], groups: ProviderCardGroup[]): string[] {
+  const groupOf = new Map<string, string>();
+  for (const group of groups) {
+    groupOf.set(group.id, group.id);
+    groupOf.set(baseProviderId(group.members[0].providerId), group.id);
+    for (const item of group.members) groupOf.set(item.providerId, group.id);
+  }
+  const ordered: string[] = [];
+  for (const id of saved) {
+    const groupId = groupOf.get(id) ?? groupOf.get(baseProviderId(id));
+    if (groupId && !ordered.includes(groupId)) ordered.push(groupId);
+  }
+  const missing = groups
+    .map((group) => group.id)
+    .filter((id) => !ordered.includes(id))
+    .sort((a, b) => providerLabel(a).localeCompare(providerLabel(b)));
+  return [...ordered, ...missing];
+}
+
+function latestRefresh(members: ProviderData[]): string | undefined {
+  return members
+    .map((item) => item.status?.lastRefreshAt)
+    .filter((value): value is string => typeof value === "string")
+    .sort()
+    .at(-1);
+}
+
+function AccountColumn({ member, showPlan }: { member: ProviderData; showPlan: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const { summaryLines, detailLines } = useMemo(
+    () => splitDashboardLines(member.lines.filter((line) => !isAccountBadge(line))),
+    [member.lines],
+  );
+  const detailId = `${member.providerId}-details`;
+  const heading = accountHeading(member);
+  return (
+    <section className="account-column" aria-label={heading}>
+      <div className="account-column-title">
+        <strong title={heading}>{heading}</strong>
+        {showPlan && member.plan ? <span className="value-chip">{member.plan}</span> : null}
+      </div>
+      <div className="usage-lines">
+        {summaryLines.map((line, i) => (
+          <UsageLine key={`${String(line.label)}-${i}`} line={line} />
+        ))}
+      </div>
+      {detailLines.length > 0 ? (
+        <>
+          <button
+            type="button"
+            className="details-toggle"
+            aria-expanded={expanded}
+            aria-controls={detailId}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              setExpanded((value) => !value);
+            }}
+          >
+            {expanded ? "Hide Details" : `Show Details (${detailLines.length})`}
+          </button>
+          <div id={detailId} className="usage-detail-lines" hidden={!expanded}>
+            {detailLines.map((line, i) => (
+              <UsageLine key={`${String(line.label)}-${i}`} line={line} />
+            ))}
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function AccountGroupCard({ group }: { group: ProviderCardGroup }) {
+  const { members } = group;
+  const plans = [...new Set(members.map((item) => item.plan).filter(Boolean))];
+  const sharedPlan = plans.length === 1 && members.every((item) => item.plan) ? plans[0] : undefined;
+  const updated = latestRefresh(members);
+  return (
+    <SortableCard id={group.id} className="account-group-card">
+      <div className="provider-title-row">
+        <h3>{providerLabel(baseProviderId(members[0].providerId))}</h3>
+        <span className="account-count">{members.length} Accounts</span>
+        {sharedPlan ? <span className="value-chip">{sharedPlan}</span> : null}
+      </div>
+      {sameQuotaAcrossAccounts(members) ? (
+        <p className="account-group-note">All accounts report the same usage and reset times.</p>
+      ) : null}
+      <div className="account-columns">
+        {members.map((member) => (
+          <AccountColumn key={member.providerId} member={member} showPlan={!sharedPlan} />
+        ))}
+      </div>
+      {updated ? <div className="usage-card-footer">Updated {formatDate(updated)}</div> : null}
+    </SortableCard>
+  );
 }
 
 function ProviderUsageCard({ providerId, plan, lines, status }: ProviderData) {
@@ -201,28 +356,17 @@ export function DashboardPage({
     return map;
   }, [latestByProvider, providerMap]);
 
-  const [cardOrder, setCardOrder] = useState<ProviderId[]>(() => {
-    const saved = loadCardOrder();
-    const activeIds = [...providerDataMap.keys()];
-    if (saved.length > 0) {
-      const activeSet = new Set(activeIds);
-      const ordered = saved.filter((id) => activeSet.has(id));
-      const missing = activeIds.filter((id) => !saved.includes(id));
-      return [...ordered, ...missing.sort((a, b) => providerLabel(a).localeCompare(providerLabel(b)))];
-    }
-    return activeIds.sort((a, b) => providerLabel(a).localeCompare(providerLabel(b)));
-  });
+  const cardGroups = useMemo(() => groupProviderCards([...providerDataMap.values()]), [providerDataMap]);
+  const groupMap = useMemo(() => new Map(cardGroups.map((group) => [group.id, group])), [cardGroups]);
+
+  const [cardOrder, setCardOrder] = useState<string[]>(() => orderCardGroups(loadCardOrder(), cardGroups));
 
   useEffect(() => {
-    const activeIds = [...providerDataMap.keys()];
-    const activeSet = new Set(activeIds);
     setCardOrder((prev) => {
-      const ordered = prev.filter((id) => activeSet.has(id));
-      const missing = activeIds.filter((id) => !prev.includes(id));
-      if (missing.length === 0 && ordered.length === prev.length) return prev;
-      return [...ordered, ...missing.sort((a, b) => providerLabel(a).localeCompare(providerLabel(b)))];
+      const next = orderCardGroups(prev, cardGroups);
+      return next.length === prev.length && next.every((id, i) => id === prev[i]) ? prev : next;
     });
-  }, [providerDataMap]);
+  }, [cardGroups]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -232,8 +376,8 @@ export function DashboardPage({
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     setCardOrder((prev) => {
-      const oldIndex = prev.indexOf(active.id as ProviderId);
-      const newIndex = prev.indexOf(over.id as ProviderId);
+      const oldIndex = prev.indexOf(String(active.id));
+      const newIndex = prev.indexOf(String(over.id));
       if (oldIndex < 0 || newIndex < 0) return prev;
       const next = arrayMove(prev, oldIndex, newIndex);
       saveCardOrder(next);
@@ -241,21 +385,25 @@ export function DashboardPage({
     });
   }, []);
 
-  const sortedProviders = useMemo(() => {
+  const sortedGroups = useMemo(() => {
     return cardOrder
-      .map((id) => providerDataMap.get(id))
-      .filter(Boolean) as ProviderData[];
-  }, [cardOrder, providerDataMap]);
+      .map((id) => groupMap.get(id))
+      .filter(Boolean) as ProviderCardGroup[];
+  }, [cardOrder, groupMap]);
 
   return (
     <section className="page-grid">
-      {sortedProviders.length > 0 ? (
+      {sortedGroups.length > 0 ? (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={cardOrder} strategy={rectSortingStrategy}>
             <div className="provider-grid dashboard-provider-grid">
-              {sortedProviders.map((provider) => (
-                <ProviderUsageCard key={provider.providerId} {...provider} />
-              ))}
+              {sortedGroups.map((group) =>
+                group.members.length > 1 ? (
+                  <AccountGroupCard key={group.id} group={group} />
+                ) : (
+                  <ProviderUsageCard key={group.id} {...group.members[0]} />
+                ),
+              )}
             </div>
           </SortableContext>
         </DndContext>

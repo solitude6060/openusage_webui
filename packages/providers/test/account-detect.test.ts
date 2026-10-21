@@ -124,6 +124,33 @@ describe("detectProviderAccounts", () => {
     expect(byPath[acct2]).toBe("Antigravity · acct2");
   });
 
+  test("reports the signed-in email of each Antigravity home", () => {
+    const home = mkdtempSync(join(tmpdir(), "openusage-account-detect-agy-who-"));
+    tempDirs.push(home);
+    writeCliOauth(home, { id_token: idTokenWithEmail("default@example.com") });
+    const acct1 = join(home, ".agy-homes", "acct1");
+    writeCliOauth(acct1);
+
+    const agyIde = join(home, ".config", "Antigravity");
+    const dbDir = join(agyIde, "User", "globalStorage");
+    mkdirSync(dbDir, { recursive: true });
+    const db = new Database(join(dbDir, "state.vscdb"));
+    db.exec("CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)");
+    db.query("INSERT INTO ItemTable (key, value) VALUES (?, ?)").run("antigravityUnifiedStateSync.oauthToken", "present");
+    db.query("INSERT INTO ItemTable (key, value) VALUES (?, ?)").run(
+      "antigravityAuthStatus",
+      JSON.stringify({ name: "IDE User", email: "ide@example.com", apiKey: "secret" }),
+    );
+    db.close();
+
+    const detected = detectProviderAccounts("antigravity", { homeDir: home, env: {} });
+    const byPath = Object.fromEntries(detected.map((item) => [item.homePath, item.email]));
+
+    expect(byPath[home]).toBe("default@example.com");
+    expect(byPath[agyIde]).toBe("ide@example.com");
+    expect(byPath[acct1]).toBeUndefined();
+  });
+
   test("rejects an Antigravity IDE home whose state database has no oauth key", () => {
     const home = mkdtempSync(join(tmpdir(), "openusage-account-detect-agy-ide-"));
     tempDirs.push(home);

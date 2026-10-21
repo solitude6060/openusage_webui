@@ -15,6 +15,10 @@
   var LOAD_CODE_ASSIST_PATH = "/v1internal:loadCodeAssist"
   var FETCH_MODELS_PATH = "/v1internal:fetchAvailableModels"
   var RETRIEVE_QUOTA_PATH = "/v1internal:retrieveUserQuota"
+  var QUOTA_SUMMARY_PATH = "/v1internal:retrieveUserQuotaSummary"
+  // Google drops paidTier for callers that do not look like the Antigravity client.
+  var CLIENT_USER_AGENT = "antigravity/2.24.0 (aidev_client; os_type=darwin; arch=amd64)"
+  var LOAD_CODE_ASSIST_BODY = { metadata: { ideType: "ANTIGRAVITY", platform: "PLATFORM_UNSPECIFIED", pluginType: "GEMINI" } }
   var LOGIN_MESSAGE = "Start Antigravity or run `agy` and try again."
   var GOOGLE_OAUTH_URL = "https://oauth2.googleapis.com/token"
   var GOOGLE_CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
@@ -460,32 +464,33 @@
 
   // --- Line builders ---
 
+  var SESSION_LABEL = "Session"
+  var CLAUDE_LABEL = "Claude"
+  var QUOTA_PERIOD_MS = 5 * 60 * 60 * 1000 // 5 hours
+  var WEEK_MS = 7 * 24 * 60 * 60 * 1000
+
   function normalizeLabel(label) {
     // "Gemini 3 Pro (High)" -> "Gemini 3 Pro"
     return label.replace(/\s*\([^)]*\)\s*$/, "").trim()
   }
 
   function poolLabel(normalizedLabel) {
-    var lower = normalizedLabel.toLowerCase()
-    if (lower.indexOf("gemini") !== -1 && lower.indexOf("pro") !== -1) return "Gemini Pro"
-    if (lower.indexOf("gemini") !== -1 && lower.indexOf("flash") !== -1) return "Gemini Flash"
-    // All non-Gemini models (Claude, GPT-OSS, etc.) share a single quota pool
-    return "Claude"
+    // Gemini Pro and Flash share one pool; Claude, GPT-OSS and any other model share the other.
+    return normalizedLabel.toLowerCase().indexOf("gemini") !== -1 ? SESSION_LABEL : CLAUDE_LABEL
   }
 
-  function modelSortKey(label) {
-    var lower = label.toLowerCase()
-    // Gemini Pro variants first, then other Gemini, then Claude Opus, then other Claude, then rest
-    if (lower.indexOf("gemini") !== -1 && lower.indexOf("pro") !== -1) return "0a_" + label
-    if (lower.indexOf("gemini") !== -1) return "0b_" + label
-    if (lower.indexOf("claude") !== -1 && lower.indexOf("opus") !== -1) return "1a_" + label
-    if (lower.indexOf("claude") !== -1) return "1b_" + label
-    return "2_" + label
+  // Legacy per-model quota does not say which pool or period Argon draws from.
+  function isArgonModel(label, modelId) {
+    var values = [label, modelId || ""]
+    for (var i = 0; i < values.length; i++) {
+      if (values[i] === "MODEL_PLACEHOLDER_M421") return true
+      var normalized = String(values[i]).toLowerCase().replace(/ /g, "-")
+      if (normalized === "gemini-4-argon" || normalized.indexOf("gemini-4-argon-") === 0) return true
+    }
+    return false
   }
 
-  var QUOTA_PERIOD_MS = 5 * 60 * 60 * 1000 // 5 hours
-
-  function modelLine(ctx, label, remainingFraction, resetTime) {
+  function modelLine(ctx, label, remainingFraction, resetTime, periodMs) {
     var clamped = Math.max(0, Math.min(1, remainingFraction))
     var used = Math.round((1 - clamped) * 100)
     return ctx.line.progress({
@@ -494,7 +499,7 @@
       limit: 100,
       format: { kind: "percent" },
       resetsAt: resetTime || undefined,
-      periodDurationMs: QUOTA_PERIOD_MS,
+      periodDurationMs: periodMs || QUOTA_PERIOD_MS,
     })
   }
 
@@ -504,73 +509,195 @@
       var c = configs[i]
       var label = (typeof c.label === "string") ? c.label.trim() : ""
       if (!label) continue
+      var modelId = (c.modelOrAlias && c.modelOrAlias.model) || c.modelId
+      if (isArgonModel(label, modelId)) {
+        ctx.host.log.warn("skipping legacy Argon quota: its pool and period are unknown")
+        continue
+      }
       var qi = c.quotaInfo
       var frac = (qi && typeof qi.remainingFraction === "number") ? qi.remainingFraction : 0
       var rtime = (qi && qi.resetTime) || undefined
       var pool = poolLabel(normalizeLabel(label))
       if (!deduped[pool] || frac < deduped[pool].remainingFraction) {
-        deduped[pool] = {
-          label: pool,
-          remainingFraction: frac,
-          resetTime: rtime,
-        }
+        deduped[pool] = { remainingFraction: frac, resetTime: rtime }
       }
     }
 
-    var models = []
-    var keys = Object.keys(deduped)
-    for (var i = 0; i < keys.length; i++) {
-      var m = deduped[keys[i]]
-      m.sortKey = modelSortKey(m.label)
-      models.push(m)
+    var lines = []
+    var order = [SESSION_LABEL, CLAUDE_LABEL]
+    for (var j = 0; j < order.length; j++) {
+      var m = deduped[order[j]]
+      if (m) lines.push(modelLine(ctx, order[j], m.remainingFraction, m.resetTime))
     }
+    return lines
+  }
 
-    models.sort(function (a, b) {
-      return a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0
-    })
+  // --- Quota summary (RetrieveUserQuotaSummary) ---
+
+  // Shared-pool buckets match exact ids only, so a new bucket never joins a pool by accident.
+  var SUMMARY_BUCKETS = [
+    { id: "gemini-5h", label: SESSION_LABEL, periodMs: QUOTA_PERIOD_MS },
+    { id: "gemini-weekly", label: "Weekly", periodMs: WEEK_MS },
+    { id: "3p-5h", label: CLAUDE_LABEL, periodMs: QUOTA_PERIOD_MS },
+    { id: "3p-weekly", label: "Claude Weekly", periodMs: WEEK_MS },
+  ]
+  var ARGON_GROUP_NAME = "Gemini 4 Argon"
+  var ARGON_WEEKLY_LABEL = "Argon Weekly"
+
+  function summaryBucketSpec(id) {
+    for (var i = 0; i < SUMMARY_BUCKETS.length; i++) {
+      if (SUMMARY_BUCKETS[i].id === id) return SUMMARY_BUCKETS[i]
+    }
+    return null
+  }
+
+  function usableFraction(bucket) {
+    var f = bucket && bucket.remainingFraction
+    return typeof f === "number" && Number.isFinite(f) ? f : null
+  }
+
+  // Cloud Code returns { groups }; the local server wraps it as { response: { groups } }.
+  function summaryGroups(body) {
+    if (!body || typeof body !== "object") return null
+    if (body.response && Array.isArray(body.response.groups)) return body.response.groups
+    if (Array.isArray(body.groups)) return body.groups
+    return null
+  }
+
+  function groupBuckets(group) {
+    if (!group || typeof group !== "object" || !Array.isArray(group.buckets)) return []
+    return group.buckets.filter(function (b) { return b && typeof b === "object" })
+  }
+
+  // One unambiguous, enabled weekly bucket with its own id, or nothing.
+  function argonWeekly(ctx, groups) {
+    var buckets = []
+    for (var i = 0; i < groups.length; i++) {
+      if (groups[i] && groups[i].displayName === ARGON_GROUP_NAME) buckets = buckets.concat(groupBuckets(groups[i]))
+    }
+    if (buckets.length === 0) return null
+    var weekly = buckets.filter(function (b) { return b.window === "weekly" })
+    var bucket = weekly[0]
+    if (weekly.length !== 1 || typeof bucket.bucketId !== "string" || !bucket.bucketId || summaryBucketSpec(bucket.bucketId)) {
+      ctx.host.log.warn("Argon quota group has no unambiguous separate weekly bucket")
+      return null
+    }
+    if (bucket.disabled === true) return null
+    if (bucket.disabled !== undefined && bucket.disabled !== null && typeof bucket.disabled !== "boolean") return null
+    var fraction = usableFraction(bucket)
+    if (fraction === null) {
+      ctx.host.log.warn("Argon weekly quota has no usable remainingFraction")
+      return null
+    }
+    return { fraction: fraction, resetTime: bucket.resetTime }
+  }
+
+  function keepLower(current, next) {
+    return !current || next.fraction < current.fraction ? next : current
+  }
+
+  // Null when no body is a summary, so the caller may use per-model quota. Otherwise authoritative,
+  // even with no lines: per-model quota reads missing quota as fully used.
+  // The two Cloud Code hosts can disagree on one bucket; the lower remaining fraction applies first.
+  function parseQuotaSummaries(ctx, bodies) {
+    var lists = []
+    for (var i = 0; i < bodies.length; i++) {
+      var groups = summaryGroups(bodies[i])
+      if (groups) lists.push(groups)
+      else ctx.host.log.warn("quota summary response has no groups")
+    }
+    if (lists.length === 0) return null
+
+    var pooled = {}
+    var argon = null
+    for (var l = 0; l < lists.length; l++) {
+      for (var g = 0; g < lists[l].length; g++) {
+        var group = lists[l][g]
+        if (!group || group.displayName === ARGON_GROUP_NAME) continue
+        var buckets = groupBuckets(group)
+        for (var b = 0; b < buckets.length; b++) {
+          var spec = summaryBucketSpec(buckets[b].bucketId)
+          if (!spec) {
+            ctx.host.log.warn("quota summary: skipping unknown bucket " + String(buckets[b].bucketId))
+            continue
+          }
+          var fraction = usableFraction(buckets[b])
+          if (fraction === null) continue
+          pooled[spec.id] = keepLower(pooled[spec.id], { fraction: fraction, resetTime: buckets[b].resetTime })
+        }
+      }
+      var hostArgon = argonWeekly(ctx, lists[l])
+      if (hostArgon) argon = keepLower(argon, hostArgon)
+    }
 
     var lines = []
-    for (var i = 0; i < models.length; i++) {
-      lines.push(modelLine(ctx, models[i].label, models[i].remainingFraction, models[i].resetTime))
+    for (var s = 0; s < SUMMARY_BUCKETS.length; s++) {
+      var item = SUMMARY_BUCKETS[s]
+      if (item.label === CLAUDE_LABEL && argon) {
+        lines.push(modelLine(ctx, ARGON_WEEKLY_LABEL, argon.fraction, argon.resetTime, WEEK_MS))
+        argon = null
+      }
+      var entry = pooled[item.id]
+      if (entry) lines.push(modelLine(ctx, item.label, entry.fraction, entry.resetTime, item.periodMs))
     }
+    if (argon) lines.push(modelLine(ctx, ARGON_WEEKLY_LABEL, argon.fraction, argon.resetTime, WEEK_MS))
     return lines
   }
 
   // --- Cloud Code API ---
 
-  function requestCloudCodeJson(ctx, path, token, userAgent, body) {
-    for (var i = 0; i < CLOUD_CODE_URLS.length; i++) {
-      try {
-        var resp = ctx.host.http.request({
-          method: "POST",
-          url: CLOUD_CODE_URLS[i] + path,
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json",
-            Authorization: "Bearer " + token,
-            "User-Agent": userAgent || "antigravity",
-          },
-          bodyText: JSON.stringify(body || {}),
-          timeoutMs: 15000,
-        })
-        if (!resp || typeof resp.status !== "number" || !Number.isFinite(resp.status)) {
-          ctx.host.log.warn("Cloud Code returned invalid response shape (" + CLOUD_CODE_URLS[i] + ")")
-          continue
-        }
-        if (ctx.util.isAuthStatus(resp.status)) return { _authFailed: true }
-        if (resp.status >= 200 && resp.status < 300) {
-          var json = ctx.util.tryParseJson(resp.bodyText)
-          if (!json || typeof json !== "object") {
-            ctx.host.log.warn("Cloud Code returned invalid JSON (" + CLOUD_CODE_URLS[i] + ")")
-            continue
-          }
-          return json
-        }
-      } catch (e) {
-        ctx.host.log.warn("Cloud Code request failed (" + CLOUD_CODE_URLS[i] + "): " + String(e))
+  // One host: parsed JSON, { _authFailed: true }, or null for any other failure.
+  function requestCloudCodeHost(ctx, base, path, token, userAgent, body) {
+    try {
+      var resp = ctx.host.http.request({
+        method: "POST",
+        url: base + path,
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+          "User-Agent": userAgent || "antigravity",
+        },
+        bodyText: JSON.stringify(body || {}),
+        timeoutMs: 15000,
+      })
+      if (!resp || typeof resp.status !== "number" || !Number.isFinite(resp.status)) {
+        ctx.host.log.warn("Cloud Code returned invalid response shape (" + base + ")")
+        return null
       }
+      if (ctx.util.isAuthStatus(resp.status)) return { _authFailed: true }
+      if (resp.status >= 200 && resp.status < 300) {
+        var json = ctx.util.tryParseJson(resp.bodyText)
+        if (!json || typeof json !== "object") {
+          ctx.host.log.warn("Cloud Code returned invalid JSON (" + base + ")")
+          return null
+        }
+        return json
+      }
+    } catch (e) {
+      ctx.host.log.warn("Cloud Code request failed (" + base + "): " + String(e))
     }
     return null
+  }
+
+  function requestCloudCodeJson(ctx, path, token, userAgent, body) {
+    for (var i = 0; i < CLOUD_CODE_URLS.length; i++) {
+      var json = requestCloudCodeHost(ctx, CLOUD_CODE_URLS[i], path, token, userAgent, body)
+      if (json) return json
+    }
+    return null
+  }
+
+  // Every host: the hosts can disagree, so callers merge their answers.
+  function requestCloudCodeAllHosts(ctx, path, token, userAgent, body) {
+    var bodies = []
+    var authFailed = false
+    for (var i = 0; i < CLOUD_CODE_URLS.length; i++) {
+      var json = requestCloudCodeHost(ctx, CLOUD_CODE_URLS[i], path, token, userAgent, body)
+      if (json && json._authFailed) authFailed = true
+      else if (json) bodies.push(json)
+    }
+    return { bodies: bodies, authFailed: authFailed }
   }
 
   function probeCloudCode(ctx, token, userAgent) {
@@ -598,6 +725,7 @@
       var rtime = (qi && qi.resetTime) || undefined
       configs.push({
         label: displayName,
+        modelId: modelId,
         quotaInfo: { remainingFraction: frac, resetTime: rtime },
       })
     }
@@ -636,20 +764,53 @@
       var frac = (typeof bucket.remainingFraction === "number") ? bucket.remainingFraction : 0
       configs.push({
         label: modelId,
+        modelId: modelId,
         quotaInfo: { remainingFraction: frac, resetTime: bucket.resetTime || undefined },
       })
     }
     return configs
   }
 
-  function probeAgyCloudCode(ctx, token) {
-    var loadData = requestCloudCodeJson(ctx, LOAD_CODE_ASSIST_PATH, token, "agy", {})
-    if (!loadData || loadData._authFailed) return loadData
+  function projectOf(loadData) {
+    var project = loadData && loadData.cloudaicompanionProject
+    return typeof project === "string" && project.trim() ? project.trim() : null
+  }
 
-    var project =
-      typeof loadData.cloudaicompanionProject === "string" && loadData.cloudaicompanionProject.trim()
-        ? loadData.cloudaicompanionProject.trim()
-        : null
+  // { load, lines } when a summary parsed, { load } when no host returned one, { _authFailed } when
+  // loadCodeAssist rejected the token. A rejected summary alone leaves the per-model calls to decide.
+  function probeQuotaSummary(ctx, token) {
+    var loadData = requestCloudCodeJson(ctx, LOAD_CODE_ASSIST_PATH, token, CLIENT_USER_AGENT, LOAD_CODE_ASSIST_BODY)
+    if (loadData && loadData._authFailed) return loadData
+    var project = projectOf(loadData)
+    var all = requestCloudCodeAllHosts(ctx, QUOTA_SUMMARY_PATH, token, CLIENT_USER_AGENT, project ? { project: project } : {})
+    var lines = parseQuotaSummaries(ctx, all.bodies)
+    if (lines) return { load: loadData, lines: lines }
+    return { load: loadData }
+  }
+
+  // Summary first, then fetchAvailableModels. Null for a transient failure; { _noLines } when the
+  // per-model reply parsed but gave no lines, which ends the probe like before.
+  function probeCloudCodeToken(ctx, token) {
+    var summary = probeQuotaSummary(ctx, token)
+    if (summary._authFailed) return summary
+    var plan = readAgyPlan(summary.load)
+    if (summary.lines) return { plan: plan, lines: summary.lines }
+
+    var data = probeCloudCode(ctx, token)
+    if (!data || data._authFailed) return data
+    var lines = buildModelLines(ctx, parseCloudCodeModels(data))
+    if (lines.length === 0) return { _noLines: true }
+    return { plan: plan, lines: lines }
+  }
+
+  function probeAgyCloudCode(ctx, token) {
+    var summary = probeQuotaSummary(ctx, token)
+    if (summary._authFailed) return summary
+    if (summary.lines) return { plan: readAgyPlan(summary.load), lines: summary.lines }
+
+    var loadData = summary.load
+    if (!loadData) return null
+    var project = projectOf(loadData)
     var quotaData = null
     if (project) {
       quotaData = requestCloudCodeJson(ctx, RETRIEVE_QUOTA_PATH, token, "agy", { project: project })
@@ -689,6 +850,16 @@
       ctx.host.log.warn("GetUserStatus threw: " + String(e))
     }
     var hasUserStatus = data && data.userStatus
+    var plan = hasUserStatus ? userStatusPlan(data.userStatus) : null
+
+    // A summary, even one with no lines, does not need the per-model calls.
+    var summaryLines = null
+    try {
+      summaryLines = parseQuotaSummaries(ctx, [callLs(ctx, found.port, found.scheme, discovery.csrf, "RetrieveUserQuotaSummary", { metadata: metadata })])
+    } catch (e) {
+      ctx.host.log.warn("RetrieveUserQuotaSummary threw: " + String(e))
+    }
+    if (summaryLines) return { plan: plan, lines: summaryLines }
 
     if (!hasUserStatus) {
       ctx.host.log.warn("GetUserStatus failed, trying GetCommandModelConfigs")
@@ -714,26 +885,17 @@
 
     var lines = buildModelLines(ctx, filtered)
     if (lines.length === 0) return null
-
-    var plan = null
-    if (hasUserStatus) {
-      // Prefer userTier.name (Google's own subscription system) over the legacy
-      // planInfo.planName field inherited from Windsurf/Codeium, which always
-      // returns "Pro" for all paid tiers including Google AI Ultra.
-      var ut = data.userStatus.userTier
-      var userTierName =
-        ut && typeof ut.name === "string" && ut.name.trim() ? ut.name.trim() : null
-      if (userTierName) {
-        plan = userTierName
-      } else {
-        var ps = data.userStatus.planStatus || {}
-        var pi = ps.planInfo || {}
-        plan =
-          typeof pi.planName === "string" && pi.planName.trim() ? pi.planName.trim() : null
-      }
-    }
-
     return { plan: plan, lines: lines }
+  }
+
+  // Prefer userTier.name (Google's own subscription system) over the legacy
+  // planInfo.planName field inherited from Windsurf/Codeium, which always
+  // returns "Pro" for all paid tiers including Google AI Ultra.
+  function userStatusPlan(userStatus) {
+    var ut = userStatus.userTier
+    if (ut && typeof ut.name === "string" && ut.name.trim()) return ut.name.trim()
+    var pi = (userStatus.planStatus || {}).planInfo || {}
+    return typeof pi.planName === "string" && pi.planName.trim() ? pi.planName.trim() : null
   }
 
   function probeLs(ctx) {
@@ -809,24 +971,23 @@
     var cached = loadCachedToken(ctx)
     if (cached && tokens.indexOf(cached) === -1) tokens.push(cached)
 
-    var ccData = null
+    var result = null
     var sawAuthFailure = false
-    var winningToken = null
     for (var i = 0; i < tokens.length; i++) {
-      var nextData = probeCloudCode(ctx, tokens[i])
-      if (nextData && !nextData._authFailed) {
-        ccData = nextData
-        winningToken = tokens[i]
+      var nextResult = probeCloudCodeToken(ctx, tokens[i])
+      if (nextResult && !nextResult._authFailed) {
+        result = nextResult
         break
       }
-      if (nextData && nextData._authFailed) sawAuthFailure = true
+      if (nextResult && nextResult._authFailed) sawAuthFailure = true
     }
+    if (result && result._noLines) throw LOGIN_MESSAGE
 
     // Only refresh on evidence of an auth failure, or when there were no tokens to try.
-    // probeCloudCode returns null for transient failures (5xx/timeouts); without this
+    // probeCloudCodeToken returns null for transient failures (5xx/timeouts); without this
     // guard a Cloud Code incident would trigger a Google OAuth refresh every probe cycle
     // instead of ~once per token lifetime — risking refresh-token throttling or rotation.
-    if (!ccData && (sawAuthFailure || tokens.length === 0)) {
+    if (!result && (sawAuthFailure || tokens.length === 0)) {
       var refreshTokens = []
       for (var j = 0; j < dbTokenCandidates.length; j++) {
         var refreshToken = dbTokenCandidates[j].refreshToken
@@ -835,38 +996,25 @@
       for (var k = 0; k < refreshTokens.length; k++) {
         var refreshed = refreshAccessToken(ctx, refreshTokens[k])
         if (!refreshed) continue
-        var refreshedData = probeCloudCode(ctx, refreshed)
-        if (refreshedData && !refreshedData._authFailed) {
-          ccData = refreshedData
-          winningToken = refreshed
+        var refreshedResult = probeCloudCodeToken(ctx, refreshed)
+        if (refreshedResult && !refreshedResult._authFailed) {
+          result = refreshedResult
           break
         }
-        if (refreshedData && refreshedData._authFailed) ccData = refreshedData
       }
+      if (result && result._noLines) throw LOGIN_MESSAGE
     }
 
-    if (!ccData || ccData._authFailed) {
+    if (!result) {
       // Multi-account homes must not fall back to the global keychain (cross-account bleed).
       var agyToken = hasPinnedAntigravityHome(ctx) ? null : loadAgyKeychainToken(ctx)
       if (agyToken) {
         var agyResult = probeAgyCloudCode(ctx, agyToken)
-        if (agyResult && !agyResult._authFailed) return attachAccountBadge(ctx, agyResult)
-        if (agyResult && agyResult._authFailed) ccData = agyResult
+        if (agyResult && !agyResult._authFailed) result = agyResult
       }
     }
 
-    if (ccData && !ccData._authFailed) {
-      var configs = parseCloudCodeModels(ccData)
-      var lines = buildModelLines(ctx, configs)
-      if (lines.length > 0) {
-        var plan = null
-        if (winningToken && hasPinnedAntigravityHome(ctx)) {
-          var loadData = requestCloudCodeJson(ctx, LOAD_CODE_ASSIST_PATH, winningToken, "agy", {})
-          if (loadData && !loadData._authFailed) plan = readAgyPlan(loadData)
-        }
-        return attachAccountBadge(ctx, { plan: plan, lines: lines })
-      }
-    }
+    if (result) return attachAccountBadge(ctx, result)
 
     throw LOGIN_MESSAGE
   }

@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { ProviderStatus, UsageRecord } from "../../../packages/core/src/types";
-import { dashboardRecordsForProviders, splitDashboardLines } from "./pages/dashboard-page";
+import {
+  accountHeading,
+  dashboardRecordsForProviders,
+  groupProviderCards,
+  orderCardGroups,
+  sameQuotaAcrossAccounts,
+  splitDashboardLines,
+} from "./pages/dashboard-page";
 
 describe("Dashboard provider selection", () => {
   test("skips a disabled provider", () => {
@@ -157,21 +164,26 @@ describe("Dashboard line grouping", () => {
     expect(result.detailLines.map((line) => line.label)).toEqual(["Last 7 Days"]);
   });
 
-  test("keeps Antigravity Account badge in the card summary", () => {
+  test("keeps Antigravity Account badge and pool windows in the card summary", () => {
     const result = splitDashboardLines([
       { type: "badge", label: "Account", text: "user@example.com" },
-      { type: "progress", label: "Gemini Pro", used: 10, limit: 100, format: { kind: "percent" } },
-      { type: "progress", label: "Gemini Flash", used: 20, limit: 100, format: { kind: "percent" } },
+      { type: "progress", label: "Session", used: 10, limit: 100, format: { kind: "percent" } },
+      { type: "progress", label: "Weekly", used: 20, limit: 100, format: { kind: "percent" } },
+      { type: "progress", label: "Argon Weekly", used: 25, limit: 100, format: { kind: "percent" } },
       { type: "progress", label: "Claude", used: 30, limit: 100, format: { kind: "percent" } },
+      { type: "progress", label: "Claude Weekly", used: 40, limit: 100, format: { kind: "percent" } },
       { type: "progress", label: "Other Model", used: 5, limit: 100, format: { kind: "percent" } },
     ]);
 
-    expect(result.summaryLines.map((line) => line.label)).toEqual(["Account", "Gemini Pro"]);
-    expect(result.detailLines.map((line) => line.label)).toEqual([
-      "Gemini Flash",
+    expect(result.summaryLines.map((line) => line.label)).toEqual([
+      "Account",
+      "Session",
+      "Weekly",
+      "Argon Weekly",
       "Claude",
-      "Other Model",
+      "Claude Weekly",
     ]);
+    expect(result.detailLines.map((line) => line.label)).toEqual(["Other Model"]);
   });
 
   test("promotes first progress line when summary is empty but details have progress", () => {
@@ -200,5 +212,104 @@ describe("Dashboard line grouping", () => {
 
     expect(result.summaryLines.map((line) => line.label)).toEqual(["Account", "Status", "Custom Quota"]);
     expect(result.detailLines.map((line) => line.label)).toEqual(["Another Quota"]);
+  });
+});
+
+function member(providerId: string, lines: Array<Record<string, unknown>>, name?: string) {
+  return {
+    providerId,
+    lines,
+    status: { providerId, name: name ?? providerId, enabled: true, detected: true } as ProviderStatus,
+  };
+}
+
+const weekly = (used: number, resetsAt: string) => ({ type: "progress", label: "Weekly", used, limit: 100, resetsAt });
+
+describe("Dashboard account groups", () => {
+  test("puts the accounts of one provider in one card and keeps single providers alone", () => {
+    const groups = groupProviderCards([
+      member("antigravity:acct1", []),
+      member("claude-code", []),
+      member("antigravity:acct2", []),
+      member("codex:codex", []),
+    ]);
+
+    expect(groups.map((group) => [group.id, group.members.map((item) => item.providerId)])).toEqual([
+      ["antigravity", ["antigravity:acct1", "antigravity:acct2"]],
+      ["claude-code", ["claude-code"]],
+      ["codex:codex", ["codex:codex"]],
+    ]);
+  });
+
+  test("names an account by its Account badge, else by its label without the provider", () => {
+    expect(accountHeading(member("antigravity:acct1", [{ type: "badge", label: "Account", text: "one@example.com" }]))).toBe(
+      "one@example.com",
+    );
+    expect(accountHeading(member("codex:family", [], "Codex-Family"))).toBe("Codex-Family");
+    expect(accountHeading(member("antigravity:acct2", [], "Antigravity · acct2"))).toBe("acct2");
+  });
+
+  test("flags accounts that report the same used percent and reset time", () => {
+    const reset = "2026-10-24T01:10:31Z";
+    expect(sameQuotaAcrossAccounts([
+      member("antigravity:a", [weekly(6, reset)]),
+      member("antigravity:b", [weekly(6, reset)]),
+    ])).toBe(true);
+    expect(sameQuotaAcrossAccounts([
+      member("antigravity:a", [weekly(6, reset)]),
+      member("antigravity:b", [weekly(7, reset)]),
+    ])).toBe(false);
+  });
+
+  test("does not flag accounts whose only match is unused windows", () => {
+    expect(sameQuotaAcrossAccounts([
+      member("antigravity:a", [weekly(0, "2026-10-28T00:00:01Z")]),
+      member("antigravity:b", [weekly(0, "2026-10-28T00:00:03Z")]),
+    ])).toBe(false);
+  });
+});
+
+describe("Dashboard card order", () => {
+  test("keeps a saved position when accounts become one group card", () => {
+    const groups = groupProviderCards([
+      member("codex", []),
+      member("antigravity:acct1", []),
+      member("antigravity:acct2", []),
+    ]);
+
+    expect(orderCardGroups(["antigravity:acct1", "codex", "antigravity:acct2"], groups)).toEqual([
+      "antigravity",
+      "codex",
+    ]);
+  });
+
+  test("keeps a group's position when it shrinks to one account", () => {
+    const groups = groupProviderCards([member("codex", []), member("antigravity:acct1", [])]);
+
+    expect(orderCardGroups(["antigravity", "codex"], groups)).toEqual(["antigravity:acct1", "codex"]);
+  });
+
+  test("appends new cards by name", () => {
+    const groups = groupProviderCards([member("grok", []), member("cursor", [])]);
+
+    expect(orderCardGroups([], groups)).toEqual(["cursor", "grok"]);
+  });
+});
+
+describe("Dashboard same quota note", () => {
+  test("does not flag accounts whose used windows reset at different times", () => {
+    const session = (resetsAt: string) => ({ type: "progress", label: "Session", used: 10, limit: 100, resetsAt });
+    expect(sameQuotaAcrossAccounts([
+      member("codex:a", [session("2026-10-21T05:00:00Z"), weekly(6, "2026-10-24T00:00:00Z")]),
+      member("codex:b", [session("2026-10-21T05:00:00Z"), weekly(6, "2026-10-26T00:00:00Z")]),
+    ])).toBe(false);
+  });
+});
+
+describe("Dashboard account column order", () => {
+  test("orders a group's accounts by id, not by which snapshot is newer", () => {
+    const groups = groupProviderCards([member("antigravity:acct2", []), member("antigravity:acct1", [])]);
+
+    expect(groups[0].members.map((item) => item.providerId)).toEqual(["antigravity:acct1", "antigravity:acct2"]);
   });
 });

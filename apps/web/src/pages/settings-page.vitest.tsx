@@ -7,6 +7,7 @@ import type {
 } from "../../../../packages/core/src/types";
 import {
   createProviderAccount,
+  detectProviderAccounts,
   listProviderAccountCapabilities,
   listProviderAccounts,
   updateProviderAccount,
@@ -127,5 +128,30 @@ describe("Add Default Account", () => {
         enabled: [],
       });
     });
+  });
+});
+
+describe("Detected Homes", () => {
+  test("shows each home's Google account and flags one already tracked", async () => {
+    const user = userEvent.setup();
+    renderSettings([account({ id: "antigravity:acct1", homePath: "/home/example/.agy-homes/acct1" })]);
+    vi.mocked(detectProviderAccounts).mockResolvedValue({
+      ok: true,
+      providerId: "antigravity",
+      candidates: [
+        { providerId: "antigravity", homePath: "/home/example/.agy-homes/acct1", label: "Antigravity · acct1", hasAuth: true, email: "one@example.com" },
+        { providerId: "antigravity", homePath: "/home/example/.config/Antigravity", label: "Antigravity · Local", hasAuth: true, email: "one@example.com" },
+        { providerId: "antigravity", homePath: "/home/example", label: "Antigravity · Local CLI", hasAuth: true, email: "two@example.com" },
+      ],
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Detect Homes" }));
+
+    const ide = (await screen.findByText("/home/example/.config/Antigravity")).closest("li")!;
+    expect(ide.textContent).toContain("one@example.com");
+    expect(ide.textContent).toContain("Same Google account as Other");
+    const cli = screen.getByText("/home/example").closest("li")!;
+    expect(cli.textContent).toContain("two@example.com");
+    expect(cli.textContent).not.toContain("Same Google account");
   });
 });

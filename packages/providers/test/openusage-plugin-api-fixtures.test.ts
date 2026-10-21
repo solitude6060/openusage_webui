@@ -79,8 +79,7 @@ describe("OpenUsagePluginProvider original API plugin fixtures", () => {
         plan: "Google AI Pro",
       });
       expect((records[0]?.raw as any).lines.map((line: any) => line.label)).toEqual([
-        "Gemini Pro",
-        "Gemini Flash",
+        "Session",
         "Claude",
       ]);
     }));

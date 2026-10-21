@@ -386,11 +386,21 @@ export function SettingsPage({
                 const alreadyAdded = visibleAccounts.some(
                   (account) => account.homePath === candidate.homePath,
                 );
+                // Another home signed in to the same Google account would repeat that account's card.
+                const sameAccount = candidate.email && !alreadyAdded
+                  ? visibleAccounts.find((account) => candidates.some(
+                    (other) => other.email === candidate.email && other.homePath === account.homePath,
+                  ))
+                  : undefined;
                 return (
                   <li key={candidate.homePath}>
                     <div>
                       <strong>{candidate.label}</strong>
+                      {candidate.email ? <div>{candidate.email}</div> : null}
                       <div className="mono-value">{candidate.homePath}</div>
+                      {sameAccount ? (
+                        <div className="settings-help muted">Same Google account as {sameAccount.label}</div>
+                      ) : null}
                     </div>
                     <button
                       className="primary-button"

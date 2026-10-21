@@ -11,7 +11,7 @@ Antigravity is built on Codeium/Windsurf-derived infrastructure and uses the sam
 - **Service:** `exa.language_server_pb.LanguageServerService`
 - **Auth:** CSRF token from app/IDE process args; Google OAuth tokens from SQLite; `agy` token from macOS Keychain
 - **Quota:** fraction (0.0–1.0, where 1.0 = 100% remaining)
-- **Quota window:** 5 hours
+- **Quota windows:** two shared pools (Gemini; Claude and GPT), each with a rolling 5-hour and a weekly window; eligible Pro accounts also have a separate Gemini 4 Argon weekly window
 - **Timestamps:** ISO 8601
 - **Requires:** Antigravity app/IDE running, signed-in app/IDE SQLite credentials, or `agy` signed in
 
@@ -141,6 +141,51 @@ POST http://127.0.0.1:{port}/exa.language_server_pb.LanguageServerService/GetCom
 }
 ```
 
+## Quota Summary (primary)
+
+`RetrieveUserQuotaSummary` reports the windows the Antigravity CLI shows in `/usage`. The plugin asks it before the per-model endpoints, on the local server (`.../LanguageServerService/RetrieveUserQuotaSummary`, body `{ metadata }`, reply wrapped as `{ "response": { "groups": [...] } }`) and on Cloud Code (`POST /v1internal:retrieveUserQuotaSummary`, body `{ "project": "<cloudaicompanionProject>" }`, reply `{ "groups": [...] }`).
+
+```jsonc
+{
+  "groups": [
+    {
+      "displayName": "Gemini Models",
+      "buckets": [
+        { "bucketId": "gemini-weekly", "window": "weekly", "remainingFraction": 0.8, "resetTime": "..." },
+        { "bucketId": "gemini-5h", "window": "5h", "remainingFraction": 1, "resetTime": "..." }
+      ]
+    },
+    {
+      "displayName": "Claude and GPT models",
+      "buckets": [
+        { "bucketId": "3p-weekly", "window": "weekly", "remainingFraction": 0.6, "resetTime": "..." },
+        { "bucketId": "3p-5h", "window": "5h", "remainingFraction": 1, "resetTime": "..." }
+      ]
+    }
+  ]
+}
+```
+
+| Line | Bucket |
+|---|---|
+| Session | `gemini-5h` |
+| Weekly | `gemini-weekly` |
+| Argon Weekly | the one `window: "weekly"` bucket of the `Gemini 4 Argon` group |
+| Claude | `3p-5h` |
+| Claude Weekly | `3p-weekly` |
+
+Rules, ported from upstream `robinebers/openusage` (`AntigravityUsageMapper.swift`, main `26132ff4`):
+
+- Shared-pool buckets match the exact ids above; other ids are skipped.
+- Argon Weekly needs the exact group name, exactly one weekly bucket with its own id, `disabled` not true, and a finite fraction. Otherwise there is no Argon line.
+- A bucket without a finite `remainingFraction` has no line.
+- Any reply with `groups` is authoritative. The per-model endpoints are used only when no host returned `groups`, because they read missing quota as fully used.
+- Cloud Code is asked on both hosts. On 2026-10-21 production returned an untouched Gemini weekly window while daily returned real use, so the plugin keeps the lower remaining fraction per bucket, with that bucket's reset time. Upstream prefers production instead.
+- `loadCodeAssist` is sent with User-Agent `antigravity/2.24.0 (aidev_client; os_type=darwin; arch=amd64)` and body `{ "metadata": { "ideType": "ANTIGRAVITY", "platform": "PLATFORM_UNSPECIFIED", "pluginType": "GEMINI" } }`. Without them the reply has only `allowedTiers` ("Gemini Code Assist") and no `paidTier`.
+- Per-model pooling maps every Gemini model to Session and every other model to Claude. Argon models are skipped there because those replies do not name their pool or period.
+
+Observed on 2026-10-21: all three signed-in Google accounts on this machine received the same `cloudaicompanionProject` (`aicode-consumers`, a shared consumer value) and identical fractions and reset times, with or without the project field. Cause not determined. No account returned a `Gemini 4 Argon` group.
+
 ## Available Models
 
 | Display Name | Internal ID | Provider |
@@ -233,7 +278,9 @@ Local multi-home wrappers (for example `agy` / `agy2` via `HOME=~/.agy-homes/<pr
 
 `~/.agy-homes/<profile>/.gemini/antigravity-cli/antigravity-oauth-token`
 
-Detect also includes the default CLI home (`$HOME`, stored as `~`, with `~/.gemini/antigravity-cli/antigravity-oauth-token`) so unwrapped `agy` shows up beside `agy1` / `agy2` overlays. Account labels are just the account slug (for example "Antigravity · acct1"), not the Google email. An IDE home counts as signed in only when its `state.vscdb` contains the oauth key `antigravityUnifiedStateSync.oauthToken`. A database file with no oauth key is ignored.
+Detect also includes the default CLI home (`$HOME`, stored as `~`, with `~/.gemini/antigravity-cli/antigravity-oauth-token`) so unwrapped `agy` shows up beside `agy1` / `agy2` overlays. Account labels are just the account slug (for example "Antigravity · acct1"), not the Google email. Each detected home also reports its signed-in email (CLI `id_token`, IDE `antigravityAuthStatus.email`); Detected Homes shows it and notes a home signed in to the same Google account as a tracked one.
+
+`agy` 1.4.x authenticates from the system keyring first (`ChainedAuth: authenticated via keyring` in `cli.log`). On Linux that is the Secret Service, shared by every `HOME`, so a `HOME` overlay does not change which account `agy` runs as; it uses whichever account signed in last. The plugin reads each home's `antigravity-oauth-token` file, so its cards follow the files, not the account `agy` is using. An IDE home counts as signed in only when its `state.vscdb` contains the oauth key `antigravityUnifiedStateSync.oauthToken`. A database file with no oauth key is ignored.
 
 Probes add an **Account** badge when the oauth file has an OIDC `id_token`; the badge text is that token's email. If the file has no `id_token`, the badge is omitted. The card title already shows the home, and the Google email is not used as the account label.
 
@@ -244,7 +291,8 @@ When WebUI Provider Accounts pin a home, that path is injected as `OPENUSAGE_ANT
 For `agy`, OpenUsage calls:
 
 1. `POST /v1internal:loadCodeAssist`
-2. `POST /v1internal:retrieveUserQuota`
+2. `POST /v1internal:retrieveUserQuotaSummary` (both hosts)
+3. `POST /v1internal:retrieveUserQuota`, only when step 2 returned no `groups`
 
 #### Response
 
@@ -272,14 +320,14 @@ The Cloud Code model set is a superset of the LS model set. The LS returns only 
 
 ## Plugin Strategy
 
-1. Probe the Antigravity app/IDE language server (skipped when a multi-account home env is set).
+1. Probe the Antigravity app/IDE language server (skipped when a multi-account home env is set): `GetUserStatus` for the plan, `RetrieveUserQuotaSummary` for the lines, per-model configs when the summary is absent.
 2. Probe the `agy` local language server (skipped when a multi-account home env is set).
 3. Read CLI oauth file when `OPENUSAGE_ANTIGRAVITY_CLI_HOME` is set; otherwise read SQLite token candidates from Antigravity state DB paths (or only `OPENUSAGE_ANTIGRAVITY_CONFIG_DIR` when set).
-4. Try unexpired SQLite/CLI/cached access tokens with `fetchAvailableModels`. Expired CLI tokens are skipped and refreshed instead of tried. For pinned multi-account homes, also call `loadCodeAssist` so the plan name (for example "Google AI Pro") shows on the card.
+4. Try unexpired SQLite/CLI/cached access tokens: `loadCodeAssist` (plan), then the quota summary on both hosts, then `fetchAvailableModels` only when no host returned a summary. Expired CLI tokens are skipped and refreshed instead of tried.
 5. Refresh SQLite/CLI refresh tokens only after auth failure or when no access token exists.
-6. Read `agy` keychain token from service `gemini`, account `antigravity` (skipped when a multi-account home env is set), then call `loadCodeAssist` and `retrieveUserQuota`.
+6. Read `agy` keychain token from service `gemini`, account `antigravity` (skipped when a multi-account home env is set), then call `loadCodeAssist`, the quota summary, and `retrieveUserQuota` as a fallback.
 7. If all strategies fail: error "Start Antigravity or run `agy` and try again."
 
 ### Multi-account homes (WebUI)
 
-Settings → Provider Accounts can detect `~/.agy-homes/*` CLI overlays, the default CLI home, and IDE config dirs that contain the oauth key. Enabled accounts become `antigravity:<slug>` cards with the matching home env injected. The provider selector opens on the first provider that already has an account.
+Settings → Provider Accounts can detect `~/.agy-homes/*` CLI overlays, the default CLI home, and IDE config dirs that contain the oauth key. Enabled accounts become `antigravity:<slug>` providers with the matching home env injected. The dashboard shows two or more accounts of one provider as columns of one card. The provider selector opens on the first provider that already has an account.

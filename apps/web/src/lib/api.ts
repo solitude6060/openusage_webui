@@ -16,6 +16,7 @@ export interface AccountHomeCandidate {
   homePath: string;
   label: string;
   hasAuth: boolean;
+  email?: string;
 }
 
 export interface ManualUsageInput {
