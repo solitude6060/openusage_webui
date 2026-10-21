@@ -16,8 +16,9 @@
   var FETCH_MODELS_PATH = "/v1internal:fetchAvailableModels"
   var RETRIEVE_QUOTA_PATH = "/v1internal:retrieveUserQuota"
   var QUOTA_SUMMARY_PATH = "/v1internal:retrieveUserQuotaSummary"
-  // Google drops paidTier for callers that do not look like the Antigravity client.
-  var CLIENT_USER_AGENT = "antigravity/2.24.0 (aidev_client; os_type=darwin; arch=amd64)"
+  // Google drops paidTier for callers that do not look like the Antigravity client, and the daily
+  // host returns the Gemini 4 Argon quota group only to Antigravity Hub 2.16.0 or newer.
+  var CLIENT_USER_AGENT = "antigravity/hub/2.23.1 darwin/arm64"
   var LOAD_CODE_ASSIST_BODY = { metadata: { ideType: "ANTIGRAVITY", platform: "PLATFORM_UNSPECIFIED", pluginType: "GEMINI" } }
   var LOGIN_MESSAGE = "Start Antigravity or run `agy` and try again."
   var GOOGLE_OAUTH_URL = "https://oauth2.googleapis.com/token"
