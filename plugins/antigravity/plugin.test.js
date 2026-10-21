@@ -2548,7 +2548,12 @@ describe("antigravity quota summary", () => {
     plugin.probe(ctx)
 
     const load = calls.find((c) => c.url.includes("loadCodeAssist"))
-    expect(load.userAgent).toMatch(/^antigravity\/\d+\.\d+\.\d+ \(aidev_client; /)
+    // Cloud Code returns the Gemini 4 Argon group only to Antigravity Hub 2.16.0 or newer.
+    const hub = load.userAgent.match(/^antigravity\/hub\/(\d+)\.(\d+)\.\d+ /)
+    expect(hub).not.toBeNull()
+    expect(Number(hub[1]) * 100 + Number(hub[2])).toBeGreaterThanOrEqual(216)
+    const summaryAgents = calls.filter((c) => c.url.includes("retrieveUserQuotaSummary")).map((c) => c.userAgent)
+    expect(new Set(summaryAgents)).toEqual(new Set([load.userAgent]))
     expect(JSON.parse(load.body).metadata.ideType).toBe("ANTIGRAVITY")
     const summaries = calls.filter((c) => c.url.includes("retrieveUserQuotaSummary"))
     expect(summaries.map((c) => c.host).sort()).toEqual(["daily", "prod"])
