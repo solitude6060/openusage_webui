@@ -8,7 +8,7 @@ The owner reported that the Antigravity card looks wrong and that Antigravity no
 
 - Every stored snapshot for both tracked accounts reads 0% used with a reset five hours after the reading. The plugin reads only the per-model `fetchAvailableModels` / `retrieveUserQuota` responses, which carry the rolling 5-hour window.
 - `v1internal:retrieveUserQuotaSummary` returns the quota groups that the Antigravity CLI shows: `Gemini Models` (`gemini-5h`, `gemini-weekly`) and `Claude and GPT models` (`3p-5h`, `3p-weekly`). The weekly buckets showed use that the 5-hour buckets did not.
-- The two Cloud Code hosts disagreed on one bucket. Production returned `gemini-weekly` at 1.0 with a reset seven days after the call (an untouched rolling window). Daily returned 0.935 with a fixed reset three days ahead. The `agy` CLI log shows it calls the daily host.
+- The two Cloud Code hosts disagreed on one bucket. Production returned `gemini-weekly` at 1.0 with a reset seven days after the call (an untouched rolling window). Daily returned a lower fraction with a fixed reset a few days ahead. The `agy` CLI log shows it calls the daily host.
 - `loadCodeAssist` without the Antigravity client User-Agent and metadata returns only `allowedTiers` (`Gemini Code Assist`), which is the plan the card shows. With them it returns `paidTier.id = g1-pro-tier`.
 - None of the three accounts returned a `Gemini 4 Argon` group on either host. Upstream reports the group and a weekly bucket (`gemini-argon-wtu-weekly`) for eligible Pro accounts.
 - The three accounts returned identical fractions and reset times, with or without the `project` field, and `loadCodeAssist` returned the same `cloudaicompanionProject` (`aicode-consumers`) to all three. Cause not determined.

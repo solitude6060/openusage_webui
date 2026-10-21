@@ -151,14 +151,14 @@ POST http://127.0.0.1:{port}/exa.language_server_pb.LanguageServerService/GetCom
     {
       "displayName": "Gemini Models",
       "buckets": [
-        { "bucketId": "gemini-weekly", "window": "weekly", "remainingFraction": 0.93, "resetTime": "..." },
+        { "bucketId": "gemini-weekly", "window": "weekly", "remainingFraction": 0.8, "resetTime": "..." },
         { "bucketId": "gemini-5h", "window": "5h", "remainingFraction": 1, "resetTime": "..." }
       ]
     },
     {
       "displayName": "Claude and GPT models",
       "buckets": [
-        { "bucketId": "3p-weekly", "window": "weekly", "remainingFraction": 0.97, "resetTime": "..." },
+        { "bucketId": "3p-weekly", "window": "weekly", "remainingFraction": 0.6, "resetTime": "..." },
         { "bucketId": "3p-5h", "window": "5h", "remainingFraction": 1, "resetTime": "..." }
       ]
     }
