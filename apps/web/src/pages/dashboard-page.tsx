@@ -137,9 +137,10 @@ export function groupProviderCards(items: ProviderData[]): ProviderCardGroup[] {
     const base = baseProviderId(item.providerId);
     byBase.set(base, [...(byBase.get(base) ?? []), item]);
   }
+  // Snapshots arrive newest first, so columns are ordered by account id to stay put across refreshes.
   return [...byBase.entries()].map(([base, members]) => ({
     id: members.length > 1 ? base : members[0].providerId,
-    members,
+    members: [...members].sort((a, b) => a.providerId.localeCompare(b.providerId)),
   }));
 }
 

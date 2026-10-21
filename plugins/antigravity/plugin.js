@@ -776,7 +776,8 @@
     return typeof project === "string" && project.trim() ? project.trim() : null
   }
 
-  // { load, lines } when a summary parsed, { load } when no host returned one, { _authFailed } otherwise.
+  // { load, lines } when a summary parsed, { load } when no host returned one, { _authFailed } when
+  // loadCodeAssist rejected the token. A rejected summary alone leaves the per-model calls to decide.
   function probeQuotaSummary(ctx, token) {
     var loadData = requestCloudCodeJson(ctx, LOAD_CODE_ASSIST_PATH, token, CLIENT_USER_AGENT, LOAD_CODE_ASSIST_BODY)
     if (loadData && loadData._authFailed) return loadData
@@ -784,11 +785,11 @@
     var all = requestCloudCodeAllHosts(ctx, QUOTA_SUMMARY_PATH, token, CLIENT_USER_AGENT, project ? { project: project } : {})
     var lines = parseQuotaSummaries(ctx, all.bodies)
     if (lines) return { load: loadData, lines: lines }
-    if (all.authFailed) return { _authFailed: true }
     return { load: loadData }
   }
 
-  // Summary first, then fetchAvailableModels. Null for a transient failure.
+  // Summary first, then fetchAvailableModels. Null for a transient failure; { _noLines } when the
+  // per-model reply parsed but gave no lines, which ends the probe like before.
   function probeCloudCodeToken(ctx, token) {
     var summary = probeQuotaSummary(ctx, token)
     if (summary._authFailed) return summary
@@ -798,7 +799,7 @@
     var data = probeCloudCode(ctx, token)
     if (!data || data._authFailed) return data
     var lines = buildModelLines(ctx, parseCloudCodeModels(data))
-    if (lines.length === 0) return null
+    if (lines.length === 0) return { _noLines: true }
     return { plan: plan, lines: lines }
   }
 
@@ -980,6 +981,7 @@
       }
       if (nextResult && nextResult._authFailed) sawAuthFailure = true
     }
+    if (result && result._noLines) throw LOGIN_MESSAGE
 
     // Only refresh on evidence of an auth failure, or when there were no tokens to try.
     // probeCloudCodeToken returns null for transient failures (5xx/timeouts); without this
@@ -1000,6 +1002,7 @@
           break
         }
       }
+      if (result && result._noLines) throw LOGIN_MESSAGE
     }
 
     if (!result) {
