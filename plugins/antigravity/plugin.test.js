@@ -2445,3 +2445,238 @@ describe("antigravity plugin", () => {
     expect(refreshCalls).toBe(0)
   })
 })
+
+describe("antigravity quota summary", () => {
+  const CLI_HOME = "/tmp/agy-summary"
+  const SESSION_MS = 5 * 60 * 60 * 1000
+  const WEEK_MS = 7 * 24 * 60 * 60 * 1000
+
+  beforeEach(() => {
+    delete globalThis.__openusage_plugin
+    vi.resetModules()
+  })
+
+  function bucket(bucketId, window, remainingFraction, resetTime, extra) {
+    return Object.assign({ bucketId, window, remainingFraction, resetTime }, extra)
+  }
+
+  function sharedGroups(overrides) {
+    const o = overrides || {}
+    return [
+      {
+        displayName: "Gemini Models",
+        buckets: [
+          bucket("gemini-weekly", "weekly", o.geminiWeekly ?? 0.9, o.geminiWeeklyReset ?? "2026-10-24T01:10:31Z"),
+          bucket("gemini-5h", "5h", o.gemini5h ?? 1, "2026-10-21T05:10:44Z"),
+        ],
+      },
+      {
+        displayName: "Claude and GPT models",
+        buckets: [
+          bucket("3p-weekly", "weekly", 0.75, "2026-10-22T09:01:26Z"),
+          bucket("3p-5h", "5h", 0.5, "2026-10-21T05:10:44Z"),
+        ],
+      },
+    ]
+  }
+
+  function argonGroup(buckets) {
+    return { displayName: "Gemini 4 Argon", buckets }
+  }
+
+  function pinnedCtx() {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.env.get.mockImplementation((name) => (name === "OPENUSAGE_ANTIGRAVITY_CLI_HOME" ? CLI_HOME : null))
+    ctx.host.fs.writeText(
+      CLI_HOME + "/.gemini/antigravity-cli/antigravity-oauth-token",
+      JSON.stringify({
+        token: { access_token: "ya29.summary", refresh_token: "1//summary", expiry: new Date(Date.now() + 3600 * 1000).toISOString() },
+      }),
+    )
+    return ctx
+  }
+
+  // summaries: { prod, daily } bodies (objects) or numbers (HTTP status)
+  function mockCloudCode(ctx, summaries, calls) {
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      const host = url.includes("daily-cloudcode") ? "daily" : "prod"
+      if (calls) calls.push({ url, host, userAgent: opts.headers && opts.headers["User-Agent"], body: opts.bodyText })
+      if (url.includes("loadCodeAssist")) {
+        return { status: 200, bodyText: JSON.stringify(makeAgyLoadResponse({ paidTier: { id: "g1-pro-tier", name: "Google AI Pro" } })) }
+      }
+      if (url.includes("retrieveUserQuotaSummary")) {
+        const value = summaries[host]
+        if (typeof value === "number") return { status: value, bodyText: "" }
+        return { status: 200, bodyText: JSON.stringify(value) }
+      }
+      if (url.includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+  }
+
+  it("shows the 5-hour and weekly windows of both pools from the summary", async () => {
+    const ctx = pinnedCtx()
+    const calls = []
+    mockCloudCode(ctx, { prod: { groups: sharedGroups() }, daily: { groups: sharedGroups() } }, calls)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const progress = result.lines.filter((l) => l.type === "progress")
+
+    expect(progress.map((l) => [l.label, l.used, l.periodDurationMs])).toEqual([
+      ["Session", 0, SESSION_MS],
+      ["Weekly", 10, WEEK_MS],
+      ["Claude", 50, SESSION_MS],
+      ["Claude Weekly", 25, WEEK_MS],
+    ])
+    expect(progress[1].resetsAt).toBe("2026-10-24T01:10:31Z")
+    expect(result.plan).toBe("Google AI Pro")
+    expect(calls.some((c) => c.url.includes("fetchAvailableModels"))).toBe(false)
+  })
+
+  it("calls loadCodeAssist and the summary as the Antigravity client", async () => {
+    const ctx = pinnedCtx()
+    const calls = []
+    mockCloudCode(ctx, { prod: { groups: sharedGroups() }, daily: { groups: sharedGroups() } }, calls)
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    const load = calls.find((c) => c.url.includes("loadCodeAssist"))
+    expect(load.userAgent).toMatch(/^antigravity\/\d+\.\d+\.\d+ \(aidev_client; /)
+    expect(JSON.parse(load.body).metadata.ideType).toBe("ANTIGRAVITY")
+    const summaries = calls.filter((c) => c.url.includes("retrieveUserQuotaSummary"))
+    expect(summaries.map((c) => c.host).sort()).toEqual(["daily", "prod"])
+    expect(JSON.parse(summaries[0].body)).toEqual({ project: "projects/openusage-agy" })
+  })
+
+  it("keeps the lower remaining fraction when the two hosts disagree", async () => {
+    const ctx = pinnedCtx()
+    mockCloudCode(ctx, {
+      prod: { groups: sharedGroups({ geminiWeekly: 1, geminiWeeklyReset: "2026-10-28T00:10:44Z" }) },
+      daily: { groups: sharedGroups({ geminiWeekly: 0.935, geminiWeeklyReset: "2026-10-24T01:10:31Z" }) },
+    })
+
+    const plugin = await loadPlugin()
+    const weekly = plugin.probe(ctx).lines.find((l) => l.label === "Weekly")
+
+    expect(weekly.used).toBe(7)
+    expect(weekly.resetsAt).toBe("2026-10-24T01:10:31Z")
+  })
+
+  it("uses one host's summary when the other host fails", async () => {
+    const ctx = pinnedCtx()
+    mockCloudCode(ctx, { prod: 503, daily: { groups: sharedGroups() } })
+
+    const plugin = await loadPlugin()
+    const labels = plugin.probe(ctx).lines.map((l) => l.label)
+
+    expect(labels).toEqual(["Session", "Weekly", "Claude", "Claude Weekly"])
+  })
+
+  it("adds Argon Weekly after Weekly from the separate Argon group", async () => {
+    const ctx = pinnedCtx()
+    const groups = sharedGroups().concat([
+      argonGroup([bucket("gemini-argon-wtu-weekly", "weekly", 0.6, "2026-10-22T23:24:33Z")]),
+    ])
+    mockCloudCode(ctx, { prod: { groups }, daily: 503 })
+
+    const plugin = await loadPlugin()
+    const lines = plugin.probe(ctx).lines
+
+    expect(lines.map((l) => l.label)).toEqual(["Session", "Weekly", "Argon Weekly", "Claude", "Claude Weekly"])
+    const argon = lines.find((l) => l.label === "Argon Weekly")
+    expect(argon.used).toBe(40)
+    expect(argon.periodDurationMs).toBe(WEEK_MS)
+    expect(argon.resetsAt).toBe("2026-10-22T23:24:33Z")
+  })
+
+  it.each([
+    ["disabled", [bucket("gemini-argon-weekly", "weekly", 1, "2026-10-22T00:00:00Z", { disabled: true })]],
+    ["two weekly buckets", [
+      bucket("gemini-argon-weekly", "weekly", 1, "2026-10-22T00:00:00Z"),
+      bucket("gemini-argon-wtu-weekly", "weekly", 0.5, "2026-10-22T00:00:00Z"),
+    ]],
+    ["no remaining fraction", [{ bucketId: "gemini-argon-weekly", window: "weekly", resetTime: "2026-10-22T00:00:00Z" }]],
+    ["a shared bucket id", [bucket("gemini-weekly", "weekly", 0.2, "2026-10-22T00:00:00Z")]],
+    ["only a 5-hour window", [bucket("gemini-argon-5h", "5h", 0.2, "2026-10-22T00:00:00Z")]],
+  ])("omits Argon Weekly for %s", async (_name, buckets) => {
+    const ctx = pinnedCtx()
+    mockCloudCode(ctx, { prod: { groups: sharedGroups().concat([argonGroup(buckets)]) }, daily: 503 })
+
+    const plugin = await loadPlugin()
+    const lines = plugin.probe(ctx).lines
+
+    expect(lines.map((l) => l.label)).toEqual(["Session", "Weekly", "Claude", "Claude Weekly"])
+    expect(lines.find((l) => l.label === "Weekly").used).toBe(10)
+  })
+
+  it("drops a bucket without a remaining fraction and skips unknown bucket ids", async () => {
+    const ctx = pinnedCtx()
+    const groups = sharedGroups()
+    delete groups[0].buckets[0].remainingFraction
+    groups[0].buckets.push(bucket("gemini-image-5h", "5h", 0.1, "2026-10-21T05:00:00Z"))
+    mockCloudCode(ctx, { prod: { groups }, daily: 503 })
+
+    const plugin = await loadPlugin()
+    const labels = plugin.probe(ctx).lines.map((l) => l.label)
+
+    expect(labels).toEqual(["Session", "Claude", "Claude Weekly"])
+  })
+
+  it("falls back to per-model quota when no host returns a summary", async () => {
+    const ctx = pinnedCtx()
+    const calls = []
+    mockCloudCode(ctx, { prod: 404, daily: 404 }, calls)
+
+    const plugin = await loadPlugin()
+    const labels = plugin.probe(ctx).lines.map((l) => l.label)
+
+    expect(calls.some((c) => c.url.includes("fetchAvailableModels"))).toBe(true)
+    expect(labels).toEqual(["Session", "Claude"])
+  })
+
+  it("reads the summary from the local server before per-model quota", async () => {
+    const ctx = makeCtx()
+    ctx.host.ls.discover.mockReturnValue(makeDiscovery())
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("GetUnleashData")) return { status: 200, bodyText: "{}" }
+      if (url.includes("RetrieveUserQuotaSummary")) {
+        return { status: 200, bodyText: JSON.stringify({ response: { groups: sharedGroups() } }) }
+      }
+      if (url.includes("GetUserStatus")) {
+        return { status: 200, bodyText: JSON.stringify(makeUserStatusResponse({ userTier: { name: "Google AI Pro" } })) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Google AI Pro")
+    expect(result.lines.map((l) => l.label)).toEqual(["Session", "Weekly", "Claude", "Claude Weekly"])
+  })
+
+  it("pools legacy Gemini models into Session and skips Argon models", async () => {
+    const ctx = makeCtx()
+    setupLsMock(ctx, makeDiscovery(), makeUserStatusResponse({
+      configs: [
+        { label: "Gemini 3.1 Pro (High)", modelOrAlias: { model: "M37" }, quotaInfo: { remainingFraction: 0.8 } },
+        { label: "Gemini 3.6 Flash (Low)", modelOrAlias: { model: "M18" }, quotaInfo: { remainingFraction: 0.6 } },
+        { label: "Gemini 4 Argon (Medium)", modelOrAlias: { model: "MODEL_PLACEHOLDER_M421" }, quotaInfo: { remainingFraction: 0.1 } },
+        { label: "Claude Opus 5.5 (High)", modelOrAlias: { model: "M402" }, quotaInfo: { remainingFraction: 0.9 } },
+      ],
+    }))
+
+    const plugin = await loadPlugin()
+    const lines = plugin.probe(ctx).lines
+
+    expect(lines.map((l) => [l.label, l.used])).toEqual([["Session", 40], ["Claude", 10]])
+  })
+})
