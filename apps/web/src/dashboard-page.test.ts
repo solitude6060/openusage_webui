@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { ProviderStatus, UsageRecord } from "../../../packages/core/src/types";
-import { dashboardRecordsForProviders, splitDashboardLines } from "./pages/dashboard-page";
+import {
+  accountHeading,
+  dashboardRecordsForProviders,
+  groupProviderCards,
+  sameQuotaAcrossAccounts,
+  splitDashboardLines,
+} from "./pages/dashboard-page";
 
 describe("Dashboard provider selection", () => {
   test("skips a disabled provider", () => {
@@ -200,5 +206,59 @@ describe("Dashboard line grouping", () => {
 
     expect(result.summaryLines.map((line) => line.label)).toEqual(["Account", "Status", "Custom Quota"]);
     expect(result.detailLines.map((line) => line.label)).toEqual(["Another Quota"]);
+  });
+});
+
+function member(providerId: string, lines: Array<Record<string, unknown>>, name?: string) {
+  return {
+    providerId,
+    lines,
+    status: { providerId, name: name ?? providerId, enabled: true, detected: true } as ProviderStatus,
+  };
+}
+
+const weekly = (used: number, resetsAt: string) => ({ type: "progress", label: "Weekly", used, limit: 100, resetsAt });
+
+describe("Dashboard account groups", () => {
+  test("puts the accounts of one provider in one card and keeps single providers alone", () => {
+    const groups = groupProviderCards([
+      member("antigravity:acct1", []),
+      member("claude-code", []),
+      member("antigravity:acct2", []),
+      member("codex:codex", []),
+    ]);
+
+    expect(groups.map((group) => [group.id, group.members.map((item) => item.providerId)])).toEqual([
+      ["antigravity", ["antigravity:acct1", "antigravity:acct2"]],
+      ["claude-code", ["claude-code"]],
+      ["codex:codex", ["codex:codex"]],
+    ]);
+  });
+
+  test("names an account by its Account badge, else by its label without the provider", () => {
+    expect(accountHeading(member("antigravity:acct1", [{ type: "badge", label: "Account", text: "one@example.com" }]))).toBe(
+      "one@example.com",
+    );
+    expect(accountHeading(member("codex:family", [], "Codex-Family"))).toBe("Codex-Family");
+    expect(accountHeading(member("antigravity:acct2", [], "Antigravity · acct2"))).toBe("acct2");
+  });
+
+  test("flags accounts that report the same used percent and reset time", () => {
+    const reset = "2026-10-24T01:10:31Z";
+    expect(sameQuotaAcrossAccounts([
+      member("antigravity:a", [weekly(6, reset)]),
+      member("antigravity:b", [weekly(6, reset)]),
+    ])).toBe(true);
+    expect(sameQuotaAcrossAccounts([
+      member("antigravity:a", [weekly(6, reset)]),
+      member("antigravity:b", [weekly(7, reset)]),
+    ])).toBe(false);
+  });
+
+  test("does not flag accounts whose only match is unused windows", () => {
+    expect(sameQuotaAcrossAccounts([
+      member("antigravity:a", [weekly(0, "2026-10-28T00:00:01Z")]),
+      member("antigravity:b", [weekly(0, "2026-10-28T00:00:03Z")]),
+    ])).toBe(false);
   });
 });
