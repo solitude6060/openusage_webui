@@ -163,19 +163,38 @@ function progressKey(lines: DashboardLine[]): string {
   );
 }
 
-// Unused windows read 0% everywhere, so a match counts only with real use at the same reset time.
+// Unused windows read 0% everywhere and roll their reset forward, so only windows with use are
+// compared, and each of them must reset at the same time on every account.
 export function sameQuotaAcrossAccounts(members: ProviderData[]): boolean {
   if (members.length < 2) return false;
   const [first, ...rest] = members;
   const key = progressKey(first.lines);
   if (key === "[]" || rest.some((item) => progressKey(item.lines) !== key)) return false;
-  return first.lines.some((line) =>
-    line.type === "progress"
-    && Number(line.used) > 0
-    && typeof line.resetsAt === "string"
+  const used = first.lines.filter((line) => line.type === "progress" && Number(line.used) > 0);
+  return used.length > 0 && used.every((line) =>
+    typeof line.resetsAt === "string"
     && rest.every((item) => item.lines.some((other) =>
-      lineLabel(other) === lineLabel(line) && other.resetsAt === line.resetsAt)),
-  );
+      other.type === "progress" && lineLabel(other) === lineLabel(line) && other.resetsAt === line.resetsAt)));
+}
+
+// A saved id may name an account of a group card, or a group that is now one account.
+export function orderCardGroups(saved: string[], groups: ProviderCardGroup[]): string[] {
+  const groupOf = new Map<string, string>();
+  for (const group of groups) {
+    groupOf.set(group.id, group.id);
+    groupOf.set(baseProviderId(group.members[0].providerId), group.id);
+    for (const item of group.members) groupOf.set(item.providerId, group.id);
+  }
+  const ordered: string[] = [];
+  for (const id of saved) {
+    const groupId = groupOf.get(id) ?? groupOf.get(baseProviderId(id));
+    if (groupId && !ordered.includes(groupId)) ordered.push(groupId);
+  }
+  const missing = groups
+    .map((group) => group.id)
+    .filter((id) => !ordered.includes(id))
+    .sort((a, b) => providerLabel(a).localeCompare(providerLabel(b)));
+  return [...ordered, ...missing];
 }
 
 function latestRefresh(members: ProviderData[]): string | undefined {
@@ -339,26 +358,12 @@ export function DashboardPage({
   const cardGroups = useMemo(() => groupProviderCards([...providerDataMap.values()]), [providerDataMap]);
   const groupMap = useMemo(() => new Map(cardGroups.map((group) => [group.id, group])), [cardGroups]);
 
-  const [cardOrder, setCardOrder] = useState<string[]>(() => {
-    const saved = loadCardOrder();
-    const activeIds = cardGroups.map((group) => group.id);
-    if (saved.length > 0) {
-      const activeSet = new Set(activeIds);
-      const ordered = saved.filter((id) => activeSet.has(id));
-      const missing = activeIds.filter((id) => !saved.includes(id));
-      return [...ordered, ...missing.sort((a, b) => providerLabel(a).localeCompare(providerLabel(b)))];
-    }
-    return activeIds.sort((a, b) => providerLabel(a).localeCompare(providerLabel(b)));
-  });
+  const [cardOrder, setCardOrder] = useState<string[]>(() => orderCardGroups(loadCardOrder(), cardGroups));
 
   useEffect(() => {
-    const activeIds = cardGroups.map((group) => group.id);
-    const activeSet = new Set(activeIds);
     setCardOrder((prev) => {
-      const ordered = prev.filter((id) => activeSet.has(id));
-      const missing = activeIds.filter((id) => !prev.includes(id));
-      if (missing.length === 0 && ordered.length === prev.length) return prev;
-      return [...ordered, ...missing.sort((a, b) => providerLabel(a).localeCompare(providerLabel(b)))];
+      const next = orderCardGroups(prev, cardGroups);
+      return next.length === prev.length && next.every((id, i) => id === prev[i]) ? prev : next;
     });
   }, [cardGroups]);
 

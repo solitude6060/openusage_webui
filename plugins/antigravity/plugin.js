@@ -481,9 +481,9 @@
 
   // Legacy per-model quota does not say which pool or period Argon draws from.
   function isArgonModel(label, modelId) {
-    if (modelId === "MODEL_PLACEHOLDER_M421") return true
     var values = [label, modelId || ""]
     for (var i = 0; i < values.length; i++) {
+      if (values[i] === "MODEL_PLACEHOLDER_M421") return true
       var normalized = String(values[i]).toLowerCase().replace(/ /g, "-")
       if (normalized === "gemini-4-argon" || normalized.indexOf("gemini-4-argon-") === 0) return true
     }
@@ -725,6 +725,7 @@
       var rtime = (qi && qi.resetTime) || undefined
       configs.push({
         label: displayName,
+        modelId: modelId,
         quotaInfo: { remainingFraction: frac, resetTime: rtime },
       })
     }
@@ -763,6 +764,7 @@
       var frac = (typeof bucket.remainingFraction === "number") ? bucket.remainingFraction : 0
       configs.push({
         label: modelId,
+        modelId: modelId,
         quotaInfo: { remainingFraction: frac, resetTime: bucket.resetTime || undefined },
       })
     }
@@ -847,6 +849,16 @@
       ctx.host.log.warn("GetUserStatus threw: " + String(e))
     }
     var hasUserStatus = data && data.userStatus
+    var plan = hasUserStatus ? userStatusPlan(data.userStatus) : null
+
+    // A summary, even one with no lines, does not need the per-model calls.
+    var summaryLines = null
+    try {
+      summaryLines = parseQuotaSummaries(ctx, [callLs(ctx, found.port, found.scheme, discovery.csrf, "RetrieveUserQuotaSummary", { metadata: metadata })])
+    } catch (e) {
+      ctx.host.log.warn("RetrieveUserQuotaSummary threw: " + String(e))
+    }
+    if (summaryLines) return { plan: plan, lines: summaryLines }
 
     if (!hasUserStatus) {
       ctx.host.log.warn("GetUserStatus failed, trying GetCommandModelConfigs")
@@ -870,34 +882,19 @@
       filtered.push(configs[j])
     }
 
-    var lines = null
-    try {
-      lines = parseQuotaSummaries(ctx, [callLs(ctx, found.port, found.scheme, discovery.csrf, "RetrieveUserQuotaSummary", { metadata: metadata })])
-    } catch (e) {
-      ctx.host.log.warn("RetrieveUserQuotaSummary threw: " + String(e))
-    }
-    if (!lines) lines = buildModelLines(ctx, filtered)
+    var lines = buildModelLines(ctx, filtered)
     if (lines.length === 0) return null
-
-    var plan = null
-    if (hasUserStatus) {
-      // Prefer userTier.name (Google's own subscription system) over the legacy
-      // planInfo.planName field inherited from Windsurf/Codeium, which always
-      // returns "Pro" for all paid tiers including Google AI Ultra.
-      var ut = data.userStatus.userTier
-      var userTierName =
-        ut && typeof ut.name === "string" && ut.name.trim() ? ut.name.trim() : null
-      if (userTierName) {
-        plan = userTierName
-      } else {
-        var ps = data.userStatus.planStatus || {}
-        var pi = ps.planInfo || {}
-        plan =
-          typeof pi.planName === "string" && pi.planName.trim() ? pi.planName.trim() : null
-      }
-    }
-
     return { plan: plan, lines: lines }
+  }
+
+  // Prefer userTier.name (Google's own subscription system) over the legacy
+  // planInfo.planName field inherited from Windsurf/Codeium, which always
+  // returns "Pro" for all paid tiers including Google AI Ultra.
+  function userStatusPlan(userStatus) {
+    var ut = userStatus.userTier
+    if (ut && typeof ut.name === "string" && ut.name.trim()) return ut.name.trim()
+    var pi = (userStatus.planStatus || {}).planInfo || {}
+    return typeof pi.planName === "string" && pi.planName.trim() ? pi.planName.trim() : null
   }
 
   function probeLs(ctx) {
