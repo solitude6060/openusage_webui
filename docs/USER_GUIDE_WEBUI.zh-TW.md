@@ -261,7 +261,7 @@ Settings 頁面包含：
 - MiniMax tracking method
 - Manual entry form
 
-**Provider Accounts**：先選 Provider（目前支援 Codex、Claude Code、Cursor、Antigravity），再按「Detect Homes」找出已登入的家目錄，或手動填標籤與路徑。每個啟用中的帳號會變成儀表板上的獨立卡片。Codex 使用 `CODEX_HOME`；Claude Code 使用 `CLAUDE_CONFIG_DIR`；Cursor 使用 `OPENUSAGE_CURSOR_CONFIG_DIR`；Antigravity CLI（例如本機 `agy`／`agy1`／`agy2`：預設 `~/.gemini` 與 `~/.agy-homes/<profile>`）使用 `OPENUSAGE_ANTIGRAVITY_CLI_HOME`，IDE 設定目錄使用 `OPENUSAGE_ANTIGRAVITY_CONFIG_DIR`。Detect 若讀得到 oauth 裡的 Google 信箱，標籤與儀表板卡片會顯示該信箱。尚未新增任何帳號時，行為與原本單一 Provider 卡片相同。
+**Provider Accounts**：先選 Provider（目前支援 Codex、Claude Code、Cursor、Antigravity），再按「Detect Homes」找出已登入的家目錄，或手動填標籤與路徑。同一個 Provider 有兩個以上啟用中的帳號時，儀表板把它們放在同一張卡片，每個帳號一欄；所有帳號回報相同的用量與重置時間時，卡片會註明。Codex 使用 `CODEX_HOME`；Claude Code 使用 `CLAUDE_CONFIG_DIR`；Cursor 使用 `OPENUSAGE_CURSOR_CONFIG_DIR`；Antigravity CLI（例如本機 `agy`／`agy1`／`agy2`：預設 `~/.gemini` 與 `~/.agy-homes/<profile>`）使用 `OPENUSAGE_ANTIGRAVITY_CLI_HOME`，IDE 設定目錄使用 `OPENUSAGE_ANTIGRAVITY_CONFIG_DIR`。Detect 若讀得到 Google 信箱（CLI 的 `id_token`、IDE 的 `antigravityAuthStatus`），Detected Homes 會列出該信箱；若某個 home 與已追蹤的帳號是同一個 Google 帳號，會註明，避免重複加入。帳號欄位標題使用 Account badge 的信箱。Antigravity 卡片顯示 Session／Weekly（Gemini 共用額度的 5 小時與每週）、Argon Weekly（有回報時）、Claude／Claude Weekly（Claude 與 GPT 共用額度）。尚未新增任何帳號時，行為與原本單一 Provider 卡片相同。
 
 Manual entry form 可以手動新增 usage record，適合目前沒有自動 provider 的服務。
 
