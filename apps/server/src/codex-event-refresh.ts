@@ -26,14 +26,25 @@ export async function attachCodexEventScan(
   const homes = accounts.length > 0
     ? accounts.map((account) => ({ id: account.id, homePath: account.homePath }))
     : [{ id: provider.id, homePath: fallbackHome }];
+  const idHashes = homes.map((account) => codexAccountIdHash(account.homePath));
+  if (idHashes.some((read) => read.failed)) {
+    // A transient auth.json failure would change the mapping key and rescan with fallback
+    // attribution. Skip this refresh's scan: no replace, no key update, no cursor move.
+    console.error(JSON.stringify({ event: "codex_event_scan_skipped", reason: "account_id_unreadable" }));
+    provider.setCodexEventScan(null);
+    return;
+  }
   provider.setCodexEventScan({
-    accounts: homes.map((account) => ({
-      id: account.id,
-      homePath: account.homePath,
-      shape: shapeFor(observations, account.id),
-      planType: plans[account.id] ?? null,
-      accountIdHash: codexAccountIdHash(account.homePath),
-    })),
+    accounts: homes.map((account, index) => {
+      const read = idHashes[index]!;
+      return {
+        id: account.id,
+        homePath: account.homePath,
+        shape: shapeFor(observations, account.id),
+        planType: plans[account.id] ?? null,
+        accountIdHash: read.failed ? null : read.hash,
+      };
+    }),
     cursors: await storage.listCodexEventCursors(),
     storedMapKey: await storage.getAppMeta(MAP_KEY),
   });

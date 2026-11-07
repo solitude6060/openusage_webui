@@ -100,6 +100,10 @@ not identify who consumed the tokens" and "The scanner never reads `creator_acco
   it read. Older events stay as they are, because their files may be gone. An empty
   sessions directory that can be read therefore keeps the stored events. A failed reread
   still changes nothing.
+- If an `auth.json` exists but cannot be read or parsed, that refresh skips the event scan:
+  no events, cursors, or mapping key change. A missing `auth.json` means no hash.
+- If a session file's first line cannot be read, none of that file's new events are stored,
+  its cursor stays, and the scan counts as incomplete, so the next refresh retries it.
 
 Known limits:
 

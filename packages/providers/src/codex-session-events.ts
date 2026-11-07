@@ -158,10 +158,18 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
         if (existing) nextCursors.push(existing);
         continue;
       }
-      filesRead += 1;
       const parsed = parseTokenCounts(read.slice.text, read.slice.previousTotal);
+      const creatorRead = parsed.events.length > 0 ? sessionCreatorHash(path) : null;
+      if (creatorRead?.failed) {
+        // Keep the cursor so the next refresh retries; never store these events under the fallback.
+        complete = false;
+        const existing = cursors.get(path);
+        if (existing) nextCursors.push(existing);
+        continue;
+      }
+      filesRead += 1;
       unmapped += parsed.unmapped;
-      const creator = parsed.events.length > 0 ? creatorAccount(sessionCreatorHash(path), input.accounts) : null;
+      const creator = creatorAccount(creatorRead?.hash ?? null, input.accounts);
       for (const event of parsed.events) {
         if (earliest == null || event.draft.observedAt < earliest) earliest = event.draft.observedAt;
         if (creator) {

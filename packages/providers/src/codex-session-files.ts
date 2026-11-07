@@ -23,45 +23,53 @@ function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-/** SHA-256 of `tokens.account_id` in `<home>/auth.json`. Nothing else from the file is kept. */
-export function codexAccountIdHash(homePath: string): string | null {
+export type HashRead = { failed: true } | { failed: false; hash: string | null };
+
+/**
+ * SHA-256 of `tokens.account_id` in `<home>/auth.json`. Nothing else from the file is kept.
+ * A missing file is no hash; any other read or parse failure is `failed`.
+ */
+export function codexAccountIdHash(homePath: string): HashRead {
   let raw: string;
   try {
     raw = readFileSync(join(homePath, "auth.json"), "utf8");
   } catch (error) {
-    if (errorCode(error) !== "ENOENT") {
-      console.error(JSON.stringify({ event: "codex_account_id_unreadable", code: errorCode(error) }));
-    }
-    return null;
+    if (errorCode(error) === "ENOENT") return { failed: false, hash: null };
+    console.error(JSON.stringify({ event: "codex_account_id_unreadable", code: errorCode(error) }));
+    return { failed: true };
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
     console.error(JSON.stringify({ event: "codex_account_id_unreadable", code: "SYNTAX" }));
-    return null;
+    return { failed: true };
   }
   const tokens = isRecord(parsed) && isRecord(parsed.tokens) ? parsed.tokens : null;
   const id = tokens && typeof tokens.account_id === "string" && tokens.account_id ? tokens.account_id : null;
-  return id ? sha256(id) : null;
+  return { failed: false, hash: id ? sha256(id) : null };
 }
 
 /** SHA-256 of `session_meta.payload.creator_account_id` on the file's first line, if present. */
-export function sessionCreatorHash(path: string): string | null {
+export function sessionCreatorHash(path: string): HashRead {
   const line = readFirstLine(path);
-  if (!line) return null;
+  if (line === false) return { failed: true };
+  if (!line) return { failed: false, hash: null };
   let record: unknown;
   try {
     record = JSON.parse(line);
   } catch {
-    return null;
+    return { failed: false, hash: null };
   }
-  if (!isRecord(record) || record.type !== "session_meta" || !isRecord(record.payload)) return null;
+  if (!isRecord(record) || record.type !== "session_meta" || !isRecord(record.payload)) {
+    return { failed: false, hash: null };
+  }
   const creator = record.payload.creator_account_id;
-  return typeof creator === "string" && creator ? sha256(creator) : null;
+  return { failed: false, hash: typeof creator === "string" && creator ? sha256(creator) : null };
 }
 
-function readFirstLine(path: string): string | null {
+// The first line, null when there is none yet, or false when the file cannot be read.
+function readFirstLine(path: string): string | null | false {
   let fd: number | null = null;
   try {
     fd = openSync(path, "r");
@@ -83,7 +91,7 @@ function readFirstLine(path: string): string | null {
     return null;
   } catch (error) {
     logReadFailure(error);
-    return null;
+    return false;
   } finally {
     if (fd != null) closeSync(fd);
   }
