@@ -90,6 +90,8 @@ test("hourly ccusage rows set the day cost, and the allocated sum equals it", as
     await storage.upsertUsageRecords([
       ccusage("h1", "2026-10-09T03:00:00.000Z", 600, 1.25, true),
       ccusage("h2", "2026-10-09T15:00:00.000Z", 400, 0.5, true),
+      // A same-day daily row with a different cost: only the hourly sum may count.
+      ccusage("d9", "2026-10-09T00:00:00.000Z", 1000, 9),
     ]);
     await storage.upsertCodexTokenEvents([
       event("codex:codex", "2026-10-09T03:20:00.000Z", 700),

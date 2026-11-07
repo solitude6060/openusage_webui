@@ -256,9 +256,13 @@ test("a home that loses its auth.json keeps the attribution of its stored events
     ]);
 
     // Logging out removes auth.json. The hash goes away, the key changes and the files are reread.
+    const keyBefore = await storage.getAppMeta("codex_event_map_key");
     rmSync(join(familyHome, "auth.json"));
     const rescan = await refresh();
     expect(rescan?.replaceProviderIds).toEqual(["codex:codex", "codex:family"]);
+    // The rescan completed and was saved, so the unchanged totals come from the replace itself.
+    expect(rescan?.complete).toBe(true);
+    expect(await storage.getAppMeta("codex_event_map_key")).not.toBe(keyBefore);
     expect(await ownedTokens(storage)).toEqual([
       { providerId: "codex:codex", tokens: 100 },
       { providerId: "codex:family", tokens: 200 },
