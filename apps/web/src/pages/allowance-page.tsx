@@ -421,10 +421,10 @@ function completedFields(cycle: AllowanceCompletedCycle, windowKey: string): Arr
   ];
 }
 
-// Each segment climbs at most 100 points; their sum can pass 100, so the climbs are listed instead.
+// The sum of segment climbs can pass 100, so each climb is listed; an uncapped meter (Cursor) can pass 100 in one climb.
 function consumedLabel(cycle: AllowanceCompletedCycle, windowKey: string): string {
   if (cycle.segments.length <= 1) return meterPercent(cycle.consumedPercent);
-  const climbs = cycle.segments.map((segment) => formatPercent(segment.endPercent - segment.startPercent)).join(" + ");
+  const climbs = cycle.segments.map((segment) => meterPercent(segment.endPercent - segment.startPercent)).join(" + ");
   return `${climbs} · Meter Reset Mid-${windowKey === "weekly" ? "Week" : "Cycle"}`;
 }
 

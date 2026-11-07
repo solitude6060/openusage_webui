@@ -459,3 +459,32 @@ describe("Review round 1 follow-ups", () => {
     expect(screen.queryByText(/134/)).not.toBeInTheDocument();
   });
 });
+
+describe("Review round 2 follow-ups", () => {
+  beforeEach(() => {
+    vi.mocked(getAllowance).mockReset();
+    wideViewport();
+  });
+
+  test("a segment climb above 100 reads as over included usage", async () => {
+    const segment = { tokens: 1, apiCost: null, tokensPerPercent: null, dollarsPerPercent: null };
+    serve([summary({
+      providerId: "cursor",
+      windowKey: "cursor:total-usage",
+      windowLabel: "Total usage",
+      current: current({ lengthMs: 31 * DAY_MS }),
+      cycles: [cycle({
+        consumedPercent: 182,
+        segments: [
+          { ...segment, start: "2026-10-20T00:00:00.000Z", end: "2026-10-23T00:00:00.000Z", startPercent: 0, endPercent: 134 },
+          { ...segment, start: "2026-10-23T01:00:00.000Z", end: "2026-10-27T00:00:00.000Z", startPercent: 2, endPercent: 50 },
+        ],
+      })] as never,
+    })]);
+    render(<AllowancePage providers={[]} refreshToken={0} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Subscription Period" }));
+
+    expect(await screen.findAllByText("Over Included Usage + 48% · Meter Reset Mid-Cycle")).toHaveLength(2);
+    expect(screen.queryByText(/134/)).not.toBeInTheDocument();
+  });
+});
