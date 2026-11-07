@@ -70,12 +70,13 @@ analysis, section 4.2. Per completed cycle there, the medians are 2.75M tokens p
   figure from them.
 - The first successful refresh reads the session history. Later refreshes read only the
   bytes appended since the cursor. A change in account shape or recorded plan rereads the
-  files and replaces the stored event rows for those accounts in one write. That
-  replacement is kept only when every sessions directory listing and session file read
-  succeeded. A failed reread leaves the stored events, file cursors, and mapping key in
-  place, so the next refresh rereads the history. Superseded on 2026-11-08 (see "Update
-  2026-11-08: Attribution By Session Creator" below): an empty sessions directory that can be
-  read keeps the stored events, and an event the new mapping cannot assign keeps its account.
+  files and replaces the stored event rows for those accounts in one write. Superseded on
+  2026-11-08 (see "Update 2026-11-08: Attribution By Session Creator" below): a reread now
+  moves only the events it finds and can assign, by time and cumulative total; an empty
+  sessions directory that can be read keeps the stored events; an event the new mapping
+  cannot assign keeps its account; and a reread that cannot read every folder and file still
+  stores what it read but marks the mapping key `rescan-pending`, so the next refresh rereads
+  again.
   The unique key still ignores a duplicate insert of the same account, time, and
   cumulative total.
 
@@ -107,7 +108,9 @@ not identify who consumed the tokens" and "The scanner never reads `creator_acco
   `rescan-pending`, which no real key equals, so every later refresh rereads again until one
   reread completes, even if the accounts' key returns to the old value. (Keeping the old key
   let those saved cursors skip the moved files; review R3-1.) This is safe because the replace
-  touches only events it re-inserts. Before review R2-1 an incomplete reread saved nothing, so
+  touches only events it re-inserts. On such a reread, an event that only a plan learned in
+  the same reread could assign is left unmapped, because the unread files might make that
+  plan ambiguous; its stored row keeps its account (review G-R3-1). Before review R2-1 an incomplete reread saved nothing, so
   one deleted home or one unreadable file stopped Codex events for every account. Until the
   cause is fixed, every refresh rereads all session files. Cursors under a missing sessions
   directory are kept on purpose: they are what keeps a temporarily unmounted directory from

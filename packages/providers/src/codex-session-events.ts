@@ -221,6 +221,12 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
     planType: planById.get(account.id) ?? account.planType,
   }));
   for (const event of pending) {
+    // Plans learned while some files could not be read may be wrong; on such a rescan these events
+    // stay unmapped, so the replace leaves their stored rows on their previous account.
+    if (rescan && !complete) {
+      unmapped += 1;
+      continue;
+    }
     const providerId = assignAccount(event.shape, event.planType, recorded);
     if (!providerId) {
       unmapped += 1;
