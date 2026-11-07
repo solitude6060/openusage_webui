@@ -54,16 +54,24 @@ export async function saveCodexEventScan(
   storage: SqliteStorage,
   result: CodexEventScanResult,
 ): Promise<void> {
-  if (result.replaceProviderIds.length > 0 && !result.complete) {
-    console.error(JSON.stringify({ event: "codex_event_rescan_incomplete" }));
-    return;
-  }
-  if (result.replaceProviderIds.length > 0) {
+  const rescan = result.replaceProviderIds.length > 0;
+  // The replace moves only events this scan read, so storing them is safe even when the scan is
+  // incomplete. Cursors of the files read are saved too; a rescan reads from the start anyway.
+  if (rescan) {
     await storage.replaceCodexTokenEvents(result.replaceProviderIds, result.events);
   } else {
     await storage.upsertCodexTokenEvents(result.events);
   }
   await storage.saveCodexEventCursors(result.cursors);
+  if (rescan && !result.complete) {
+    // Without the new key the next refresh rescans again, so a pending rescan is never used up.
+    if (result.events.length === 0 && result.unmapped === 0) {
+      console.log(JSON.stringify({ event: "codex_event_rescan_no_events" }));
+    } else {
+      console.error(JSON.stringify({ event: "codex_event_rescan_incomplete" }));
+    }
+    return;
+  }
   if (result.learnedPlans.length > 0) {
     const plans = readPlanTypes(await storage.getAppMeta(PLAN_TYPES_KEY));
     for (const plan of result.learnedPlans) plans[plan.providerId] = plan.planType;
