@@ -1,6 +1,7 @@
-import { closeSync, lstatSync, openSync, readdirSync, readSync, realpathSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { lstatSync, realpathSync } from "node:fs";
+import { join, sep } from "node:path";
 import { observationsFromLines } from "./quota-observations";
+import { errorCode, listJsonl, logReadFailure, readNewText, sessionCreatorHash } from "./codex-session-files";
 
 export type CodexMeterShape = "weekly-primary" | "five-hour-primary";
 
@@ -9,6 +10,8 @@ export interface CodexEventAccount {
   homePath: string;
   shape: CodexMeterShape | null;
   planType: string | null;
+  /** SHA-256 of `tokens.account_id` from the home's auth.json; never the raw id. */
+  accountIdHash?: string | null;
 }
 
 export interface CodexEventCursor {
@@ -46,6 +49,8 @@ export interface CodexEventScanResult {
   unmapped: number;
   replaceProviderIds: string[];
   complete: boolean;
+  /** Every listing and file read succeeded; `complete` also requires a rescan to find an event. */
+  readComplete: boolean;
 }
 
 export interface CodexShapeObservation {
@@ -64,7 +69,12 @@ export function codexSessionScanRoots(accounts: Array<{ homePath: string }>): st
   return sessionScanRoots(accounts).roots;
 }
 
-function sessionScanRoots(accounts: Array<{ homePath: string }>): { roots: string[]; complete: boolean } {
+// A missing sessions path is incomplete when stored cursors show it held files before, so a rescan
+// cannot treat files that are only temporarily missing as gone. A home that never had one is skipped.
+function sessionScanRoots(
+  accounts: Array<{ homePath: string }>,
+  cursors: Array<{ path: string }> = [],
+): { roots: string[]; complete: boolean } {
   const roots = new Set<string>();
   let complete = true;
   for (const account of accounts) {
@@ -73,7 +83,7 @@ function sessionScanRoots(accounts: Array<{ homePath: string }>): { roots: strin
     try {
       stat = lstatSync(sessions);
     } catch (error) {
-      if (errorCode(error) !== "ENOENT") {
+      if (errorCode(error) !== "ENOENT" || hadSessions(account.homePath, cursors)) {
         complete = false;
         logReadFailure(error);
       }
@@ -88,6 +98,16 @@ function sessionScanRoots(accounts: Array<{ homePath: string }>): { roots: strin
     }
   }
   return { roots: [...roots].sort(), complete };
+}
+
+function hadSessions(homePath: string, cursors: Array<{ path: string }>): boolean {
+  const prefixes = [join(homePath, "sessions") + sep];
+  try {
+    prefixes.push(join(realpathSync(homePath), "sessions") + sep);
+  } catch {
+    // The home itself is gone; the configured path is the only prefix to compare.
+  }
+  return cursors.some((cursor) => prefixes.some((prefix) => cursor.path.startsWith(prefix)));
 }
 
 export function meterShapeFromObservations(rows: CodexShapeObservation[]): CodexMeterShape | null {
@@ -135,7 +155,8 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
   const learned = new Map<string, Set<string>>();
   let filesRead = 0;
   let unmapped = 0;
-  const discovered = sessionScanRoots(input.accounts);
+  let found = 0;
+  const discovered = sessionScanRoots(input.accounts, input.cursors);
   let complete = discovered.complete;
 
   for (const root of discovered.roots) {
@@ -152,10 +173,24 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
         if (existing) nextCursors.push(existing);
         continue;
       }
-      filesRead += 1;
       const parsed = parseTokenCounts(read.slice.text, read.slice.previousTotal);
+      const creatorRead = parsed.events.length > 0 ? sessionCreatorHash(path) : null;
+      if (creatorRead?.failed) {
+        // Keep the cursor so the next refresh retries; never store these events under the fallback.
+        complete = false;
+        const existing = cursors.get(path);
+        if (existing) nextCursors.push(existing);
+        continue;
+      }
+      filesRead += 1;
+      found += parsed.events.length;
       unmapped += parsed.unmapped;
+      const creator = creatorAccount(creatorRead?.hash ?? null, input.accounts);
       for (const event of parsed.events) {
+        if (creator) {
+          events.push({ ...event.draft, providerId: creator });
+          continue;
+        }
         const providerId = assignAccount(event.shape, event.planType, input.accounts);
         if (!providerId) {
           pending.push(event);
@@ -186,6 +221,12 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
     planType: planById.get(account.id) ?? account.planType,
   }));
   for (const event of pending) {
+    // Plans learned while some files could not be read may be wrong; on such a rescan these events
+    // stay unmapped, so the replace leaves their stored rows on their previous account.
+    if (rescan && !complete) {
+      unmapped += 1;
+      continue;
+    }
     const providerId = assignAccount(event.shape, event.planType, recorded);
     if (!providerId) {
       unmapped += 1;
@@ -201,14 +242,17 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
     learnedPlans,
     unmapped,
     replaceProviderIds: rescan ? input.accounts.map((account) => account.id) : [],
-    complete,
+    // A rescan that finds no event changes nothing; saving its key would use it up, and files that
+    // return with their old size and modified time would then never be reread.
+    complete: complete && (!rescan || found > 0),
+    readComplete: complete,
   };
 }
 
 function codexEventMapKey(accounts: CodexEventAccount[]): string {
   return JSON.stringify(
     accounts
-      .map((account) => [account.id, account.shape, account.planType] as const)
+      .map((account) => [account.id, account.shape, account.planType, account.accountIdHash ?? null] as const)
       .sort((left, right) => left[0].localeCompare(right[0])),
   );
 }
@@ -221,6 +265,12 @@ function effectivePeriod(row: CodexShapeObservation | null): number | null {
     if (Number.isFinite(horizon) && horizon >= DAY_MS) return horizon;
   }
   return row.periodMs;
+}
+
+function creatorAccount(creatorHash: string | null, accounts: CodexEventAccount[]): string | null {
+  if (!creatorHash) return null;
+  const matches = accounts.filter((account) => account.accountIdHash === creatorHash);
+  return matches.length === 1 ? matches[0]!.id : null;
 }
 
 function assignAccount(
@@ -237,93 +287,6 @@ function assignAccount(
     if (matches.length === 1) return matches[0]!.id;
   }
   return null;
-}
-
-interface ReadSlice {
-  text: string;
-  nextOffset: number;
-  mtimeMs: number;
-  previousTotal: number | null;
-}
-
-function readNewText(
-  path: string,
-  cursor: CodexEventCursor | null,
-  rescan: boolean,
-): { failed: true } | { failed: false; slice: ReadSlice | null } {
-  let stat;
-  try {
-    stat = statSync(path);
-  } catch (error) {
-    logReadFailure(error);
-    return { failed: true };
-  }
-  const mtimeMs = Math.trunc(stat.mtimeMs);
-  const size = stat.size;
-  if (!rescan && cursor && cursor.offset === size && cursor.mtimeMs === mtimeMs) return { failed: false, slice: null };
-  const start = !rescan && cursor && size >= cursor.offset ? cursor.offset : 0;
-  const previousTotal = start === 0 ? null : cursor?.lastTotalTokens ?? null;
-  let fd: number | null = null;
-  try {
-    fd = openSync(path, "r");
-    const length = size - start;
-    if (length <= 0) return { failed: false, slice: { text: "", nextOffset: start, mtimeMs, previousTotal } };
-    const buffer = Buffer.alloc(length);
-    const read = readSync(fd, buffer, 0, length, start);
-    const slice = buffer.subarray(0, read);
-    let end = slice.length;
-    if (end === 0 || slice[end - 1] !== 0x0a) {
-      const newline = slice.lastIndexOf(0x0a);
-      if (newline < 0) return { failed: false, slice: { text: "", nextOffset: start, mtimeMs, previousTotal } };
-      end = newline + 1;
-    }
-    return {
-      failed: false,
-      slice: { text: slice.subarray(0, end).toString("utf8"), nextOffset: start + end, mtimeMs, previousTotal },
-    };
-  } catch (error) {
-    logReadFailure(error);
-    return { failed: true };
-  } finally {
-    if (fd != null) closeSync(fd);
-  }
-}
-
-function listJsonl(root: string): { files: string[]; complete: boolean } {
-  const files: string[] = [];
-  const stack = [root];
-  let complete = true;
-  while (stack.length > 0) {
-    const dir = stack.pop()!;
-    let names: string[];
-    try {
-      names = readdirSync(dir);
-    } catch (error) {
-      complete = false;
-      logReadFailure(error);
-      continue;
-    }
-    for (const name of names) {
-      const path = join(dir, name);
-      let stat;
-      try {
-        stat = lstatSync(path);
-      } catch (error) {
-        complete = false;
-        logReadFailure(error);
-        continue;
-      }
-      if (stat.isSymbolicLink()) continue;
-      if (stat.isDirectory()) stack.push(path);
-      else if (stat.isFile() && name.endsWith(".jsonl")) files.push(path);
-    }
-  }
-  files.sort();
-  return { files, complete };
-}
-
-function logReadFailure(error: unknown): void {
-  console.error(JSON.stringify({ event: "codex_session_read_failed", code: errorCode(error) }));
 }
 
 interface ParsedEvent {
@@ -478,10 +441,4 @@ function intField(record: Record<string, unknown>, ...keys: string[]): number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function errorCode(error: unknown): string {
-  return error && typeof error === "object" && "code" in error && typeof error.code === "string"
-    ? error.code
-    : "UNKNOWN";
 }

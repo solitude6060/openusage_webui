@@ -86,20 +86,46 @@ export function insertCodexTokenEvents(db: Database, events: CodexTokenEventInse
   write(events);
 }
 
+// Moves each rescanned event to its new account. Per identity (time and cumulative total), using
+// the replaced providers' stored match count taken before any write:
+// - 0 matches: insert;
+// - 1 match: delete it, then insert;
+// - 2 or more: the source session is ambiguous, so neither delete nor insert; the rows stay.
+// A stored event that no rescanned event reproduces (its file is gone, or the new mapping cannot
+// assign it) keeps its stored account.
 export function replaceCodexTokenEvents(
   db: Database,
   providerIds: string[],
   events: CodexTokenEventInsert[],
 ): void {
   const insert = db.prepare(INSERT_CODEX_TOKEN_EVENT);
-  const write = db.transaction((ids: string[], rows: CodexTokenEventInsert[]) => {
-    if (ids.length > 0) {
-      const placeholders = ids.map(() => "?").join(", ");
-      db.query(`DELETE FROM codex_token_events WHERE provider_id IN (${placeholders})`).run(...ids);
+  const placeholders = providerIds.map(() => "?").join(", ");
+  const match = `provider_id IN (${placeholders}) AND observed_at = ? AND total_tokens = ?`;
+  const count = providerIds.length > 0
+    ? db.prepare(`SELECT COUNT(*) AS n FROM codex_token_events WHERE ${match}`)
+    : null;
+  const remove = providerIds.length > 0 ? db.prepare(`DELETE FROM codex_token_events WHERE ${match}`) : null;
+  const identity = (row: CodexTokenEventInsert) => JSON.stringify([row.observedAt, row.totalTokens]);
+  // All counts and deletes before any insert: two rescanned events of different accounts can share
+  // an identity, and a delete after the first insert would remove it.
+  const write = db.transaction((rows: CodexTokenEventInsert[]) => {
+    const matches = new Map<string, number>();
+    for (const row of rows) {
+      const key = identity(row);
+      if (matches.has(key)) continue;
+      const found = count?.get(...providerIds, row.observedAt, row.totalTokens) as { n: number } | null;
+      matches.set(key, found?.n ?? 0);
     }
-    for (const row of rows) runCodexTokenEventInsert(insert, row);
+    for (const row of rows) {
+      if (matches.get(identity(row)) !== 1) continue;
+      remove?.run(...providerIds, row.observedAt, row.totalTokens);
+    }
+    for (const row of rows) {
+      if ((matches.get(identity(row)) ?? 0) >= 2) continue;
+      runCodexTokenEventInsert(insert, row);
+    }
   });
-  write(providerIds, events);
+  write(events);
 }
 
 export function listCodexTokenEventReadings(db: Database, from: string): CodexTokenEventReading[] {

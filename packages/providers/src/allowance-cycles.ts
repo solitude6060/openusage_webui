@@ -45,6 +45,8 @@ export interface AllowanceCycleSegment {
   apiCost: number | null;
   tokensPerPercent: number | null;
   dollarsPerPercent: number | null;
+  // Some of the dollars are a token share of a day's cost, so they cannot show a rate change.
+  costAllocated?: true;
 }
 
 export interface AllowanceCompletedCycle {
@@ -178,6 +180,7 @@ interface UsageSide {
   tokens: number;
   cost: number | null;
   rows: number;
+  allocated: boolean;
 }
 
 interface Reading {
@@ -238,6 +241,7 @@ function measureCycle(
     apiCost: sideCost(sides[index]!),
     tokensPerPercent: perPercent(sides[index]!.tokens, span.endPercent - span.startPercent),
     dollarsPerPercent: perPercent(sideCost(sides[index]!), span.endPercent - span.startPercent),
+    ...(sides[index]!.allocated ? { costAllocated: true as const } : {}),
   }));
   // Ratios divide by the climbs of the segments whose numerator is measured; a cycle with none keeps the full sum.
   const measured = measuredTotals(segments);
@@ -319,6 +323,8 @@ function usableSummary(
   summary: AllowanceCycleSummary,
   points: Array<{ usedPercent: number }>,
 ): boolean {
+  // The monthly summary needs an account that used tokens this billing month, whatever its meter shows.
+  if ((summary.billing?.months.find((month) => month.current)?.tokens ?? 0) > 0) return true;
   const included = summary.cycles.some((cycle) => cycle.included);
   if (summary.current == null && !included) return false;
   if ((summary.current?.tokens ?? 0) > 0) return true;
@@ -400,6 +406,7 @@ function regimeShift(before: AllowanceCycleSegment, after: AllowanceCycleSegment
   const left = before.dollarsPerPercent;
   const right = after.dollarsPerPercent;
   if (left == null || right == null || !(left > 0) || !(right > 0)) return false;
+  if (before.costAllocated || after.costAllocated) return false;
   // Climbs under the 10 percent cycle minimum are too coarse to compare.
   if (climbOf(before) < CYCLE_MIN_PERCENT || climbOf(after) < CYCLE_MIN_PERCENT) return false;
   return Math.max(left, right) / Math.min(left, right) > REGIME_SHIFT_RATIO;
@@ -532,12 +539,13 @@ function cycleExclusion(input: {
 }
 
 function emptySide(): UsageSide {
-  return { tokens: 0, cost: 0, rows: 0 };
+  return { tokens: 0, cost: 0, rows: 0, allocated: false };
 }
 
 function addRow(side: UsageSide, row: AllowanceTokenRow): void {
   side.tokens += row.tokens;
   side.rows += 1;
+  if (row.costAllocated) side.allocated = true;
   if (side.cost == null) return;
   if (row.costUsd == null || !Number.isFinite(row.costUsd) || row.costUsd < 0) {
     side.cost = null;

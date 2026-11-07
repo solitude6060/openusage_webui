@@ -38,7 +38,8 @@ describe("allowance cycle summary omission", () => {
         observation("2026-10-02T00:00:00.000Z", 40, "2026-10-08T00:00:00.000Z"),
         observation("2026-10-05T00:00:00.000Z", 37, "2026-10-08T00:00:00.000Z"),
       ],
-      [bucket("2026-10-03T00:00:00.000Z", 100)],
+      // Tokens before the current billing month; a month with tokens keeps the summary.
+      [bucket("2026-09-28T00:00:00.000Z", 100)],
       new Set(),
       new Date("2026-10-09T00:00:00.000Z"),
     );
@@ -52,7 +53,8 @@ describe("allowance cycle summary omission", () => {
         observation("2026-10-07T12:00:00.000Z", 0, "2026-10-08T00:00:00.000Z"),
         observation("2026-10-09T00:00:00.000Z", 0, "2026-10-15T00:00:00.000Z"),
       ],
-      [bucket("2026-10-03T00:00:00.000Z", 100)],
+      // Tokens before the current billing month; a month with tokens keeps the summary.
+      [bucket("2026-09-28T00:00:00.000Z", 100)],
       new Set(),
       new Date("2026-10-10T00:00:00.000Z"),
     );

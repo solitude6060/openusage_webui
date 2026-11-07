@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { saveCodexEventScan } from "../src/codex-event-refresh";
@@ -15,6 +15,8 @@ const FROM = "2026-10-01T00:00:00.000Z";
 const RESETS_AT = Math.floor(Date.parse("2026-10-16T00:00:00.000Z") / 1000);
 const MAP_KEY = "codex_event_map_key";
 const PLAN_KEY = "codex_event_plan_types";
+// Stored after an incomplete rescan; no real mapping key (a JSON array) can equal it.
+const PENDING = "rescan-pending";
 
 let dataDir = "";
 let homeRoot = "";
@@ -29,27 +31,32 @@ afterEach(() => {
   homeRoot = "";
 });
 
-test("a Codex rescan that cannot read a session file keeps the stored events until the file can be read", async () => {
+test("a Codex rescan that cannot read a session file moves the readable file's events and stays pending until the file can be read", async () => {
   const sessions = openFixture();
   const readable = join(sessions, "readable.jsonl");
   const blocked = join(sessions, "blocked.jsonl");
   writeFileSync(readable, weeklyLine("2026-10-09T12:30:00.000Z", 100));
   writeFileSync(blocked, weeklyLine("2026-10-09T13:30:00.000Z", 200));
-  await expectKeptUntilReadable(blocked, 0o644);
+  // The readable file's event moves to its new account; the blocked file's event stays where it was.
+  await expectKeptUntilReadable(blocked, 0o644, [
+    { providerId: "codex:codex", tokens: 200 },
+    { providerId: "codex:family", tokens: 100 },
+  ]);
 });
 
 test("a Codex rescan that cannot list the sessions directory keeps the stored events until the directory can be listed", async () => {
   const sessions = openFixture();
   writeFileSync(join(sessions, "one.jsonl"), weeklyLine("2026-10-09T12:30:00.000Z", 100));
   writeFileSync(join(sessions, "two.jsonl"), weeklyLine("2026-10-09T13:30:00.000Z", 200));
-  await expectKeptUntilReadable(sessions, 0o755);
+  await expectKeptUntilReadable(sessions, 0o755, [{ providerId: "codex:codex", tokens: 300 }]);
 });
 
-test("an empty readable Codex sessions directory still clears stored events on a rescan", async () => {
+test("an empty readable Codex sessions directory leaves the rescan pending until files return", async () => {
   const sessions = openFixture();
   const first = join(sessions, "one.jsonl");
   const second = join(sessions, "two.jsonl");
-  writeFileSync(first, weeklyLine("2026-10-09T12:30:00.000Z", 100));
+  const firstText = weeklyLine("2026-10-09T12:30:00.000Z", 100);
+  writeFileSync(first, firstText);
   writeFileSync(second, weeklyLine("2026-10-09T13:30:00.000Z", 200));
   const storage = new SqliteStorage();
   await storage.init();
@@ -62,14 +69,222 @@ test("an empty readable Codex sessions directory still clears stored events on a
       cursors,
       storedMapKey,
     });
-    await saveCodexEventScan(storage, cleared);
-    expect(await ownedTokens(storage)).toEqual([]);
+    const logs = await saveLogged(storage, cleared);
+    expect(logs).toContain("codex_event_rescan_no_events");
+    expect(logs).not.toContain("codex_event_rescan_incomplete");
+    // No file reproduces a stored event, so every stored event keeps its account.
+    expect(await ownedTokens(storage)).toEqual([{ providerId: "codex:codex", tokens: 300 }]);
+    // A rescan that finds no event is not used up: the key marks the rescan pending and cursors stay.
+    expect(await storage.getAppMeta(MAP_KEY)).toBe(PENDING);
+    expect(cursorSnapshot(await storage.listCodexEventCursors())).toEqual(cursorSnapshot(cursors));
+
+    // The file comes back with the size and modified time its cursor recorded.
+    writeFileSync(first, firstText);
+    const oldCursor = cursors.find((cursor) => cursor.path.endsWith("one.jsonl"))!;
+    utimesSync(first, oldCursor.mtimeMs / 1000, oldCursor.mtimeMs / 1000);
+    const restored = scanQuietly({
+      accounts: swapped,
+      cursors: await storage.listCodexEventCursors(),
+      storedMapKey: await storage.getAppMeta(MAP_KEY),
+    });
+    await saveCodexEventScan(storage, restored);
+    expect(restored.filesRead).toBe(1);
+    expect(await ownedTokens(storage)).toEqual([
+      { providerId: "codex:codex", tokens: 200 },
+      { providerId: "codex:family", tokens: 100 },
+    ]);
   } finally {
     storage.close();
   }
 });
 
-async function expectKeptUntilReadable(lockedPath: string, restoredMode: number): Promise<void> {
+test("a rescan with one of two separate sessions directories missing changes nothing", async () => {
+  const sessions = openFixture();
+  const familySessions = join(homeRoot, "family", "sessions");
+  mkdirSync(familySessions, { recursive: true });
+  writeFileSync(join(sessions, "a.jsonl"), weeklyLine("2026-10-09T12:30:00.000Z", 100));
+  writeFileSync(join(familySessions, "b.jsonl"), plusLine("2026-10-09T13:30:00.000Z", 200));
+  const storage = new SqliteStorage();
+  await storage.init();
+  try {
+    const codex: CodexEventAccount = {
+      id: "codex:codex", homePath: join(homeRoot, "codex"), shape: "weekly-primary", planType: null,
+    };
+    const family: CodexEventAccount = {
+      id: "codex:family", homePath: join(homeRoot, "family"), shape: null, planType: "plus",
+    };
+    const first = scanQuietly({ accounts: [codex, family], cursors: [], storedMapKey: null });
+    await saveCodexEventScan(storage, first);
+    expect(await ownedTokens(storage)).toEqual([
+      { providerId: "codex:codex", tokens: 100 },
+      { providerId: "codex:family", tokens: 200 },
+    ]);
+    const storedMapKey = await storage.getAppMeta(MAP_KEY);
+    const cursors = await storage.listCodexEventCursors();
+
+    rmSync(familySessions, { recursive: true, force: true });
+    const rescan = scanQuietly({
+      // A new account id hash changes the key, so this is a rescan.
+      accounts: [{ ...codex, accountIdHash: "0".repeat(64) }, family],
+      cursors,
+      storedMapKey,
+    });
+    await saveCodexEventScan(storage, rescan);
+    expect(rescan.replaceProviderIds).toEqual(["codex:codex", "codex:family"]);
+    expect(rescan.complete).toBe(false);
+    expect(await ownedTokens(storage)).toEqual([
+      { providerId: "codex:codex", tokens: 100 },
+      { providerId: "codex:family", tokens: 200 },
+    ]);
+    expect(await storage.getAppMeta(MAP_KEY)).toBe(PENDING);
+    expect(cursorSnapshot(await storage.listCodexEventCursors())).toEqual(cursorSnapshot(cursors));
+  } finally {
+    storage.close();
+  }
+});
+
+test("a removed home with stored cursors does not stop the other home's new events", async () => {
+  const sessions = openFixture();
+  const familyHome = join(homeRoot, "family");
+  mkdirSync(join(familyHome, "sessions"), { recursive: true });
+  writeFileSync(join(sessions, "a.jsonl"), weeklyLine("2026-10-09T12:30:00.000Z", 100));
+  writeFileSync(join(familyHome, "sessions", "b.jsonl"), plusLine("2026-10-09T13:30:00.000Z", 200));
+  const storage = new SqliteStorage();
+  await storage.init();
+  try {
+    const codex: CodexEventAccount = {
+      id: "codex:codex", homePath: join(homeRoot, "codex"), shape: "weekly-primary", planType: null,
+    };
+    const family: CodexEventAccount = { id: "codex:family", homePath: familyHome, shape: null, planType: "plus" };
+    await saveCodexEventScan(storage, scanQuietly({ accounts: [codex, family], cursors: [], storedMapKey: null }));
+    const storedMapKey = await storage.getAppMeta(MAP_KEY);
+
+    // The family home is deleted while its account stays configured; its cursors remain.
+    rmSync(familyHome, { recursive: true, force: true });
+    writeFileSync(join(sessions, "c.jsonl"), weeklyLine("2026-10-10T08:00:00.000Z", 50));
+    const rescan = scanQuietly({
+      accounts: [{ ...codex, accountIdHash: "0".repeat(64) }, family],
+      cursors: await storage.listCodexEventCursors(),
+      storedMapKey,
+    });
+    expect(rescan.complete).toBe(false);
+    await saveLogged(storage, rescan);
+    expect(await ownedTokens(storage)).toEqual([
+      { providerId: "codex:codex", tokens: 150 },
+      { providerId: "codex:family", tokens: 200 },
+    ]);
+    // The key marks the rescan pending, so the next refresh tries the full reread again.
+    expect(await storage.getAppMeta(MAP_KEY)).toBe(PENDING);
+  } finally {
+    storage.close();
+  }
+});
+
+test("a file whose first line is too long does not stop the other files' events on a rescan", async () => {
+  const sessions = openFixture();
+  writeFileSync(join(sessions, "a.jsonl"), weeklyLine("2026-10-09T12:30:00.000Z", 100));
+  const storage = new SqliteStorage();
+  await storage.init();
+  try {
+    const codex: CodexEventAccount = {
+      id: "codex:codex", homePath: join(homeRoot, "codex"), shape: "weekly-primary", planType: null,
+    };
+    await saveCodexEventScan(storage, scanQuietly({ accounts: [codex], cursors: [], storedMapKey: null }));
+    const storedMapKey = await storage.getAppMeta(MAP_KEY);
+    const huge = JSON.stringify({ type: "session_meta", payload: { base_instructions: { text: "x".repeat(4_700_000) } } });
+    writeFileSync(join(sessions, "huge.jsonl"), `${huge}\n${weeklyLine("2026-10-10T07:00:00.000Z", 70)}`);
+    writeFileSync(join(sessions, "c.jsonl"), weeklyLine("2026-10-10T08:00:00.000Z", 50));
+    const rescan = scanQuietly({
+      accounts: [{ ...codex, accountIdHash: "0".repeat(64) }],
+      cursors: await storage.listCodexEventCursors(),
+      storedMapKey,
+    });
+    expect(rescan.complete).toBe(false);
+    await saveLogged(storage, rescan);
+    expect(await ownedTokens(storage)).toEqual([{ providerId: "codex:codex", tokens: 150 }]);
+    expect(await storage.getAppMeta(MAP_KEY)).toBe(PENDING);
+  } finally {
+    storage.close();
+  }
+});
+
+test("after an incomplete rescan, a key that returns to the stored one still rescans and restores attribution", async () => {
+  const sessions = openFixture();
+  const readable = join(sessions, "readable.jsonl");
+  const blocked = join(sessions, "blocked.jsonl");
+  writeFileSync(readable, weeklyLine("2026-10-09T12:30:00.000Z", 100));
+  writeFileSync(blocked, weeklyLine("2026-10-09T13:30:00.000Z", 200));
+  const storage = new SqliteStorage();
+  await storage.init();
+  try {
+    // K1: weekly events belong to codex:codex.
+    const { swapped, storedMapKey: k1 } = await storeInitialScan(storage);
+    // The K1 input: the original shapes plus the plan the first scan recorded.
+    const original: CodexEventAccount[] = [
+      { ...swapped[0]!, shape: "weekly-primary", planType: "prolite" },
+      { ...swapped[1]!, shape: "five-hour-primary" },
+    ];
+    chmodSync(blocked, 0);
+    try {
+      // K2 (swapped shapes) with one file unreadable: incomplete, the readable event moves to family.
+      const incomplete = scanQuietly({ accounts: swapped, cursors: await storage.listCodexEventCursors(), storedMapKey: k1 });
+      await saveLogged(storage, incomplete);
+      expect(incomplete.complete).toBe(false);
+      expect(await ownedTokens(storage)).toEqual([
+        { providerId: "codex:codex", tokens: 200 },
+        { providerId: "codex:family", tokens: 100 },
+      ]);
+
+      // The probe shows the old shapes again, so the input key equals K1 again. The file is still
+      // unreadable, so this rescan is incomplete too, but it already moves the readable event back.
+      const back = scanQuietly({
+        accounts: original,
+        cursors: await storage.listCodexEventCursors(),
+        storedMapKey: await storage.getAppMeta(MAP_KEY),
+      });
+      expect(back.mapKey).toBe(k1);
+      expect(back.replaceProviderIds).toEqual(["codex:codex", "codex:family"]);
+      await saveLogged(storage, back);
+      expect(back.complete).toBe(false);
+      expect(await ownedTokens(storage)).toEqual([{ providerId: "codex:codex", tokens: 300 }]);
+    } finally {
+      chmodSync(blocked, 0o644);
+    }
+
+    // With the file readable again, the next scan completes and stores K1.
+    const recovered = scanQuietly({
+      accounts: original,
+      cursors: await storage.listCodexEventCursors(),
+      storedMapKey: await storage.getAppMeta(MAP_KEY),
+    });
+    await saveLogged(storage, recovered);
+    expect(recovered.complete).toBe(true);
+    expect(await storage.getAppMeta(MAP_KEY)).toBe(k1);
+    expect(await ownedTokens(storage)).toEqual([{ providerId: "codex:codex", tokens: 300 }]);
+  } finally {
+    storage.close();
+  }
+});
+
+async function saveLogged(storage: SqliteStorage, result: CodexEventScanResult): Promise<string> {
+  const lines: string[] = [];
+  const original = { error: console.error, log: console.log };
+  console.error = (...args: unknown[]) => lines.push(args.map(String).join(" "));
+  console.log = (...args: unknown[]) => lines.push(args.map(String).join(" "));
+  try {
+    await saveCodexEventScan(storage, result);
+  } finally {
+    console.error = original.error;
+    console.log = original.log;
+  }
+  return lines.join("\n");
+}
+
+async function expectKeptUntilReadable(
+  lockedPath: string,
+  restoredMode: number,
+  blockedTokens: Array<{ providerId: string; tokens: number }>,
+): Promise<void> {
   const storage = new SqliteStorage();
   await storage.init();
   let locked = false;
@@ -83,9 +298,12 @@ async function expectKeptUntilReadable(lockedPath: string, restoredMode: number)
       cursors,
       storedMapKey,
     }, errors);
-    await saveCodexEventScan(storage, blocked);
-    expect(await ownedTokens(storage)).toEqual([{ providerId: "codex:codex", tokens: 300 }]);
-    expect(await storage.getAppMeta(MAP_KEY)).toBe(storedMapKey);
+    const logs = await saveLogged(storage, blocked);
+    // A read failure is incomplete, never the harmless "no events" case.
+    expect(logs).toContain("codex_event_rescan_incomplete");
+    expect(logs).not.toContain("codex_event_rescan_no_events");
+    expect(await ownedTokens(storage)).toEqual(blockedTokens);
+    expect(await storage.getAppMeta(MAP_KEY)).toBe(PENDING);
     expect(await storage.getAppMeta(PLAN_KEY)).toBe(plans);
     expect(cursorSnapshot(await storage.listCodexEventCursors())).toEqual(cursorSnapshot(cursors));
     expect(blocked.complete).toBe(false);
@@ -182,6 +400,23 @@ function weeklyLine(timestamp: string, tokens: number): string {
       rate_limits: {
         plan_type: "prolite",
         primary: { used_percent: 12, window_minutes: 10080, resets_at: RESETS_AT },
+        secondary: null,
+      },
+    },
+  })}\n`;
+}
+
+// No meter shape (a 1-minute primary window), so only the recorded plan name can assign it.
+function plusLine(timestamp: string, tokens: number): string {
+  return `${JSON.stringify({
+    timestamp,
+    type: "event_msg",
+    payload: {
+      type: "token_count",
+      info: { total_token_usage: usage(tokens), last_token_usage: usage(tokens) },
+      rate_limits: {
+        plan_type: "plus",
+        primary: { used_percent: 12, window_minutes: 1, resets_at: RESETS_AT },
         secondary: null,
       },
     },

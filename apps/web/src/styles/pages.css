@@ -67,6 +67,44 @@
   }
 }
 
+.allowance-summary {
+  margin-top: 0;
+}
+
+.allowance-summary h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.allowance-summary td,
+.allowance-cycle-table td:last-child {
+  white-space: normal;
+}
+
+/* The reason column of the completed cycle table holds a sentence. */
+.allowance-cycle-table td:last-child {
+  min-width: 18rem;
+}
+
+.allowance-summary .allowance-cycle-table td:last-child {
+  min-width: 0;
+}
+
+.allowance-details > summary {
+  cursor: pointer;
+  margin: 16px 0 8px;
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.allowance-details-body {
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+}
+
 .allowance-list {
   display: grid;
   gap: 12px;

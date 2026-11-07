@@ -5,10 +5,14 @@ import {
   type CodexEventScanResult,
   type CodexMeterShape,
 } from "../../../packages/providers/src/codex-session-events";
+import { codexAccountIdHash } from "../../../packages/providers/src/codex-session-files";
 import { aliasCodexSevenDaySessions, collapseQuotaWindows } from "../../../packages/providers/src/quota-observations";
 
 const PLAN_TYPES_KEY = "codex_event_plan_types";
 const MAP_KEY = "codex_event_map_key";
+// Stored after an incomplete rescan. Real keys are JSON arrays, so no input key equals it and
+// every later scan rescans until one completes, even if the input key returns to the old one.
+const RESCAN_PENDING = "rescan-pending";
 
 export async function attachCodexEventScan(
   storage: SqliteStorage,
@@ -25,13 +29,25 @@ export async function attachCodexEventScan(
   const homes = accounts.length > 0
     ? accounts.map((account) => ({ id: account.id, homePath: account.homePath }))
     : [{ id: provider.id, homePath: fallbackHome }];
+  const idHashes = homes.map((account) => codexAccountIdHash(account.homePath));
+  if (idHashes.some((read) => read.failed)) {
+    // A transient auth.json failure would change the mapping key and rescan with fallback
+    // attribution. Skip this refresh's scan: no replace, no key update, no cursor move.
+    console.error(JSON.stringify({ event: "codex_event_scan_skipped", reason: "account_id_unreadable" }));
+    provider.setCodexEventScan(null);
+    return;
+  }
   provider.setCodexEventScan({
-    accounts: homes.map((account) => ({
-      id: account.id,
-      homePath: account.homePath,
-      shape: shapeFor(observations, account.id),
-      planType: plans[account.id] ?? null,
-    })),
+    accounts: homes.map((account, index) => {
+      const read = idHashes[index]!;
+      return {
+        id: account.id,
+        homePath: account.homePath,
+        shape: shapeFor(observations, account.id),
+        planType: plans[account.id] ?? null,
+        accountIdHash: read.failed ? null : read.hash,
+      };
+    }),
     cursors: await storage.listCodexEventCursors(),
     storedMapKey: await storage.getAppMeta(MAP_KEY),
   });
@@ -41,16 +57,30 @@ export async function saveCodexEventScan(
   storage: SqliteStorage,
   result: CodexEventScanResult,
 ): Promise<void> {
-  if (result.replaceProviderIds.length > 0 && !result.complete) {
-    console.error(JSON.stringify({ event: "codex_event_rescan_incomplete" }));
-    return;
-  }
-  if (result.replaceProviderIds.length > 0) {
+  const rescan = result.replaceProviderIds.length > 0;
+  // Mark the rescan pending before anything moves: if the process stops between the writes below,
+  // the stored key cannot still claim the old mapping. A complete scan overwrites it at the end.
+  if (rescan) await storage.setAppMeta(MAP_KEY, RESCAN_PENDING);
+  // The replace moves only events this scan read, so storing them is safe even when the scan is
+  // incomplete. Cursors of the files read are saved too; a rescan reads from the start anyway.
+  if (rescan) {
     await storage.replaceCodexTokenEvents(result.replaceProviderIds, result.events);
   } else {
     await storage.upsertCodexTokenEvents(result.events);
   }
   await storage.saveCodexEventCursors(result.cursors);
+  if (rescan && !result.complete) {
+    // The key stays rescan-pending: the saved cursors and moved events do not match the old key.
+    if (result.readComplete) {
+      console.log(JSON.stringify({ event: "codex_event_rescan_no_events" }));
+    } else {
+      console.error(JSON.stringify({ event: "codex_event_rescan_incomplete" }));
+    }
+    if (result.unmapped > 0) {
+      console.error(JSON.stringify({ event: "codex_events_unmapped", count: result.unmapped }));
+    }
+    return;
+  }
   if (result.learnedPlans.length > 0) {
     const plans = readPlanTypes(await storage.getAppMeta(PLAN_TYPES_KEY));
     for (const plan of result.learnedPlans) plans[plan.providerId] = plan.planType;
