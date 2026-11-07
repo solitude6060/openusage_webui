@@ -104,7 +104,8 @@ not identify who consumed the tokens" and "The scanner never reads `creator_acco
   assign. (Revised after review R1-1; the first version replaced every event after the
   earliest file event.) When two or more stored rows share a rescanned event's time and
   cumulative total, the reread cannot tell which session it came from, so it keeps all of them
-  and adds the event only if its account does not hold one yet (review F-1).
+  and adds no row for that event (reviews F-1 and R6-1; adding one under a third account would
+  count the tokens twice).
 - A reread that is incomplete (a folder or file could not be read) still moves the events it
   did read and saves their file cursors. Instead of the new mapping key it stores the marker
   `rescan-pending`, which no real key equals, so every later refresh rereads again until one
