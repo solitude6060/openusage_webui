@@ -77,3 +77,35 @@ analysis, section 4.2. Per completed cycle there, the medians are 2.75M tokens p
   read still clears the stored events. An event the new mapping cannot assign is removed.
   The unique key still ignores a duplicate insert of the same account, time, and
   cumulative total.
+
+## Update 2026-11-08: Attribution By Session Creator
+
+Plan: `docs/plans/2026-11-08-allowance-monthly-summary.md`, item S1.
+
+Both Codex accounts became Plus with the same 5-hour plus weekly windows, so the shape and
+plan rule in Decision 4 could no longer pick one account. Every event went to one account.
+This section replaces two 2026-10-11 statements: "`session_meta.creator_account_id` does
+not identify who consumed the tokens" and "The scanner never reads `creator_account_id`".
+
+- Each configured Codex home carries a hash: SHA-256 of `tokens.account_id` in
+  `<home>/auth.json`. Only that field is read.
+- Each session file's first line is `session_meta`. Its `creator_account_id` is hashed.
+  Every event in that file goes to the one account with the same hash. The first line is
+  read separately, so events appended later keep their creator.
+- When no account matches, or the field is missing, the old shape and plan rule applies.
+  Only events assigned by that rule teach a recorded plan.
+- The mapping key in `app_meta` now includes these hashes. The full hash is stored there;
+  the raw id is never stored, logged, or returned. A changed hash rereads the files.
+- A reread replaces only stored events at or after the earliest event found in the files
+  it read. Older events stay as they are, because their files may be gone. An empty
+  sessions directory that can be read therefore keeps the stored events. A failed reread
+  still changes nothing.
+
+Known limits:
+
+- Events older than the earliest session file on disk keep their old account. On the
+  owner's machine on 2026-11-08 that is 35,136 events from 2026-04-06 to 2026-10-28, all
+  under `codex:family`; the earliest event in a file on disk is 2026-10-29T10:01Z.
+- Attribution is per session. A session resumed under the other login stays with its
+  creator. 11 events in sessions created by `~/.codex-family` carry the other account's
+  weekly reset; they stay with the creator.
