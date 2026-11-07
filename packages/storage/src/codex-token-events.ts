@@ -86,9 +86,11 @@ export function insertCodexTokenEvents(db: Database, events: CodexTokenEventInse
   write(events);
 }
 
-// Moves each rescanned event to its new account: deletes the providers' stored rows with the same
+// Moves each rescanned event to its new account: deletes the providers' stored row with the same
 // time and cumulative total, then inserts it. A stored event that no rescanned event reproduces
-// (its file is gone, or the new mapping cannot assign it) keeps its stored account.
+// (its file is gone, or the new mapping cannot assign it) keeps its stored account. When two or
+// more stored rows share that identity, the source of the rescanned one is ambiguous, so all are
+// kept and the insert is ignored if its account already holds one.
 export function replaceCodexTokenEvents(
   db: Database,
   providerIds: string[],
@@ -96,16 +98,19 @@ export function replaceCodexTokenEvents(
 ): void {
   const insert = db.prepare(INSERT_CODEX_TOKEN_EVENT);
   const placeholders = providerIds.map(() => "?").join(", ");
-  const remove = providerIds.length > 0
-    ? db.prepare(`
-      DELETE FROM codex_token_events
-      WHERE provider_id IN (${placeholders}) AND observed_at = ? AND total_tokens = ?
-    `)
+  const match = `provider_id IN (${placeholders}) AND observed_at = ? AND total_tokens = ?`;
+  const count = providerIds.length > 0
+    ? db.prepare(`SELECT COUNT(*) AS n FROM codex_token_events WHERE ${match}`)
     : null;
-  // All deletes first: two rescanned events of different accounts can share a time and total,
-  // and a delete after the first insert would remove it.
+  const remove = providerIds.length > 0 ? db.prepare(`DELETE FROM codex_token_events WHERE ${match}`) : null;
+  // Counts and deletes first: two rescanned events of different accounts can share a time and
+  // total, and a delete after the first insert would remove it.
   const write = db.transaction((rows: CodexTokenEventInsert[]) => {
-    for (const row of rows) remove?.run(...providerIds, row.observedAt, row.totalTokens);
+    const unique = new Map<string, CodexTokenEventInsert>();
+    for (const row of rows) unique.set(JSON.stringify([row.observedAt, row.totalTokens]), row);
+    const movable = [...unique.values()].filter((row) =>
+      (count?.get(...providerIds, row.observedAt, row.totalTokens) as { n: number } | null)?.n === 1);
+    for (const row of movable) remove?.run(...providerIds, row.observedAt, row.totalTokens);
     for (const row of rows) runCodexTokenEventInsert(insert, row);
   });
   write(events);
