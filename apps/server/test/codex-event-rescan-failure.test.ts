@@ -29,20 +29,24 @@ afterEach(() => {
   homeRoot = "";
 });
 
-test("a Codex rescan that cannot read a session file keeps the stored events until the file can be read", async () => {
+test("a Codex rescan that cannot read a session file moves the readable file's events and stays pending until the file can be read", async () => {
   const sessions = openFixture();
   const readable = join(sessions, "readable.jsonl");
   const blocked = join(sessions, "blocked.jsonl");
   writeFileSync(readable, weeklyLine("2026-10-09T12:30:00.000Z", 100));
   writeFileSync(blocked, weeklyLine("2026-10-09T13:30:00.000Z", 200));
-  await expectKeptUntilReadable(blocked, 0o644);
+  // The readable file's event moves to its new account; the blocked file's event stays where it was.
+  await expectKeptUntilReadable(blocked, 0o644, [
+    { providerId: "codex:codex", tokens: 200 },
+    { providerId: "codex:family", tokens: 100 },
+  ]);
 });
 
 test("a Codex rescan that cannot list the sessions directory keeps the stored events until the directory can be listed", async () => {
   const sessions = openFixture();
   writeFileSync(join(sessions, "one.jsonl"), weeklyLine("2026-10-09T12:30:00.000Z", 100));
   writeFileSync(join(sessions, "two.jsonl"), weeklyLine("2026-10-09T13:30:00.000Z", 200));
-  await expectKeptUntilReadable(sessions, 0o755);
+  await expectKeptUntilReadable(sessions, 0o755, [{ providerId: "codex:codex", tokens: 300 }]);
 });
 
 test("an empty readable Codex sessions directory leaves the rescan pending until files return", async () => {
@@ -63,7 +67,9 @@ test("an empty readable Codex sessions directory leaves the rescan pending until
       cursors,
       storedMapKey,
     });
-    await saveCodexEventScan(storage, cleared);
+    const logs = await saveLogged(storage, cleared);
+    expect(logs).toContain("codex_event_rescan_no_events");
+    expect(logs).not.toContain("codex_event_rescan_incomplete");
     // No file reproduces a stored event, so every stored event keeps its account.
     expect(await ownedTokens(storage)).toEqual([{ providerId: "codex:codex", tokens: 300 }]);
     // A rescan that finds no event is not used up: the key and cursors stay.
@@ -135,7 +141,90 @@ test("a rescan with one of two separate sessions directories missing changes not
   }
 });
 
-async function expectKeptUntilReadable(lockedPath: string, restoredMode: number): Promise<void> {
+test("a removed home with stored cursors does not stop the other home's new events", async () => {
+  const sessions = openFixture();
+  const familyHome = join(homeRoot, "family");
+  mkdirSync(join(familyHome, "sessions"), { recursive: true });
+  writeFileSync(join(sessions, "a.jsonl"), weeklyLine("2026-10-09T12:30:00.000Z", 100));
+  writeFileSync(join(familyHome, "sessions", "b.jsonl"), plusLine("2026-10-09T13:30:00.000Z", 200));
+  const storage = new SqliteStorage();
+  await storage.init();
+  try {
+    const codex: CodexEventAccount = {
+      id: "codex:codex", homePath: join(homeRoot, "codex"), shape: "weekly-primary", planType: null,
+    };
+    const family: CodexEventAccount = { id: "codex:family", homePath: familyHome, shape: null, planType: "plus" };
+    await saveCodexEventScan(storage, scanQuietly({ accounts: [codex, family], cursors: [], storedMapKey: null }));
+    const storedMapKey = await storage.getAppMeta(MAP_KEY);
+
+    // The family home is deleted while its account stays configured; its cursors remain.
+    rmSync(familyHome, { recursive: true, force: true });
+    writeFileSync(join(sessions, "c.jsonl"), weeklyLine("2026-10-10T08:00:00.000Z", 50));
+    const rescan = scanQuietly({
+      accounts: [{ ...codex, accountIdHash: "0".repeat(64) }, family],
+      cursors: await storage.listCodexEventCursors(),
+      storedMapKey,
+    });
+    expect(rescan.complete).toBe(false);
+    await saveLogged(storage, rescan);
+    expect(await ownedTokens(storage)).toEqual([
+      { providerId: "codex:codex", tokens: 150 },
+      { providerId: "codex:family", tokens: 200 },
+    ]);
+    // The key is not saved, so the next refresh tries the full reread again.
+    expect(await storage.getAppMeta(MAP_KEY)).toBe(storedMapKey);
+  } finally {
+    storage.close();
+  }
+});
+
+test("a file whose first line is too long does not stop the other files' events on a rescan", async () => {
+  const sessions = openFixture();
+  writeFileSync(join(sessions, "a.jsonl"), weeklyLine("2026-10-09T12:30:00.000Z", 100));
+  const storage = new SqliteStorage();
+  await storage.init();
+  try {
+    const codex: CodexEventAccount = {
+      id: "codex:codex", homePath: join(homeRoot, "codex"), shape: "weekly-primary", planType: null,
+    };
+    await saveCodexEventScan(storage, scanQuietly({ accounts: [codex], cursors: [], storedMapKey: null }));
+    const storedMapKey = await storage.getAppMeta(MAP_KEY);
+    const huge = JSON.stringify({ type: "session_meta", payload: { base_instructions: { text: "x".repeat(4_700_000) } } });
+    writeFileSync(join(sessions, "huge.jsonl"), `${huge}\n${weeklyLine("2026-10-10T07:00:00.000Z", 70)}`);
+    writeFileSync(join(sessions, "c.jsonl"), weeklyLine("2026-10-10T08:00:00.000Z", 50));
+    const rescan = scanQuietly({
+      accounts: [{ ...codex, accountIdHash: "0".repeat(64) }],
+      cursors: await storage.listCodexEventCursors(),
+      storedMapKey,
+    });
+    expect(rescan.complete).toBe(false);
+    await saveLogged(storage, rescan);
+    expect(await ownedTokens(storage)).toEqual([{ providerId: "codex:codex", tokens: 150 }]);
+    expect(await storage.getAppMeta(MAP_KEY)).toBe(storedMapKey);
+  } finally {
+    storage.close();
+  }
+});
+
+async function saveLogged(storage: SqliteStorage, result: CodexEventScanResult): Promise<string> {
+  const lines: string[] = [];
+  const original = { error: console.error, log: console.log };
+  console.error = (...args: unknown[]) => lines.push(args.map(String).join(" "));
+  console.log = (...args: unknown[]) => lines.push(args.map(String).join(" "));
+  try {
+    await saveCodexEventScan(storage, result);
+  } finally {
+    console.error = original.error;
+    console.log = original.log;
+  }
+  return lines.join("\n");
+}
+
+async function expectKeptUntilReadable(
+  lockedPath: string,
+  restoredMode: number,
+  blockedTokens: Array<{ providerId: string; tokens: number }>,
+): Promise<void> {
   const storage = new SqliteStorage();
   await storage.init();
   let locked = false;
@@ -150,7 +239,7 @@ async function expectKeptUntilReadable(lockedPath: string, restoredMode: number)
       storedMapKey,
     }, errors);
     await saveCodexEventScan(storage, blocked);
-    expect(await ownedTokens(storage)).toEqual([{ providerId: "codex:codex", tokens: 300 }]);
+    expect(await ownedTokens(storage)).toEqual(blockedTokens);
     expect(await storage.getAppMeta(MAP_KEY)).toBe(storedMapKey);
     expect(await storage.getAppMeta(PLAN_KEY)).toBe(plans);
     expect(cursorSnapshot(await storage.listCodexEventCursors())).toEqual(cursorSnapshot(cursors));
