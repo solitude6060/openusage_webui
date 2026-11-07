@@ -103,14 +103,18 @@ not identify who consumed the tokens" and "The scanner never reads `creator_acco
   assign. (Revised after review R1-1; the first version replaced every event after the
   earliest file event.)
 - A reread that is incomplete (a folder or file could not be read) still moves the events it
-  did read and saves their file cursors, but does not save the new mapping key, so the next
-  refresh rereads again. This is safe because the replace touches only events it re-inserts.
-  Before review R2-1 an incomplete reread saved nothing, so one deleted home or one unreadable
-  file stopped Codex events for every account. Until the cause is fixed, every refresh rereads
-  all session files.
+  did read and saves their file cursors. Instead of the new mapping key it stores the marker
+  `rescan-pending`, which no real key equals, so every later refresh rereads again until one
+  reread completes, even if the accounts' key returns to the old value. (Keeping the old key
+  let those saved cursors skip the moved files; review R3-1.) This is safe because the replace
+  touches only events it re-inserts. Before review R2-1 an incomplete reread saved nothing, so
+  one deleted home or one unreadable file stopped Codex events for every account. Until the
+  cause is fixed, every refresh rereads all session files. Cursors under a missing sessions
+  directory are kept on purpose: they are what keeps a temporarily unmounted directory from
+  being read as empty, so a deleted home costs a full reread on each refresh (review R3-2).
 - A reread that finds no event (for example an empty sessions directory that can be read)
-  counts as incomplete, so the mapping key stays and the next refresh rereads again; it logs
-  `codex_event_rescan_no_events`. Saving the key would use the reread up, and files that come back with their
+  counts as incomplete, so the mapping key is marked pending and the next refresh rereads
+  again; it logs `codex_event_rescan_no_events`. Saving the key would use the reread up, and files that come back with their
   old size and modified time would never be read again. (Review G-R1-1.)
 - A missing sessions directory counts as a failed read when the stored file cursors show it
   held session files before. A home that never had one is skipped and does not block the

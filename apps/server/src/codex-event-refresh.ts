@@ -10,6 +10,9 @@ import { aliasCodexSevenDaySessions, collapseQuotaWindows } from "../../../packa
 
 const PLAN_TYPES_KEY = "codex_event_plan_types";
 const MAP_KEY = "codex_event_map_key";
+// Stored after an incomplete rescan. Real keys are JSON arrays, so no input key equals it and
+// every later scan rescans until one completes, even if the input key returns to the old one.
+const RESCAN_PENDING = "rescan-pending";
 
 export async function attachCodexEventScan(
   storage: SqliteStorage,
@@ -64,7 +67,8 @@ export async function saveCodexEventScan(
   }
   await storage.saveCodexEventCursors(result.cursors);
   if (rescan && !result.complete) {
-    // Without the new key the next refresh rescans again, so a pending rescan is never used up.
+    // The saved cursors and moved events no longer match the old key, so mark the rescan pending.
+    await storage.setAppMeta(MAP_KEY, RESCAN_PENDING);
     if (result.events.length === 0 && result.unmapped === 0) {
       console.log(JSON.stringify({ event: "codex_event_rescan_no_events" }));
     } else {
