@@ -87,9 +87,16 @@ function monthFields(summary: AllowanceCycleSummary, name: string | undefined): 
     { label: "Projected Month End", value: money(usage.projected) },
     {
       label: "Meter Now",
-      value: current?.usedPercent == null ? "—" : `${formatPercent(current.usedPercent)} ${summary.windowLabel}`,
+      value: current?.usedPercent == null ? "—" : `${meterPercent(current.usedPercent)} ${summary.windowLabel}`,
     },
   ];
+}
+
+const MONTH_MIN_MS = 27 * 24 * 60 * 60 * 1000;
+
+// A meter can pass 100 when a provider counts usage beyond the plan (Cursor bonus usage).
+export function meterPercent(value: number): string {
+  return value > 100 ? "Over Included Usage" : formatPercent(value);
 }
 
 const SHARED_LOG = "Shares Another Account's Session Log";
@@ -117,9 +124,22 @@ function monthUsage(summary: AllowanceCycleSummary): {
   }
   // A weekly window without billing months shares its session log with another account.
   if (summary.windowKey === "weekly") return { month: "—", tokens: SHARED_LOG, apiDollars: null, projected: null };
-  // A monthly window's current cycle is its billing month.
+  // A monthly window's current cycle is its billing month; a shorter window has none.
   const current = summary.current;
   if (!current) return { month: "—", tokens: "—", apiDollars: null, projected: null };
+  if (current.lengthMs < MONTH_MIN_MS) {
+    return {
+      month: (
+        <>
+          <div>—</div>
+          <div className="allowance-meta">{`${summary.windowLabel} window, not a billing month`}</div>
+        </>
+      ),
+      tokens: formatCompactTokenCount(current.tokens),
+      apiDollars: null,
+      projected: null,
+    };
+  }
   return {
     month: monthCell(current.start, current.end, "Provider Monthly Window"),
     tokens: formatCompactTokenCount(current.tokens),
