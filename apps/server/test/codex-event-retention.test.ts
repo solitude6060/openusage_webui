@@ -98,16 +98,18 @@ async function ownedTokens(storage: SqliteStorage): Promise<Array<{ providerId: 
     .sort((left, right) => left.providerId.localeCompare(right.providerId));
 }
 
-test("a rescan keeps stored events older than the earliest rescanned event", async () => {
+test("a rescan replaces only the stored events that the rescanned files reproduce", async () => {
   const { codexHome, familyHome, sessions } = fixture();
   writeFileSync(join(sessions, "a.jsonl"), sessionFile(MAIN_ID, "2026-10-09T12:30:00.000Z", 100));
   const storage = new SqliteStorage();
   await storage.init();
   try {
-    // A September event whose file is gone, and the October event the file still holds.
+    // A September event and an event newer than every file event, both from files that are gone,
+    // and the October event the file still holds.
     await storage.upsertCodexTokenEvents([
       stored("2026-09-01T08:00:00.000Z", 500),
       stored("2026-10-09T12:30:00.000Z", 100),
+      stored("2026-10-20T08:00:00.000Z", 700),
     ]);
     const accounts: CodexEventAccount[] = [
       { id: "codex:codex", homePath: codexHome, shape: "five-hour-primary", planType: "plus", accountIdHash: sha256(MAIN_ID) },
@@ -115,11 +117,10 @@ test("a rescan keeps stored events older than the earliest rescanned event", asy
     ];
     const result = scanCodexSessionEvents({ accounts, cursors: [], storedMapKey: "older-key" });
     expect(result.replaceProviderIds).toEqual(["codex:codex", "codex:family"]);
-    expect((result as { replaceFrom?: string | null }).replaceFrom).toBe("2026-10-09T12:30:00.000Z");
     await saveCodexEventScan(storage, result);
     expect(await ownedTokens(storage)).toEqual([
       { providerId: "codex:codex", tokens: 100 },
-      { providerId: "codex:family", tokens: 500 },
+      { providerId: "codex:family", tokens: 1200 },
     ]);
     expect(await storage.getAppMeta("codex_event_map_key")).not.toContain(MAIN_ID);
   } finally {
@@ -213,6 +214,56 @@ test("an auth.json that cannot be parsed leaves events, cursors and the mapping 
     expect(errors.join("\n")).not.toContain(FAMILY_ID.slice(0, 8));
   } finally {
     console.error = original;
+    storage.close();
+  }
+});
+
+test("a home that loses its auth.json keeps the attribution of its stored events after the rescan", async () => {
+  const { codexHome, familyHome, sessions } = fixture();
+  writeFileSync(join(codexHome, "auth.json"), JSON.stringify({ tokens: { account_id: MAIN_ID } }));
+  writeFileSync(join(familyHome, "auth.json"), JSON.stringify({ tokens: { account_id: FAMILY_ID } }));
+  writeFileSync(join(sessions, "a.jsonl"), sessionFile(MAIN_ID, "2026-10-09T12:00:00.000Z", 100));
+  writeFileSync(join(sessions, "b.jsonl"), sessionFile(FAMILY_ID, "2026-10-09T12:30:00.000Z", 200));
+  const storage = new SqliteStorage();
+  await storage.init();
+  try {
+    await storage.upsertProviderAccount({
+      id: "codex:codex", providerId: "codex", label: "Codex", homePath: codexHome, enabled: true, sortOrder: 0,
+    });
+    await storage.upsertProviderAccount({
+      id: "codex:family", providerId: "codex", label: "Family", homePath: familyHome, enabled: true, sortOrder: 1,
+    });
+    let captured: CodexEventScanInput | null = null;
+    const provider = {
+      id: "codex:codex",
+      codexHomePath: () => codexHome,
+      setCodexEventScan: (input: CodexEventScanInput | null) => {
+        captured = input;
+      },
+    } as unknown as OpenUsagePluginProvider;
+    const refresh = async () => {
+      captured = null;
+      await attachCodexEventScan(storage, provider);
+      const input = captured as CodexEventScanInput | null;
+      const result = input ? scanCodexSessionEvents(input) : null;
+      if (result) await saveCodexEventScan(storage, result);
+      return result;
+    };
+    await refresh();
+    expect(await ownedTokens(storage)).toEqual([
+      { providerId: "codex:codex", tokens: 100 },
+      { providerId: "codex:family", tokens: 200 },
+    ]);
+
+    // Logging out removes auth.json. The hash goes away, the key changes and the files are reread.
+    rmSync(join(familyHome, "auth.json"));
+    const rescan = await refresh();
+    expect(rescan?.replaceProviderIds).toEqual(["codex:codex", "codex:family"]);
+    expect(await ownedTokens(storage)).toEqual([
+      { providerId: "codex:codex", tokens: 100 },
+      { providerId: "codex:family", tokens: 200 },
+    ]);
+  } finally {
     storage.close();
   }
 });

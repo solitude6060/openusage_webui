@@ -68,7 +68,8 @@ export function sessionCreatorHash(path: string): HashRead {
   return { failed: false, hash: typeof creator === "string" && creator ? sha256(creator) : null };
 }
 
-// The first line, null when there is none yet, or false when the file cannot be read.
+// The first line, null when there is none yet, or false when the file cannot be read or the
+// line is longer than the read limit.
 function readFirstLine(path: string): string | null | false {
   let fd: number | null = null;
   try {
@@ -88,7 +89,8 @@ function readFirstLine(path: string): string | null | false {
       chunks.push(chunk);
       position += read;
     }
-    return null;
+    console.error(JSON.stringify({ event: "codex_session_first_line_too_long", limitBytes: FIRST_LINE_LIMIT }));
+    return false;
   } catch (error) {
     logReadFailure(error);
     return false;

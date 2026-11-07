@@ -73,8 +73,9 @@ analysis, section 4.2. Per completed cycle there, the medians are 2.75M tokens p
   files and replaces the stored event rows for those accounts in one write. That
   replacement is kept only when every sessions directory listing and session file read
   succeeded. A failed reread leaves the stored events, file cursors, and mapping key in
-  place, so the next refresh rereads the history. An empty sessions directory that can be
-  read still clears the stored events. An event the new mapping cannot assign is removed.
+  place, so the next refresh rereads the history. Superseded on 2026-11-08 (see "Update
+  2026-11-08: Attribution By Session Creator" below): an empty sessions directory that can be
+  read keeps the stored events, and an event the new mapping cannot assign keeps its account.
   The unique key still ignores a duplicate insert of the same account, time, and
   cumulative total.
 
@@ -96,18 +97,31 @@ not identify who consumed the tokens" and "The scanner never reads `creator_acco
   Only events assigned by that rule teach a recorded plan.
 - The mapping key in `app_meta` now includes these hashes. The full hash is stored there;
   the raw id is never stored, logged, or returned. A changed hash rereads the files.
-- A reread replaces only stored events at or after the earliest event found in the files
-  it read. Older events stay as they are, because their files may be gone. An empty
-  sessions directory that can be read therefore keeps the stored events. A failed reread
-  still changes nothing.
+- A reread replaces a stored event only when a file it read holds the same event (same time
+  and cumulative total) and the new mapping assigns it to an account. Every other stored
+  event keeps its account: events whose files are gone, and events the new mapping cannot
+  assign. (Revised after review R1-1; the first version replaced every event after the
+  earliest file event.) A failed reread still changes nothing.
+- A reread that finds no event (for example an empty sessions directory that can be read)
+  counts as failed: the stored events, file cursors and mapping key stay, so the next refresh
+  rereads again. Saving the key would use the reread up, and files that come back with their
+  old size and modified time would never be read again. (Review G-R1-1.)
+- A missing sessions directory counts as a failed read when the stored file cursors show it
+  held session files before. A home that never had one is skipped and does not block the
+  other home. (Review G-R1-2.)
+- A missing `auth.json`, as after a logout, removes that home's hash and rereads the files.
+  That home's sessions then fall back to the shape and plan rule. When that rule cannot
+  pick an account, as with two Plus accounts, the stored events keep their account. When it
+  can pick one, the events move to it.
 - If an `auth.json` exists but cannot be read or parsed, that refresh skips the event scan:
   no events, cursors, or mapping key change. A missing `auth.json` means no hash.
-- If a session file's first line cannot be read, none of that file's new events are stored,
-  its cursor stays, and the scan counts as incomplete, so the next refresh retries it.
+- If a session file's first line cannot be read, or is longer than 4 MiB, none of that file's
+  new events are stored, its cursor stays, and the scan counts as incomplete, so the next
+  refresh retries it.
 
 Known limits:
 
-- Events older than the earliest session file on disk keep their old account. On the
+- Events whose session files are gone keep their old account. On the
   owner's machine on 2026-11-08 that is 35,136 events from 2026-04-06 to 2026-10-28, all
   under `codex:family`; the earliest event in a file on disk is 2026-10-29T10:01Z.
 - Attribution is per session. A session resumed under the other login stays with its
@@ -128,4 +142,7 @@ consequence that Allowance "does not add an API dollar figure" from event rows.
   member has them for the day, otherwise its daily rows.
 - If the group has no ccusage row that day, or any of those rows has no price, the day's event
   hours stay unpriced.
+- These prices are marked as allocated. Billing months and cycle dollars count them, but the
+  regime change and upgrade checks treat a segment with allocated dollars as unpriced: a
+  token share of a day's cost cannot show a change in dollars per percent. (Review R1-3.)
 

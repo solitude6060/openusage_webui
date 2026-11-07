@@ -86,24 +86,29 @@ export function insertCodexTokenEvents(db: Database, events: CodexTokenEventInse
   write(events);
 }
 
-// Replaces the providers' events at or after `from`. Older events, whose session files may be
-// gone, stay. A null `from` (no event in the rescanned files) deletes nothing.
+// Moves each rescanned event to its new account: deletes the providers' stored rows with the same
+// time and cumulative total, then inserts it. A stored event that no rescanned event reproduces
+// (its file is gone, or the new mapping cannot assign it) keeps its stored account.
 export function replaceCodexTokenEvents(
   db: Database,
   providerIds: string[],
   events: CodexTokenEventInsert[],
-  from: string | null,
 ): void {
   const insert = db.prepare(INSERT_CODEX_TOKEN_EVENT);
-  const write = db.transaction((ids: string[], rows: CodexTokenEventInsert[]) => {
-    if (ids.length > 0 && from != null) {
-      const placeholders = ids.map(() => "?").join(", ");
-      db.query(`DELETE FROM codex_token_events WHERE provider_id IN (${placeholders}) AND observed_at >= ?`)
-        .run(...ids, from);
+  const placeholders = providerIds.map(() => "?").join(", ");
+  const remove = providerIds.length > 0
+    ? db.prepare(`
+      DELETE FROM codex_token_events
+      WHERE provider_id IN (${placeholders}) AND observed_at = ? AND total_tokens = ?
+    `)
+    : null;
+  const write = db.transaction((rows: CodexTokenEventInsert[]) => {
+    for (const row of rows) {
+      remove?.run(...providerIds, row.observedAt, row.totalTokens);
+      runCodexTokenEventInsert(insert, row);
     }
-    for (const row of rows) runCodexTokenEventInsert(insert, row);
   });
-  write(providerIds, events);
+  write(events);
 }
 
 export function listCodexTokenEventReadings(db: Database, from: string): CodexTokenEventReading[] {

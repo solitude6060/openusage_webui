@@ -187,4 +187,31 @@ describe("Codex event attribution by session creator", () => {
     expect(retried.complete).toBe(true);
     expect(owners(retried.events)).toEqual([{ providerId: "codex:family", tokens: 60 }]);
   });
+
+  test("a first line longer than the read limit counts as a failed read", () => {
+    const { sessions, codexHome, familyHome } = sharedHomes();
+    // A session_meta line of about 4.5 MiB, past the 4 MiB first-line limit.
+    const huge = JSON.stringify({
+      timestamp: "2026-10-09T12:00:00.000Z",
+      type: "session_meta",
+      payload: { creator_account_id: FAMILY_ID, base_instructions: { text: "x".repeat(4_700_000) } },
+    });
+    writeFileSync(join(sessions, "a.jsonl"), file(huge, eventLine({ timestamp: "2026-10-09T12:30:00.000Z", total: 100, last: 100 })));
+    // Without the creator, the shape rule would pick codex:codex.
+    const accounts: CodexEventAccount[] = [
+      { id: "codex:codex", homePath: codexHome, shape: "five-hour-primary", planType: null, accountIdHash: sha256(MAIN_ID) },
+      { id: "codex:family", homePath: familyHome, shape: null, planType: null, accountIdHash: sha256(FAMILY_ID) },
+    ];
+    const original = console.error;
+    console.error = () => undefined;
+    let result;
+    try {
+      result = scanCodexSessionEvents({ accounts, cursors: [], storedMapKey: null });
+    } finally {
+      console.error = original;
+    }
+    expect(result.events).toEqual([]);
+    expect(result.complete).toBe(false);
+    expect(result.cursors).toEqual([]);
+  });
 });

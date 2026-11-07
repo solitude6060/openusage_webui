@@ -63,6 +63,8 @@ export interface AllowanceTokenRow {
   tokens: number;
   costUsd?: number | null;
   bucketEnd?: string;
+  // The cost is a token share of a day's ccusage cost, not a price measured for this row.
+  costAllocated?: boolean;
 }
 
 export interface AllowanceEstimate {
