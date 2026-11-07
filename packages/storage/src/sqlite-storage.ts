@@ -869,8 +869,12 @@ export class SqliteStorage implements Storage {
     insertCodexTokenEvents(this.requireDb(), events);
   }
 
-  async replaceCodexTokenEvents(providerIds: string[], events: CodexTokenEventInsert[]): Promise<void> {
-    replaceCodexTokenEvents(this.requireDb(), providerIds, events);
+  async replaceCodexTokenEvents(
+    providerIds: string[],
+    events: CodexTokenEventInsert[],
+    from: string | null,
+  ): Promise<void> {
+    replaceCodexTokenEvents(this.requireDb(), providerIds, events, from);
   }
 
   async listCodexEventProviderIds(from: string): Promise<string[]> {

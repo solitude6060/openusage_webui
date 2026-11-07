@@ -45,7 +45,7 @@ test("a Codex rescan that cannot list the sessions directory keeps the stored ev
   await expectKeptUntilReadable(sessions, 0o755);
 });
 
-test("an empty readable Codex sessions directory still clears stored events on a rescan", async () => {
+test("an empty readable Codex sessions directory keeps stored events on a rescan", async () => {
   const sessions = openFixture();
   const first = join(sessions, "one.jsonl");
   const second = join(sessions, "two.jsonl");
@@ -63,7 +63,8 @@ test("an empty readable Codex sessions directory still clears stored events on a
       storedMapKey,
     });
     await saveCodexEventScan(storage, cleared);
-    expect(await ownedTokens(storage)).toEqual([]);
+    // No file holds an event, so no stored event is at or after the earliest rescanned one.
+    expect(await ownedTokens(storage)).toEqual([{ providerId: "codex:codex", tokens: 300 }]);
   } finally {
     storage.close();
   }

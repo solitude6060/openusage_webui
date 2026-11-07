@@ -86,16 +86,20 @@ export function insertCodexTokenEvents(db: Database, events: CodexTokenEventInse
   write(events);
 }
 
+// Replaces the providers' events at or after `from`. Older events, whose session files may be
+// gone, stay. A null `from` (no event in the rescanned files) deletes nothing.
 export function replaceCodexTokenEvents(
   db: Database,
   providerIds: string[],
   events: CodexTokenEventInsert[],
+  from: string | null,
 ): void {
   const insert = db.prepare(INSERT_CODEX_TOKEN_EVENT);
   const write = db.transaction((ids: string[], rows: CodexTokenEventInsert[]) => {
-    if (ids.length > 0) {
+    if (ids.length > 0 && from != null) {
       const placeholders = ids.map(() => "?").join(", ");
-      db.query(`DELETE FROM codex_token_events WHERE provider_id IN (${placeholders})`).run(...ids);
+      db.query(`DELETE FROM codex_token_events WHERE provider_id IN (${placeholders}) AND observed_at >= ?`)
+        .run(...ids, from);
     }
     for (const row of rows) runCodexTokenEventInsert(insert, row);
   });
