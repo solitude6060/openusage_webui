@@ -101,10 +101,16 @@ not identify who consumed the tokens" and "The scanner never reads `creator_acco
   and cumulative total) and the new mapping assigns it to an account. Every other stored
   event keeps its account: events whose files are gone, and events the new mapping cannot
   assign. (Revised after review R1-1; the first version replaced every event after the
-  earliest file event.) A failed reread still changes nothing.
+  earliest file event.)
+- A reread that is incomplete (a folder or file could not be read) still moves the events it
+  did read and saves their file cursors, but does not save the new mapping key, so the next
+  refresh rereads again. This is safe because the replace touches only events it re-inserts.
+  Before review R2-1 an incomplete reread saved nothing, so one deleted home or one unreadable
+  file stopped Codex events for every account. Until the cause is fixed, every refresh rereads
+  all session files.
 - A reread that finds no event (for example an empty sessions directory that can be read)
-  counts as failed: the stored events, file cursors and mapping key stay, so the next refresh
-  rereads again. Saving the key would use the reread up, and files that come back with their
+  counts as incomplete, so the mapping key stays and the next refresh rereads again; it logs
+  `codex_event_rescan_no_events`. Saving the key would use the reread up, and files that come back with their
   old size and modified time would never be read again. (Review G-R1-1.)
 - A missing sessions directory counts as a failed read when the stored file cursors show it
   held session files before. A home that never had one is skipped and does not block the

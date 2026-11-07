@@ -191,6 +191,24 @@ describe("codex_token_events", () => {
   });
 });
 
+describe("codex_token_events replace", () => {
+  test("two rescanned events with the same time and total under different accounts both stay", async () => {
+    const storage = await open();
+    await storage.upsertCodexTokenEvents?.([{ ...prolite, providerId: "codex:family" }]);
+    // Two sessions of different accounts reported the same time and cumulative total.
+    await storage.replaceCodexTokenEvents(["codex:codex", "codex:family"], [
+      { ...prolite, providerId: "codex:codex" },
+      { ...prolite, providerId: "codex:family" },
+    ]);
+    const rows = (await storage.listAllowanceTokenRows(FROM))
+      .filter((row) => row.model === "All Models")
+      .map((row) => [row.providerId, row.tokens])
+      .sort();
+    expect(rows).toEqual([["codex:codex", 100], ["codex:family", 100]]);
+    storage.close();
+  });
+});
+
 describe("codex_token_events schema", () => {
   test("unique key is provider, time, and cumulative total", async () => {
     const storage = await open();

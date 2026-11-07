@@ -102,11 +102,11 @@ export function replaceCodexTokenEvents(
       WHERE provider_id IN (${placeholders}) AND observed_at = ? AND total_tokens = ?
     `)
     : null;
+  // All deletes first: two rescanned events of different accounts can share a time and total,
+  // and a delete after the first insert would remove it.
   const write = db.transaction((rows: CodexTokenEventInsert[]) => {
-    for (const row of rows) {
-      remove?.run(...providerIds, row.observedAt, row.totalTokens);
-      runCodexTokenEventInsert(insert, row);
-    }
+    for (const row of rows) remove?.run(...providerIds, row.observedAt, row.totalTokens);
+    for (const row of rows) runCodexTokenEventInsert(insert, row);
   });
   write(events);
 }
