@@ -148,7 +148,7 @@ export function AllowancePage({
                       When the meter falls by 5 points or more while its stated reset stays put, the period was reset in place. Each stretch between resets is measured alone, and each climb is listed on its own, for example 96% + 89%. Allowance and dollars per percent divide only by the climbs of stretches that have tokens or a known API cost. A stretch that climbs 5 points or more with no tokens inside it leaves the period out of the baseline. When dollars per percent on the two sides of a reset differ by more than 30 percent, the baseline keeps only the newer side.
                     </p>
                     <p className="settings-help muted">
-                      The current period shows the latest meter reading, the tokens and API dollars fully inside it so far, and what remains of the baseline. The projected end percent is that reading divided by how much of the period has passed. Unreliable means the period is less than a day old, the meter fell during this period, or one of the last four periods ended more than an hour before its stated reset.
+                      The current period shows the latest meter reading, the tokens and API dollars fully inside it so far, and what remains of the baseline. The projected end percent is that reading divided by how much of the period has passed; above 100 it reads Runs Out Before Reset At This Pace. Unreliable means the period is less than a day old, the meter fell during this period, or one of the last four periods ended more than an hour before its stated reset.
                     </p>
                   </>
                 ) : (
@@ -233,7 +233,12 @@ function AllowanceCycle({ cycle }: { cycle: AllowanceEstimate }) {
           ? ` · ${formatPercent(cycle.percentStart)} → ${formatPercent(cycle.percentEnd)}`
           : ""}
       </p>
-      {allowance != null ? (
+      {allowance != null && cycle.coarse ? (
+        <p className="allowance-meta">
+          {`The meter moved too little for a reliable estimate: about ${formatCompactTokenCount(Math.round(allowance))} tokens`}
+          {cycle.estimatedApiCost != null ? ` · API Value ${formatApiMoney(cycle.estimatedApiCost)}` : ""}
+        </p>
+      ) : allowance != null ? (
         <p className="allowance-figure" title={`${formatNumber(Math.round(allowance))} tokens`}>
           {formatCompactTokenCount(Math.round(allowance))}
           <span className="allowance-unit"> tokens</span>
@@ -241,13 +246,12 @@ function AllowanceCycle({ cycle }: { cycle: AllowanceEstimate }) {
       ) : (
         <p className="allowance-reason">{reasonLabel(cycle.reason)}</p>
       )}
-      {cycle.estimatedApiCost != null ? (
+      {cycle.estimatedApiCost != null && !cycle.coarse ? (
         <p className="allowance-api">API Value {formatApiMoney(cycle.estimatedApiCost)}</p>
       ) : null}
       <p className="allowance-meta">
         {cycle.tokens > 0 ? `${formatCompactTokenCount(cycle.tokens)} tokens used` : "No tokens in this span"}
         {cycle.apiCost != null ? ` · API Cost ${formatApiMoney(cycle.apiCost)}` : ""}
-        {cycle.coarse ? " · Rough Estimate" : ""}
         {cycle.statedLimit != null
           ? ` · ${isCursorAccount(cycle.providerId) ? "Included Dollar Limit" : "Stated Cap"} ${formatLimit(cycle)}`
           : ""}
@@ -389,7 +393,7 @@ function CurrentCycle({ current }: { current: NonNullable<AllowanceCycleSummary[
         {current.remainingApiCost == null ? "" : ` · ${formatApiMoney(current.remainingApiCost)}`}
       </p>
       <p className="allowance-meta">
-        Projected End {current.projectedEndPercent == null ? "—" : formatPercent(current.projectedEndPercent)}
+        Projected End {projectedEnd(current.projectedEndPercent)}
         {current.projectionReliable ? null : <> · <span>Unreliable</span></>}
       </p>
     </>
@@ -426,6 +430,11 @@ function consumedLabel(cycle: AllowanceCompletedCycle, windowKey: string): strin
 
 function statRange(stat: AllowanceCycleStat, format: (value: number) => string): string {
   return `${format(stat.median)} median · ${format(stat.min)}–${format(stat.max)} · n ${stat.n}`;
+}
+
+function projectedEnd(percent: number | null): string {
+  if (percent == null) return "—";
+  return percent > 100 ? "Runs Out Before Reset At This Pace" : formatPercent(percent);
 }
 
 function formatCycleLength(lengthMs: number): string {
