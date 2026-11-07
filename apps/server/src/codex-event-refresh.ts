@@ -59,7 +59,7 @@ export async function saveCodexEventScan(
     return;
   }
   if (result.replaceProviderIds.length > 0) {
-    await storage.replaceCodexTokenEvents(result.replaceProviderIds, result.events, result.replaceFrom);
+    await storage.replaceCodexTokenEvents(result.replaceProviderIds, result.events);
   } else {
     await storage.upsertCodexTokenEvents(result.events);
   }

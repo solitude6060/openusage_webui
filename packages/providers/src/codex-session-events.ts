@@ -48,8 +48,6 @@ export interface CodexEventScanResult {
   learnedPlans: Array<{ providerId: string; planType: string }>;
   unmapped: number;
   replaceProviderIds: string[];
-  /** On a rescan, stored events at or after this time are replaced; older ones stay. */
-  replaceFrom: string | null;
   complete: boolean;
 }
 
@@ -140,7 +138,6 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
   const learned = new Map<string, Set<string>>();
   let filesRead = 0;
   let unmapped = 0;
-  let earliest: string | null = null;
   const discovered = sessionScanRoots(input.accounts);
   let complete = discovered.complete;
 
@@ -171,7 +168,6 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
       unmapped += parsed.unmapped;
       const creator = creatorAccount(creatorRead?.hash ?? null, input.accounts);
       for (const event of parsed.events) {
-        if (earliest == null || event.draft.observedAt < earliest) earliest = event.draft.observedAt;
         if (creator) {
           events.push({ ...event.draft, providerId: creator });
           continue;
@@ -221,7 +217,6 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
     learnedPlans,
     unmapped,
     replaceProviderIds: rescan ? input.accounts.map((account) => account.id) : [],
-    replaceFrom: rescan ? earliest : null,
     complete,
   };
 }

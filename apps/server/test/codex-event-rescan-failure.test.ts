@@ -63,7 +63,7 @@ test("an empty readable Codex sessions directory keeps stored events on a rescan
       storedMapKey,
     });
     await saveCodexEventScan(storage, cleared);
-    // No file holds an event, so no stored event is at or after the earliest rescanned one.
+    // No file reproduces a stored event, so every stored event keeps its account.
     expect(await ownedTokens(storage)).toEqual([{ providerId: "codex:codex", tokens: 300 }]);
   } finally {
     storage.close();

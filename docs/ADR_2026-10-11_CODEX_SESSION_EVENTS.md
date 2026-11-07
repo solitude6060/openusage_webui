@@ -96,10 +96,16 @@ not identify who consumed the tokens" and "The scanner never reads `creator_acco
   Only events assigned by that rule teach a recorded plan.
 - The mapping key in `app_meta` now includes these hashes. The full hash is stored there;
   the raw id is never stored, logged, or returned. A changed hash rereads the files.
-- A reread replaces only stored events at or after the earliest event found in the files
-  it read. Older events stay as they are, because their files may be gone. An empty
-  sessions directory that can be read therefore keeps the stored events. A failed reread
-  still changes nothing.
+- A reread replaces a stored event only when a file it read holds the same event (same time
+  and cumulative total) and the new mapping assigns it to an account. Every other stored
+  event keeps its account: events whose files are gone, and events the new mapping cannot
+  assign. (Revised after review R1-1; the first version replaced every event after the
+  earliest file event.) An empty sessions directory that can be read therefore keeps the
+  stored events. A failed reread still changes nothing.
+- A missing `auth.json`, as after a logout, removes that home's hash and rereads the files.
+  That home's sessions then fall back to the shape and plan rule. When that rule cannot
+  pick an account, as with two Plus accounts, the stored events keep their account. When it
+  can pick one, the events move to it.
 - If an `auth.json` exists but cannot be read or parsed, that refresh skips the event scan:
   no events, cursors, or mapping key change. A missing `auth.json` means no hash.
 - If a session file's first line cannot be read, none of that file's new events are stored,
@@ -107,7 +113,7 @@ not identify who consumed the tokens" and "The scanner never reads `creator_acco
 
 Known limits:
 
-- Events older than the earliest session file on disk keep their old account. On the
+- Events whose session files are gone keep their old account. On the
   owner's machine on 2026-11-08 that is 35,136 events from 2026-04-06 to 2026-10-28, all
   under `codex:family`; the earliest event in a file on disk is 2026-10-29T10:01Z.
 - Attribution is per session. A session resumed under the other login stays with its
