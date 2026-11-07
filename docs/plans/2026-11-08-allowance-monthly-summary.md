@@ -94,6 +94,20 @@ Files: `apps/web/src/pages/allowance-page.tsx`, page styles and tests. Data: the
   reset time, so this span is not used for estimates."
 - A card headline shows a reason only when the span has no estimate.
 
+## Delivery
+
+- Owner decision 2026-11-08: Claude Opus 5.5 implements every item; the reviewers are Grok Build `grok-4.7`
+  xhigh, AGY `gemini-3.8-flash-high`, and Opus 5.5 high (AGY `claude-opus-5-5-high` first, then Claude Code).
+  This replaces the Codex `gpt-6.1-sol` third lane for this change. The Opus reviewer shares the
+  implementer's family by owner choice and runs in a separate read-only context.
+- S1 (Coding High, storage logic that deletes rows): Opus 5.5 high, worktree `../openusage_webui-wt-codex-attribution`.
+- S2–S4 (Coding Medium, page and display): Opus 5.5 medium, worktree `../openusage_webui-wt-allowance-summary`.
+  The two write scopes do not overlap. The orchestrator merges both into this branch.
+- Docs to update: `docs/ADR_2026-10-11_CODEX_SESSION_EVENTS.md` (S1), `docs/providers/codex.md` if it
+  describes event mapping (S1), `docs/USER_GUIDE_WEBUI.zh-TW.md` §5.5 (S2–S4), `README.md` Allowance notes.
+- Visual change: before and after screenshots stay in `../openusage_webui-artifacts/2026-11-08-allowance/`
+  (personal usage figures, not attached to the public PR).
+
 ## Out of scope
 
 - The Dashboard shows the same ccusage totals on both Codex cards (ADR `docs/ADR_2026-10-11_CODEX_SESSION_EVENTS.md`).
