@@ -109,3 +109,22 @@ Lane 2 has no round 4 verdict; the code gate stays open until a second-family la
 | R4-2 | While a rescan is pending, events that need a newly learned plan are not stored and not logged. | Opus | LOW | Yes | Fix: docs and an unmapped-count log |
 | R4-3 | The R3-1 test never shows a complete scan restoring K1. | Opus | LOW | Yes: mode restored after the `back` scan | Fix: third scan after the mode is restored |
 | Plan | Plan S1 still describes the pre-R1-1 time-range replace. | Opus (no finding) | — | Yes | Fixed: superseded note in the plan |
+
+## Round 5
+
+- Repairs merged at `783599f2`. Lanes 1 and 3 read `r5/remediation.diff` (`f211e559..783599f2`); the substitute
+  second-family lane read the full diff `r5/target-full.diff` (`ec01a33f..783599f2`).
+
+| Lane | Client and model | Verdict | Raw output |
+|---|---|---|---|
+| 1 | Grok Build `grok-4.7`, effort xhigh | APPROVE | `r5/lane1-grok.final.md` |
+| 2 (substitute for Google, unavailable since round 4) | Codex `gpt-6.1-sol`, effort high, `~/.codex-family`, started 2026-11-07T20:12:47Z after the quota reset | REQUEST_CHANGES | `r5/lane2-codex-sol.jsonl`, `r5/lane2-codex-sol.final.md` |
+| 3 | Claude Code `claude-opus-5-5`, effort high | APPROVE | `r5/lane3-opus-cc.final.md` |
+
+Lane families: xAI, OpenAI, Anthropic. The substitution follows the unused-family rule in `MODEL_ROUTING.md`.
+
+| ID | Finding | Source | Severity | Verified | Disposition |
+|---|---|---|---|---|---|
+| R5-1 | The ADR and `codex.md` describe the `codex_events_unmapped` count as new waiting events; it counts every unassigned event read. | Opus | LOW | Yes | Fix: wording |
+| F-1 | The identity delete removes every replaced provider's row with the same time and cumulative total; with two colliding events and one rescanned file, the other account's event is lost. | Codex Sol | HIGH | Yes: delete has no session identity. 0 colliding identities in both database copies | Fix: delete only when exactly one stored row matches; keep ambiguous rows |
+| F-2 | The monthly summary inherits `usableSummary`, which drops an account with billing-month tokens when it has no open or included cycle, or an all-zero meter and no current-cycle tokens. | Codex Sol | MEDIUM | Partly: the token-bearing case is real; a provider with no tokens and an all-zero meter has nothing to show and stays hidden | Fix: keep a summary whose current billing month has tokens |
