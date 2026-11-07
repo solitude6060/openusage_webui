@@ -278,14 +278,14 @@ describe("Subscription period", () => {
 
     expect(await screen.findByRole("heading", { name: "Baseline" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Current Cycle" })).toBeInTheDocument();
-    expect(screen.getAllByText("Meter Fell")).toHaveLength(3);
-    expect(screen.getByRole("heading", { name: "Current Cycle" }).closest("section")).toHaveTextContent("Meter Fell");
-    expect(screen.getAllByText("Below 10 Percent")).toHaveLength(2);
-    expect(screen.getAllByText("Segment Unmeasured")).toHaveLength(2);
+    expect(screen.getAllByText("The meter dropped before its stated reset time, so this span is not used for estimates.")).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: "Current Cycle" }).closest("section")).toHaveTextContent("The meter dropped during this cycle");
+    expect(screen.getAllByText("The meter climbed less than 10 points, too little to measure, so this span is not used for estimates.")).toHaveLength(2);
+    expect(screen.getAllByText("Part of this span climbed 5 points or more with no tokens recorded, so it is not used for estimates.")).toHaveLength(2);
     expect(screen.getAllByText("$4.00–Unknown")).toHaveLength(2);
     expect(screen.getAllByText("$11.00")).toHaveLength(2);
     expect(screen.getByText("Unreliable")).toBeInTheDocument();
-    expect(screen.getAllByText("190% · 2 Segments")).toHaveLength(2);
+    expect(screen.getAllByText("96% + 94% · Meter Reset Mid-Week")).toHaveLength(2);
     expect(screen.getAllByText("Consumed").length).toBeGreaterThan(0);
     expect(screen.queryByText("End Percent")).not.toBeInTheDocument();
     expect(screen.getByText("API Dollars Per Percent $4.11 median · $2.76–$4.63 · n 3")).toBeInTheDocument();
@@ -296,7 +296,8 @@ describe("Subscription period", () => {
     expect(details).toHaveTextContent("more than an hour before its stated reset");
     expect(details).toHaveTextContent("the meter fell during this period");
     expect(details).toHaveTextContent("reset in place");
-    expect(details).toHaveTextContent("Segment Unmeasured");
+    expect(details).toHaveTextContent("each climb is listed on its own");
+    expect(details).not.toHaveTextContent("can pass 100");
     expect(details).toHaveTextContent("the baseline keeps only the newer side");
     expect(details).not.toHaveTextContent("Daily totals cannot be split inside a day");
     expect(getAllowance).toHaveBeenCalledWith("cycles");
@@ -348,7 +349,7 @@ describe("Billing months", () => {
     mockViewport(false);
   });
 
-  test("shows each month with its weekly parts and tells the reader the months are calendar months", async () => {
+  test("shows each month and tells the reader the months are calendar months", async () => {
     cyclesWith({
       anchor: null,
       anchorSource: "calendar",
@@ -373,14 +374,12 @@ describe("Billing months", () => {
 
     const block = (await screen.findByRole("heading", { name: "Billing Months" })).closest("section")!;
     expect(within(block).getAllByRole("columnheader").map((cell) => cell.textContent))
-      .toEqual(["Month", "API Dollars", "Tokens", "Weekly Used"]);
+      .toEqual(["Month", "API Dollars", "Tokens"]);
     expect(within(block).getByText(`${formatDate(OCTOBER)} – ${formatDate(NOVEMBER)}`)).toBeInTheDocument();
     expect(within(block).getByText("$250.00")).toBeInTheDocument();
     expect(within(block).getByText("Projected $310.00 · Unreliable")).toBeInTheDocument();
     expect(within(block).getByText(formatCompactTokenCount(5_000_000))).toBeInTheDocument();
     expect(within(block).getByText(`Token Data From ${formatDate("2026-10-05T03:00:00.000Z")}`)).toBeInTheDocument();
-    expect(within(block).getByText(/^150% of 200%/)).toBeInTheDocument();
-    expect(within(block).getByText(/^94% of 50%/)).toBeInTheDocument();
     expect(within(block).getByText("Calendar months; set your billing date")).toBeInTheDocument();
     expect(within(block).getByLabelText("Billing Date")).toHaveAttribute("type", "datetime-local");
   });

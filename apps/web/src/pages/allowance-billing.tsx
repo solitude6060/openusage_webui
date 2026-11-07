@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { updateProviderSettings, type AllowanceBilling, type AllowanceBillingMonth } from "../lib/api";
-import { formatApiMoney, formatDate, formatPercent } from "../lib/format";
+import { formatApiMoney, formatDate } from "../lib/format";
 import { formatCompactTokenCount } from "./tokens-page";
 
 export function BillingMonths({
@@ -58,7 +58,6 @@ export function BillingMonths({
                 <th>Month</th>
                 <th>API Dollars</th>
                 <th>Tokens</th>
-                <th>Weekly Used</th>
               </tr>
             </thead>
             <tbody>
@@ -67,7 +66,6 @@ export function BillingMonths({
                   <td>{formatDate(month.start)} – {formatDate(month.end)}</td>
                   <td>{dollarsCell(month)}</td>
                   <td>{tokensCell(month)}</td>
-                  <td>{weeklyCell(month)}</td>
                 </tr>
               ))}
             </tbody>
@@ -100,19 +98,6 @@ function tokensCell(month: AllowanceBillingMonth) {
       )}
     </>
   );
-}
-
-// One line per regime; a percent before a plan change is never added to one after it.
-function weeklyCell(month: AllowanceBillingMonth) {
-  if (month.weeklyParts.length === 0) return "—";
-  return month.weeklyParts.map((part) => (
-    <div key={part.from} title={`${formatDate(part.from)} – ${formatDate(part.to)}`}>
-      {`${formatPercent(part.consumedPercent)} of ${formatPercent(part.availablePercent)}`}
-      {month.weeklyParts.length > 1 ? (
-        <span className="allowance-meta">{` · ${formatDate(part.from)} – ${formatDate(part.to)}`}</span>
-      ) : null}
-    </div>
-  ));
 }
 
 // A datetime-local input takes the browser's local time, not UTC.
