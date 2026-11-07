@@ -85,16 +85,18 @@ function quiet(input: CodexEventScanInput): CodexEventScanResult {
   }
 }
 
-async function save(storage: SqliteStorage, result: CodexEventScanResult): Promise<void> {
+async function save(storage: SqliteStorage, result: CodexEventScanResult): Promise<string> {
+  const lines: string[] = [];
   const original = { error: console.error, log: console.log };
-  console.error = () => undefined;
-  console.log = () => undefined;
+  console.error = (...args: unknown[]) => lines.push(args.map(String).join(" "));
+  console.log = (...args: unknown[]) => lines.push(args.map(String).join(" "));
   try {
     await saveCodexEventScan(storage, result);
   } finally {
     console.error = original.error;
     console.log = original.log;
   }
+  return lines.join("\n");
 }
 
 async function ownedTokens(storage: SqliteStorage): Promise<Array<{ providerId: string; tokens: number }>> {
@@ -153,7 +155,9 @@ test("an incomplete rescan does not move an event that only a plan learned from 
       chmodSync(blocked, 0o644);
     }
     expect(incomplete.complete).toBe(false);
-    await save(storage, incomplete);
+    const logs = await save(storage, incomplete);
+    // The event left unmapped while the rescan is pending is counted in the log (a count only).
+    expect(logs).toContain('{"event":"codex_events_unmapped","count":1}');
     expect(await ownedTokens(storage)).toEqual([
       { providerId: "codex:codex", tokens: 300 },
       { providerId: "codex:family", tokens: 40 },
@@ -217,6 +221,35 @@ test("events appended during a logout with an unreadable file are stored after t
       { providerId: "codex:codex", tokens: 100 },
       { providerId: "codex:family", tokens: 260 },
     ]);
+  } finally {
+    storage.close();
+  }
+});
+
+test("a crash after the replace leaves the map key marked pending", async () => {
+  const { codexHome, familyHome, sessions } = fixture();
+  writeFileSync(join(sessions, "a.jsonl"), `${meta(MAIN_ID)}\n${line("2026-10-09T10:00:00.000Z", 100, 100, "plus", true)}\n`);
+  const storage = new SqliteStorage();
+  await storage.init();
+  try {
+    const accounts: CodexEventAccount[] = [
+      { id: "codex:codex", homePath: codexHome, shape: "weekly-primary", planType: "plus", accountIdHash: sha256(MAIN_ID) },
+      { id: "codex:family", homePath: familyHome, shape: "weekly-primary", planType: "plus", accountIdHash: sha256(FAMILY_ID) },
+    ];
+    await save(storage, quiet({ accounts, cursors: [], storedMapKey: null }));
+    const k1 = await storage.getAppMeta(MAP_KEY);
+    // A complete rescan under a new key; the process dies while saving the cursors.
+    const rescan = quiet({
+      accounts: accounts.map((account) => ({ ...account, shape: null })),
+      cursors: await storage.listCodexEventCursors(),
+      storedMapKey: k1,
+    });
+    expect(rescan.complete).toBe(true);
+    storage.saveCodexEventCursors = async () => {
+      throw new Error("simulated crash");
+    };
+    await expect(saveCodexEventScan(storage, rescan)).rejects.toThrow("simulated crash");
+    expect(await storage.getAppMeta(MAP_KEY)).toBe("rescan-pending");
   } finally {
     storage.close();
   }

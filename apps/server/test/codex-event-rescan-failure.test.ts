@@ -235,7 +235,8 @@ test("after an incomplete rescan, a key that returns to the stored one still res
         { providerId: "codex:family", tokens: 100 },
       ]);
 
-      // The probe shows the old shapes again, so the input key equals K1 again.
+      // The probe shows the old shapes again, so the input key equals K1 again. The file is still
+      // unreadable, so this rescan is incomplete too, but it already moves the readable event back.
       const back = scanQuietly({
         accounts: original,
         cursors: await storage.listCodexEventCursors(),
@@ -244,10 +245,22 @@ test("after an incomplete rescan, a key that returns to the stored one still res
       expect(back.mapKey).toBe(k1);
       expect(back.replaceProviderIds).toEqual(["codex:codex", "codex:family"]);
       await saveLogged(storage, back);
+      expect(back.complete).toBe(false);
       expect(await ownedTokens(storage)).toEqual([{ providerId: "codex:codex", tokens: 300 }]);
     } finally {
       chmodSync(blocked, 0o644);
     }
+
+    // With the file readable again, the next scan completes and stores K1.
+    const recovered = scanQuietly({
+      accounts: original,
+      cursors: await storage.listCodexEventCursors(),
+      storedMapKey: await storage.getAppMeta(MAP_KEY),
+    });
+    await saveLogged(storage, recovered);
+    expect(recovered.complete).toBe(true);
+    expect(await storage.getAppMeta(MAP_KEY)).toBe(k1);
+    expect(await ownedTokens(storage)).toEqual([{ providerId: "codex:codex", tokens: 300 }]);
   } finally {
     storage.close();
   }

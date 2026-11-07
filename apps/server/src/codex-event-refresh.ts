@@ -58,6 +58,9 @@ export async function saveCodexEventScan(
   result: CodexEventScanResult,
 ): Promise<void> {
   const rescan = result.replaceProviderIds.length > 0;
+  // Mark the rescan pending before anything moves: if the process stops between the writes below,
+  // the stored key cannot still claim the old mapping. A complete scan overwrites it at the end.
+  if (rescan) await storage.setAppMeta(MAP_KEY, RESCAN_PENDING);
   // The replace moves only events this scan read, so storing them is safe even when the scan is
   // incomplete. Cursors of the files read are saved too; a rescan reads from the start anyway.
   if (rescan) {
@@ -67,12 +70,14 @@ export async function saveCodexEventScan(
   }
   await storage.saveCodexEventCursors(result.cursors);
   if (rescan && !result.complete) {
-    // The saved cursors and moved events no longer match the old key, so mark the rescan pending.
-    await storage.setAppMeta(MAP_KEY, RESCAN_PENDING);
+    // The key stays rescan-pending: the saved cursors and moved events do not match the old key.
     if (result.readComplete) {
       console.log(JSON.stringify({ event: "codex_event_rescan_no_events" }));
     } else {
       console.error(JSON.stringify({ event: "codex_event_rescan_incomplete" }));
+    }
+    if (result.unmapped > 0) {
+      console.error(JSON.stringify({ event: "codex_events_unmapped", count: result.unmapped }));
     }
     return;
   }
