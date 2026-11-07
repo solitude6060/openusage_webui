@@ -147,3 +147,19 @@ test("a day without event rows keeps its ccusage rows and prices", async () => {
     storage.close();
   }
 });
+
+test("event hours priced from the day cost are marked allocated; ccusage rows are not", async () => {
+  const storage = await sharedGroup();
+  try {
+    await storage.upsertUsageRecords([
+      daily("m1", "2026-10-08", "gpt-6-astra", 900, 3),
+      daily("m2", "2026-10-09", "gpt-6-astra", 400, 2),
+    ]);
+    await storage.upsertCodexTokenEvents([event("codex:family", "2026-10-09T13:10:00.000Z", 100)]);
+    const rows = (await storage.listAllowanceTokenRows(FROM)).filter((row) => row.providerId.startsWith("codex"));
+    expect(rows.map((row) => [row.model, row.costUsd, (row as { costAllocated?: boolean }).costAllocated ?? false]).sort())
+      .toEqual([["All Models", 2, true], ["gpt-6-astra", 3, false]]);
+  } finally {
+    storage.close();
+  }
+});
