@@ -128,3 +128,21 @@ Lane families: xAI, OpenAI, Anthropic. The substitution follows the unused-famil
 | R5-1 | The ADR and `codex.md` describe the `codex_events_unmapped` count as new waiting events; it counts every unassigned event read. | Opus | LOW | Yes | Fix: wording |
 | F-1 | The identity delete removes every replaced provider's row with the same time and cumulative total; with two colliding events and one rescanned file, the other account's event is lost. | Codex Sol | HIGH | Yes: delete has no session identity. 0 colliding identities in both database copies | Fix: delete only when exactly one stored row matches; keep ambiguous rows |
 | F-2 | The monthly summary inherits `usableSummary`, which drops an account with billing-month tokens when it has no open or included cycle, or an all-zero meter and no current-cycle tokens. | Codex Sol | MEDIUM | Partly: the token-bearing case is real; a provider with no tokens and an all-zero meter has nothing to show and stays hidden | Fix: keep a summary whose current billing month has tokens |
+
+## Round 6
+
+- Repairs at `b5615c5e`; remediation diff `r6/remediation.diff` (`783599f2..b5615c5e`).
+
+| Lane | Client and model | Verdict | Raw output |
+|---|---|---|---|
+| 1 | Grok Build `grok-4.7`, effort xhigh | APPROVE | `r6/lane1-grok.final.md` |
+| 2 (substitute) | Codex `gpt-6.1-sol`, effort high, `~/.codex-family` | REQUEST_CHANGES | `r6/lane2-codex-sol.final.md` |
+| 3 | Claude Code `claude-opus-5-5`, effort high | APPROVE | `r6/lane3-opus-cc.final.md` |
+
+All three lanes report F-1, F-2 and R5-1 fixed.
+
+| ID | Finding | Source | Severity | Verified | Disposition |
+|---|---|---|---|---|---|
+| R6-1 (Sol) | An ambiguous identity keeps its rows but the insert still adds a row under a third account, counting the tokens twice. | Codex Sol (Opus R6-2 same path, LOW) | HIGH | Yes: insert ran for every rescanned row | Fixed: no delete and no insert for an identity with two or more stored matches |
+| R6-1 (Opus) | One stored match is taken as the rescanned event; a never-stored event of another session with the same time and total moves the row when its file is gone. | Opus | LOW | Yes, requires an exact cross-session collision (0 in both database copies) and a permanently missing file | Documented residual in the ADR; token-field matching rejected because older-parser rows could stop matching and be counted twice |
+| R6-3 | `codex.md` and the user guide omit the ambiguous-identity and hidden-account exceptions. | Opus | LOW | Yes | Fixed: one clause each |
