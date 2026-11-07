@@ -113,3 +113,19 @@ Known limits:
 - Attribution is per session. A session resumed under the other login stays with its
   creator. 11 events in sessions created by `~/.codex-family` carry the other account's
   weekly reset; they stay with the creator.
+
+## Update 2026-11-08: API Value For Event Hours
+
+Plan: `docs/plans/2026-11-08-allowance-monthly-summary.md`, item S5. This replaces the 2026-10-11
+consequence that Allowance "does not add an API dollar figure" from event rows.
+
+- Event hours still show as one `All Models` line with unchanged token counts.
+- Each event hour now carries a price: the session group's ccusage cost for that local day times
+  the hour's share of the group's event tokens that day. Each account's day cost is therefore the
+  day cost times its share of the day's event tokens, and the accounts add up to the day cost.
+- The day cost comes from the first group member, by account id, that holds ccusage rows that day,
+  so a log stored on two members is not counted twice. Hourly ccusage rows are used when that
+  member has them for the day, otherwise its daily rows.
+- If the group has no ccusage row that day, or any of those rows has no price, the day's event
+  hours stay unpriced.
+

@@ -117,6 +117,41 @@ function hourDay(tool: string, hourStart: string): string {
 
 const dayKey = (providerId: string, tool: string | null, day: string) => JSON.stringify([providerId, tool, day]);
 
+// Adds a cost to a day total; one unpriced row makes the whole day unpriced.
+function addCost(totals: Map<string, number | null>, key: string, cost: number | null): void {
+  if (!totals.has(key)) totals.set(key, cost);
+  else {
+    const previous = totals.get(key)!;
+    totals.set(key, previous == null || cost == null ? null : previous + cost);
+  }
+}
+
+// ccusage cost per account and local day: hourly rows when that day has them, else daily rows.
+function ccusageDayCosts(
+  db: Database,
+  from: string,
+  hours: Array<{ provider_id: string; tool: string; hour_start: string; cost_usd: number | null }>,
+): (providerId: string, day: string) => number | null | undefined {
+  const hourly = new Map<string, number | null>();
+  const daily = new Map<string, number | null>();
+  for (const hour of hours) {
+    if (hour.tool !== "ccusage") continue;
+    addCost(hourly, dayKey(hour.provider_id, "ccusage", hourDay("ccusage", hour.hour_start)), hour.cost_usd == null ? null : Number(hour.cost_usd));
+  }
+  const rows = db.query(`
+    SELECT provider_id, started_at, cost_usd
+    FROM usage_records
+    WHERE tool = 'ccusage' AND COALESCE(total_tokens, 0) > 0 AND started_at >= ?
+  `).all(from) as Array<{ provider_id: string; started_at: string; cost_usd: number | null }>;
+  for (const row of rows) {
+    addCost(daily, dayKey(row.provider_id, "ccusage", row.started_at.slice(0, 10)), row.cost_usd == null ? null : Number(row.cost_usd));
+  }
+  return (providerId, day) => {
+    const key = dayKey(providerId, "ccusage", day);
+    return hourly.has(key) ? hourly.get(key)! : daily.has(key) ? daily.get(key)! : undefined;
+  };
+}
+
 // Daily rows, except that a provider/tool/day with hourly rows is read from those rows instead.
 // sessionGroups lists account ids that share one real sessions directory.
 export function listAllowanceRows(
@@ -140,7 +175,8 @@ export function listAllowanceRows(
   }>;
   const rows: AllowanceTokenRow[] = [];
   const covered = new Set<string>();
-  const eventHours = new Map<string, { providerId: string; startedAt: string; tokens: number }>();
+  const eventHours = new Map<string, { providerId: string; startedAt: string; day: string; tokens: number }>();
+  const groupDayTokens = new Map<string, number>();
   const eventDays = new Set<string>();
   const groupMembers = new Map<string, readonly string[]>();
   for (const group of sessionGroups) {
@@ -150,12 +186,14 @@ export function listAllowanceRows(
     const time = Date.parse(event.observedAt);
     if (!Number.isFinite(time) || event.tokens <= 0) continue;
     const startedAt = new Date(Math.floor(time / HOUR_MS) * HOUR_MS).toISOString();
-    const key = JSON.stringify([event.providerId, startedAt]);
+    const localDay = hourDay("ccusage", event.observedAt);
+    const key = JSON.stringify([event.providerId, startedAt, localDay]);
     const current = eventHours.get(key);
     if (current) current.tokens += event.tokens;
-    else eventHours.set(key, { providerId: event.providerId, startedAt, tokens: event.tokens });
-    const localDay = hourDay("ccusage", event.observedAt);
+    else eventHours.set(key, { providerId: event.providerId, startedAt, day: localDay, tokens: event.tokens });
     const members = groupMembers.get(event.providerId) ?? [event.providerId];
+    const groupDay = JSON.stringify([members, localDay]);
+    groupDayTokens.set(groupDay, (groupDayTokens.get(groupDay) ?? 0) + event.tokens);
     for (const id of members) eventDays.add(dayKey(id, "ccusage", localDay));
   }
   for (const hour of hours) {
@@ -172,12 +210,26 @@ export function listAllowanceRows(
     });
   }
   for (const day of eventDays) covered.add(day);
+  // An event hour's price is the group's ccusage cost for that local day times the hour's share
+  // of the group's event tokens that day. Only the first member holding ccusage rows that day
+  // counts, so a log copied to two members is not counted twice. No rows or an unpriced row: null.
+  const memberCost = ccusageDayCosts(db, new Date(Date.parse(hourlyFrom) - 24 * HOUR_MS).toISOString(), hours);
   for (const hour of eventHours.values()) {
+    const members = groupMembers.get(hour.providerId) ?? [hour.providerId];
+    let dayCost: number | null = null;
+    for (const id of members) {
+      const cost = memberCost(id, hour.day);
+      if (cost !== undefined) {
+        dayCost = cost;
+        break;
+      }
+    }
+    const groupTokens = groupDayTokens.get(JSON.stringify([members, hour.day])) ?? 0;
     rows.push({
       providerId: hour.providerId,
       model: "All Models",
       tokens: hour.tokens,
-      costUsd: null,
+      costUsd: dayCost == null || groupTokens <= 0 ? null : dayCost * hour.tokens / groupTokens,
       startedAt: hour.startedAt,
       bucketEnd: new Date(Date.parse(hour.startedAt) + HOUR_MS).toISOString(),
     });
