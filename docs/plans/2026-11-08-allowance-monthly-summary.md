@@ -28,7 +28,15 @@ Date: 2026-11-08. Branch: `feat/allowance-monthly-summary` from `origin/main` `e
   `~/.codex-family` (last 14 days, compared as SHA-256 prefixes).
 - The weekly `resets_at` inside events matches the creating account's snapshot reset for most events. 11
   events in sessions created by `~/.codex-family` carry the `~/.codex` reset; cause not determined.
-- Stored Codex events go back to 2026-04. Their source files are no longer on disk.
+- Live database (read-only): `codex_token_events` holds 36,981 events, 4,363,922,841 tokens, 2026-04-06 to
+  2026-11-07, all under `codex:family`; `codex:codex` has 0 events. Session files on disk start in 2026-10;
+  `~/.codex/archived_sessions` does not exist. Why older files are gone is not determined.
+- On a map key change, `replaceCodexTokenEvents` (`packages/storage/src/codex-token-events.ts`) deletes every
+  event of both Codex providers and inserts only events from files on disk. A map key change on the live
+  database today would remove the 2026-04 to 2026-09 events.
+- Cursor (`cursor:total-usage`) and Copilot (`premium`) have monthly windows. `buildBilling` runs only for
+  `weekly` windows, so their `billing` is null. Their `current` cycle carries `tokens` and `apiCost` (Cursor
+  2026-10-16 to 11-16: 157,457,560 tokens, $113.90).
 - Billing month "Weekly Used" shows consumed of available percent: Claude 2026-10-14 to 11-14 "391% of
   349.3%"; Codex 2026-10 "582% of 442.9%". Available percent assumes 7-day cycles; recent Codex cycles are
   1 to 4 days long (cause not determined).
@@ -48,13 +56,15 @@ Files: `packages/providers/src/codex-session-events.ts`, `apps/server/src/codex-
 - An event belongs to the account whose hash equals the hash of its session's `creator_account_id`. When no
   account matches, the existing shape and plan rule applies.
 - The event map key includes the hashes, so the first refresh after deploy rescans the files on disk.
-- Constraint: the rescan must not delete stored events or hourly token rows whose source files are gone.
-  Verify on a database copy before deploy; back up the live database before the restart.
-- Known limit: attribution is per session. A session resumed under the other login stays with its creator.
+- A rescan replaces only events at or after the earliest event found in the rescanned files. Older stored
+  events stay unchanged. Without this, the rescan deletes the 2026-04 to 2026-09 events (Evidence).
+- Back up the live database before the restart.
+- Known limits: events before the earliest file on disk stay under `codex:family`, because their files are
+  gone. Attribution is per session; a session resumed under the other login stays with its creator.
 
 Tests first: two homes with the same plan and shape and different account ids split events by creator; a
-session without a matching id falls back to the old rule; a changed map key triggers a rescan; rows whose
-files are gone are kept.
+session without a matching id falls back to the old rule; a changed map key triggers a rescan; a rescan keeps
+stored events older than the earliest rescanned event.
 
 ### S2 Monthly summary at the top of the Allowance page
 
@@ -64,12 +74,17 @@ Files: `apps/web/src/pages/allowance-page.tsx`, page styles and tests. Data: the
 - One row per provider with a weekly window: billing month dates and their source (billing date, detected
   upgrade, or calendar month), tokens, API-equivalent dollars, projected month-end dollars when reliable,
   and the current weekly meter percent.
+- Providers with a monthly window (Cursor, Copilot) have no `billing`; their current cycle is the billing
+  month, so the row uses `current.tokens`, `current.apiCost` and the same projection rule.
 - Providers without local token history show "No local token history" instead of 0.
 - The range tabs and cycle tables move under a collapsed native `<details>` section named "Details".
 
 ### S3 No percent above 100 in the page
 
-- Billing month table: remove the "Weekly Used" column.
+- Billing month table: remove the "Weekly Used" column. It was added for the 2026-10-19 request; the owner's
+  2026-11-08 answer names tokens and API dollars as the monthly figures.
+- Check whether redeemed Codex reset credits ("Rate Limit Resets", "Reset Credit") explain the 1 to 4 day
+  Codex cycles; record the result.
 - Cycle table: a cycle with segments lists each segment's climb ("96% + 89%, meter reset mid-week") instead
   of the sum.
 
@@ -88,7 +103,10 @@ Files: `apps/web/src/pages/allowance-page.tsx`, page styles and tests. Data: the
 ## Verification
 
 - `bunx vitest run`, the Bun suites and `bun run build:webui`.
-- Database copy: per-account Codex tokens for 2026-10-25 to 2026-11-08 compared with session counts per
-  creator; stored event and hourly row counts before 2026-10 unchanged for every provider.
+- Database copy, before and after the rescan:
+  - for each day covered by files on disk, `codex:codex` plus `codex:family` tokens are equal (tokens move
+    between the two accounts; the total does not change);
+  - events and hourly rows before the earliest rescanned event are unchanged for every provider;
+  - per-account Codex tokens for the last 14 days follow the session counts per creator.
 - Browser screenshots of the summary at 1440 px and 390 px on the database copy.
 - Triple-review per the canonical skill. Deploy restarts `openusage-webui.service` and needs owner approval.
