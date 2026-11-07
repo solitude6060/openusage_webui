@@ -367,3 +367,55 @@ describe("Reason text", () => {
     await waitFor(() => expect(screen.queryByText("Loading...")).not.toBeInTheDocument());
   });
 });
+
+describe("S2 follow-ups", () => {
+  beforeEach(() => {
+    vi.mocked(getAllowance).mockReset();
+    wideViewport();
+  });
+
+  test("a projected end above 100 reads as running out before the reset", async () => {
+    serve([
+      summary({ providerId: "codex:codex", current: current({ projectedEndPercent: 153.4, projectionReliable: false }) }),
+      summary({ providerId: "grok", current: current({ projectedEndPercent: 100 }) }),
+    ]);
+    render(<AllowancePage providers={[]} refreshToken={0} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Subscription Period" }));
+
+    const blocks = (await screen.findAllByRole("heading", { name: "Current Cycle" })).map((heading) => heading.closest("section")!);
+    expect(blocks[0]).toHaveTextContent("Projected End Runs Out Before Reset At This Pace");
+    expect(blocks[0]).not.toHaveTextContent("153");
+    expect(blocks[1]).toHaveTextContent("Projected End 100%");
+  });
+
+  test("a rough estimate is secondary text, not a headline", async () => {
+    const base = {
+      windowKey: "weekly",
+      windowLabel: "Weekly",
+      to: "2026-11-02T00:00:00.000Z",
+      resetsAt: null,
+      tokens: 19_900_000,
+      apiCost: 5.84,
+      statedLimit: null,
+      statedLimitUnit: null,
+      models: [],
+      reason: "ok",
+    };
+    serve([], [
+      { ...base, providerId: "grok", from: "2026-11-01T00:00:00.000Z", percentStart: 0, percentEnd: 1, estimatedAllowance: 1_990_000_000, estimatedApiCost: 584, coarse: true },
+      { ...base, providerId: "claude-code", from: "2026-11-01T01:00:00.000Z", percentStart: 0, percentEnd: 20, estimatedAllowance: 99_500_000, estimatedApiCost: 29.2, coarse: false },
+    ] as AllowanceEstimate[]);
+    const { container } = render(<AllowancePage providers={[]} refreshToken={0} />);
+
+    const rough = await screen.findByText(/The meter moved too little for a reliable estimate/);
+    expect(rough).toHaveClass("allowance-meta");
+    expect(rough).toHaveTextContent(formatCompactTokenCount(1_990_000_000));
+    expect(rough).toHaveTextContent(formatApiMoney(584));
+    const figures = [...container.querySelectorAll(".allowance-figure, .allowance-api")].map((node) => node.textContent);
+    expect(figures.join(" ")).not.toContain(formatCompactTokenCount(1_990_000_000));
+    expect(figures.join(" ")).not.toContain(formatApiMoney(584));
+    expect(figures.join(" ")).toContain(formatCompactTokenCount(99_500_000));
+    expect(figures.join(" ")).toContain(formatApiMoney(29.2));
+    expect(screen.queryByText(/Rough Estimate/)).not.toBeInTheDocument();
+  });
+});
