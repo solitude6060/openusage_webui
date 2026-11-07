@@ -66,3 +66,24 @@ Lanes 1 and 3 report R1-1 to R1-6 and G-R1-1 to G-R1-4 fixed. Lane 3 reports R1-
 | G-R2-1 | Row-by-row delete and insert lets two rescanned rows with equal time and total under different providers delete each other. | Grok | LOW | Yes: per-row `remove` then `insert` | Fix: all deletes, then all inserts |
 | G-R2-3 | The hourly ccusage cost test cannot tell the hourly path from the daily one. | Grok | LOW | Yes | Fix: add a daily row with a different cost |
 | R1-7 (rest) | `README.md` still says Codex aligns to a day boundary. | Opus, Gemini | LOW | Yes: README lines 181-189 | Fix: README sentence |
+
+## Round 3
+
+- Repairs merged at `ff3babe5` (round 2 head `bef4b709`). Remediation diff `r3/remediation.diff`,
+  SHA-256 `8041c560…5714a`.
+
+| Lane | Client and model | Verdict | Raw output |
+|---|---|---|---|
+| 1 | Grok Build `grok-4.7`, effort xhigh | REQUEST_CHANGES | `r3/lane1-grok.jsonl`, `r3/lane1-grok.final.md` |
+| 2 | AGY `gemini-3.8-flash-high`, effort high | APPROVE | `r3/lane2-gemini.jsonl`, `r3/lane2-gemini.final.md` |
+| 3 | Claude Code `claude-opus-5-5`, effort high | REQUEST_CHANGES | `r3/lane3-opus-cc.jsonl`, `r3/lane3-opus-cc.final.md` |
+
+All three lanes report every round 2 item fixed.
+
+| ID | Finding | Source | Severity | Verified | Disposition |
+|---|---|---|---|---|---|
+| R3-1 | After an incomplete rescan the stored key stays at K1; if the input key returns to K1, cursors skip the files read during the incomplete rescan and moved events stay misattributed. | Opus | MEDIUM | Yes: `rescan = inputKey !== storedMapKey`, cursors saved, key not written | Fix: store `rescan-pending` as the key after an incomplete rescan |
+| R3-2 | A deleted home rereads all files on every refresh. | Opus | LOW | Yes | Deferred: cursors under a missing path protect a temporarily unmounted directory; recorded in the ADR |
+| R3-3 | An unlistable directory is logged as "no events". | Opus | LOW | Yes | Fix: `readComplete` flag |
+| G-R3-1 | An incomplete rescan writes events assigned by plans learned from a partial file set; a later complete rescan may leave them unmapped and the wrong row stays. Cursors advance past unwritten events. | Grok | MEDIUM | Yes for the learned-plan path; the cursor part is covered by the R3-1 marker | Fix: an incomplete scan does not write learned-plan assignments; tests for both paths |
+| G-R3-2 | ADR lines 74-78 still describe the old failed-reread rule. | Grok | LOW | Yes | Fix |
