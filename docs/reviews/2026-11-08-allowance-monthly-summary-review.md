@@ -146,3 +146,24 @@ All three lanes report F-1, F-2 and R5-1 fixed.
 | R6-1 (Sol) | An ambiguous identity keeps its rows but the insert still adds a row under a third account, counting the tokens twice. | Codex Sol (Opus R6-2 same path, LOW) | HIGH | Yes: insert ran for every rescanned row | Fixed: no delete and no insert for an identity with two or more stored matches |
 | R6-1 (Opus) | One stored match is taken as the rescanned event; a never-stored event of another session with the same time and total moves the row when its file is gone. | Opus | LOW | Yes, requires an exact cross-session collision (0 in both database copies) and a permanently missing file | Documented residual in the ADR; token-field matching rejected because older-parser rows could stop matching and be counted twice |
 | R6-3 | `codex.md` and the user guide omit the ambiguous-identity and hidden-account exceptions. | Opus | LOW | Yes | Fixed: one clause each |
+
+## Round 7
+
+- Repairs at `c026a758`; remediation diff `r7/remediation.diff` (`b5615c5e..c026a758`), SHA-256 `213de2be…66b5`.
+
+| Lane | Client and model | Verdict | Raw output |
+|---|---|---|---|
+| 1 | Grok Build `grok-4.7`, effort xhigh | APPROVE | `r7/lane1-grok.final.md` |
+| 2 (substitute) | Codex `gpt-6.1-sol`, effort high, `~/.codex-family` | APPROVE | `r7/lane2-codex-sol.final.md` |
+| 3 | Claude Code `claude-opus-5-5`, effort high | APPROVE | `r7/lane3-opus-cc.final.md` |
+
+All three lanes report the round 6 items fixed (Opus R6-1 as a documented residual). Code gate passed at
+`c026a758` with three families: xAI, OpenAI (substituting for Google, whose AGY credits ran out), Anthropic.
+
+| ID | Finding | Source | Severity | Disposition |
+|---|---|---|---|---|
+| R7-1 (Opus) | The ADR does not say that a never-stored event with an ambiguous identity is not stored. | Opus | LOW | Fixed: ADR sentence |
+| R7-2 (Opus) / R7-1 (Grok) | User guide line 208 names only the all-0% hiding rule. | Opus, Grok | LOW | Fixed: both rules, matching line 222 |
+
+The two LOW fixes change documentation only (`docs/ADR_2026-10-11_CODEX_SESSION_EVENTS.md`,
+`docs/USER_GUIDE_WEBUI.zh-TW.md`); code is unchanged from the approved `c026a758`.

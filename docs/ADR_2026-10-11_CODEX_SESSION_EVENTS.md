@@ -105,7 +105,8 @@ not identify who consumed the tokens" and "The scanner never reads `creator_acco
   earliest file event.) When two or more stored rows share a rescanned event's time and
   cumulative total, the reread cannot tell which session it came from, so it keeps all of them
   and adds no row for that event (reviews F-1 and R6-1; adding one under a third account would
-  count the tokens twice). Known residual: one stored row with the same time and total is taken
+  count the tokens twice). A never-stored event with that identity read during a reread is not
+  stored either (review R7-1); a lost event was preferred over a doubled one. Known residual: one stored row with the same time and total is taken
   as the rescanned event. If a different, never-stored event from another session matches it
   exactly and the stored row's own file is gone for good, the stored row moves to that event.
   Matching on the token fields as well was not adopted, because rows stored by an older parser

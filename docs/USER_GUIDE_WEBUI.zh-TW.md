@@ -205,7 +205,7 @@ events 必須完整取得才會寫入，避免把部分資料顯示成完整總�
 Allowance 頁最上方是 This Billing Month 表，回答「這個訂閱月用了多少、照 API 價格值多少」。每個 provider 一列：
 
 - Billing Month：目前這個計費月的起訖，下方標來源：Billing Date Set（自己設定的 Billing Date）、Detected Upgrade（偵測到的升級時間）、Calendar Month（日曆月）。Cursor 與 GitHub Copilot 的額度窗口本身就是一個月，沒有 Billing Months 表，直接用目前週期，標 Provider Monthly Window。窗口短於 27 天時不當成計費月，Billing Month、API Value 與 Projected Month End 顯示 —，下方註明窗口名稱
-- Tokens、API Value：該月到目前為止的 token 與 API 金額（API Value 是這些 token 照 API 牌價計算的金額）。沒有價格時顯示 —。任何月份都沒有本機 token 紀錄的 provider（例如 Antigravity、Copilot）顯示 No Local Token History，不顯示 0。這個月沒有 token、額度讀數又一直是 0% 的帳號不列出
+- Tokens、API Value：該月到目前為止的 token 與 API 金額（API Value 是這些 token 照 API 牌價計算的金額）。沒有價格時顯示 —。任何月份都沒有本機 token 紀錄的 provider（例如 Antigravity、Copilot）顯示 No Local Token History，不顯示 0。這個計費月還沒有 token 的帳號，若沒有進行中也沒有納入的週期，或目前週期也沒有 token 且每一筆額度讀數都是 0%，就不列出（規則同下方 Details 的說明）
 - Projected Month End：照目前速度推到月底的 API 金額，只在推估標為可靠時顯示，否則顯示 —
 - Meter Now：目前週期最新的額度讀數與窗口名稱。讀數超過 100%（例如 Cursor 用到方案外的 bonus）時寫 Over Included Usage，不顯示數字
 - 與另一個帳號共用 session 的 Codex 帳號沒有計費月，Tokens 欄寫 Shares Another Account's Session Log
