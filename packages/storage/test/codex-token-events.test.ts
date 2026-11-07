@@ -207,7 +207,39 @@ describe("codex_token_events replace", () => {
     expect(rows).toEqual([["codex:codex", 100], ["codex:family", 100]]);
     storage.close();
   });
+
+  test("two stored events that share a time and total survive when only one is rescanned", async () => {
+    const storage = await open();
+    // Different events of two sessions with an equal time and cumulative total.
+    await storage.upsertCodexTokenEvents?.([
+      { ...prolite, providerId: "codex:codex", tokens: 100 },
+      { ...prolite, providerId: "codex:family", tokens: 200 },
+    ]);
+    // Only main's file is still on disk, so only its event is rescanned.
+    await storage.replaceCodexTokenEvents(["codex:codex", "codex:family"], [
+      { ...prolite, providerId: "codex:codex", tokens: 100 },
+    ]);
+    expect(await eventTokens(storage)).toEqual([["codex:codex", 100], ["codex:family", 200]]);
+    storage.close();
+  });
+
+  test("a single stored event moves to the account the rescan assigns", async () => {
+    const storage = await open();
+    await storage.upsertCodexTokenEvents?.([{ ...prolite, providerId: "codex:family" }]);
+    await storage.replaceCodexTokenEvents(["codex:codex", "codex:family"], [
+      { ...prolite, providerId: "codex:codex" },
+    ]);
+    expect(await eventTokens(storage)).toEqual([["codex:codex", 100]]);
+    storage.close();
+  });
 });
+
+async function eventTokens(storage: EventStorage): Promise<Array<[string, number]>> {
+  return (await storage.listAllowanceTokenRows(FROM))
+    .filter((row) => row.model === "All Models")
+    .map((row) => [row.providerId, row.tokens] as [string, number])
+    .sort();
+}
 
 describe("codex_token_events schema", () => {
   test("unique key is provider, time, and cumulative total", async () => {
