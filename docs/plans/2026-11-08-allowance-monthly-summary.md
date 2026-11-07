@@ -58,6 +58,10 @@ Files: `packages/providers/src/codex-session-events.ts`, `apps/server/src/codex-
 - The event map key includes the hashes, so the first refresh after deploy rescans the files on disk.
 - A rescan replaces only events at or after the earliest event found in the rescanned files. Older stored
   events stay unchanged. Without this, the rescan deletes the 2026-04 to 2026-09 events (Evidence).
+  - Superseded by review R1-1 (2026-11-08): a rescan replaces by event identity (time and cumulative total),
+    so stored events that the rescan does not reproduce keep their account. An incomplete rescan stores what
+    it read and marks the key `rescan-pending`. The ADR `docs/ADR_2026-10-11_CODEX_SESSION_EVENTS.md` holds
+    the current rule.
 - Back up the live database before the restart.
 - Known limits: events before the earliest file on disk stay under `codex:family`, because their files are
   gone. Attribution is per session; a session resumed under the other login stays with its creator.
