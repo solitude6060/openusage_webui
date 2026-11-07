@@ -87,3 +87,25 @@ All three lanes report every round 2 item fixed.
 | R3-3 | An unlistable directory is logged as "no events". | Opus | LOW | Yes | Fix: `readComplete` flag |
 | G-R3-1 | An incomplete rescan writes events assigned by plans learned from a partial file set; a later complete rescan may leave them unmapped and the wrong row stays. Cursors advance past unwritten events. | Grok | MEDIUM | Yes for the learned-plan path; the cursor part is covered by the R3-1 marker | Fix: an incomplete scan does not write learned-plan assignments; tests for both paths |
 | G-R3-2 | ADR lines 74-78 still describe the old failed-reread rule. | Grok | LOW | Yes | Fix |
+
+## Round 4
+
+- Repairs merged at `f211e559` (round 3 head `ff3babe5`). Remediation diff `r4/remediation.diff`,
+  SHA-256 `28f3d34e…b8013`.
+
+| Lane | Client and model | Verdict | Raw output |
+|---|---|---|---|
+| 1 | Grok Build `grok-4.7`, effort xhigh | APPROVE | `r4/lane1-grok.jsonl`, `r4/lane1-grok.final.md` |
+| 2 | AGY `gemini-3.8-flash-high` | No verdict: "Your AI credits balance is too low to continue." on the attempt and the retry | `r4/lane2-gemini-attempt1.*`, `r4/lane2-gemini.*` |
+| 2 (substitute) | Codex `gpt-6.1-sol`, effort high | No verdict: usage limit on `~/.codex` (reset 04:09 local) and `~/.codex-family` (reset 04:03 local) | `r4/lane2-codex-sol-home1-failed.*`, `r4/lane2-codex-sol.*`, `r4/lane2-substitution.txt` |
+| 3 | Claude Code `claude-opus-5-5`, effort high | APPROVE | `r4/lane3-opus-cc.jsonl`, `r4/lane3-opus-cc.final.md` |
+
+Lanes 1 and 3 report R3-1, R3-3, G-R3-1 and G-R3-2 fixed and R3-2 deferred with its reason recorded.
+Lane 2 has no round 4 verdict; the code gate stays open until a second-family lane reviews the final diff.
+
+| ID | Finding | Source | Severity | Verified | Disposition |
+|---|---|---|---|---|---|
+| R4-1 | `RESCAN_PENDING` is written after the replace and cursor save; a crash between them leaves the old key while events moved. | Opus | LOW | Yes: three separate writes | Fix: write the marker before the replace |
+| R4-2 | While a rescan is pending, events that need a newly learned plan are not stored and not logged. | Opus | LOW | Yes | Fix: docs and an unmapped-count log |
+| R4-3 | The R3-1 test never shows a complete scan restoring K1. | Opus | LOW | Yes: mode restored after the `back` scan | Fix: third scan after the mode is restored |
+| Plan | Plan S1 still describes the pre-R1-1 time-range replace. | Opus (no finding) | — | Yes | Fixed: superseded note in the plan |
