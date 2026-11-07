@@ -1,5 +1,5 @@
 import { lstatSync, realpathSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { observationsFromLines } from "./quota-observations";
 import { errorCode, listJsonl, logReadFailure, readNewText, sessionCreatorHash } from "./codex-session-files";
 
@@ -67,7 +67,12 @@ export function codexSessionScanRoots(accounts: Array<{ homePath: string }>): st
   return sessionScanRoots(accounts).roots;
 }
 
-function sessionScanRoots(accounts: Array<{ homePath: string }>): { roots: string[]; complete: boolean } {
+// A missing sessions path is incomplete when stored cursors show it held files before, so a rescan
+// cannot treat files that are only temporarily missing as gone. A home that never had one is skipped.
+function sessionScanRoots(
+  accounts: Array<{ homePath: string }>,
+  cursors: Array<{ path: string }> = [],
+): { roots: string[]; complete: boolean } {
   const roots = new Set<string>();
   let complete = true;
   for (const account of accounts) {
@@ -76,7 +81,7 @@ function sessionScanRoots(accounts: Array<{ homePath: string }>): { roots: strin
     try {
       stat = lstatSync(sessions);
     } catch (error) {
-      if (errorCode(error) !== "ENOENT") {
+      if (errorCode(error) !== "ENOENT" || hadSessions(account.homePath, cursors)) {
         complete = false;
         logReadFailure(error);
       }
@@ -91,6 +96,16 @@ function sessionScanRoots(accounts: Array<{ homePath: string }>): { roots: strin
     }
   }
   return { roots: [...roots].sort(), complete };
+}
+
+function hadSessions(homePath: string, cursors: Array<{ path: string }>): boolean {
+  const prefixes = [join(homePath, "sessions") + sep];
+  try {
+    prefixes.push(join(realpathSync(homePath), "sessions") + sep);
+  } catch {
+    // The home itself is gone; the configured path is the only prefix to compare.
+  }
+  return cursors.some((cursor) => prefixes.some((prefix) => cursor.path.startsWith(prefix)));
 }
 
 export function meterShapeFromObservations(rows: CodexShapeObservation[]): CodexMeterShape | null {
@@ -138,7 +153,8 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
   const learned = new Map<string, Set<string>>();
   let filesRead = 0;
   let unmapped = 0;
-  const discovered = sessionScanRoots(input.accounts);
+  let found = 0;
+  const discovered = sessionScanRoots(input.accounts, input.cursors);
   let complete = discovered.complete;
 
   for (const root of discovered.roots) {
@@ -165,6 +181,7 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
         continue;
       }
       filesRead += 1;
+      found += parsed.events.length;
       unmapped += parsed.unmapped;
       const creator = creatorAccount(creatorRead?.hash ?? null, input.accounts);
       for (const event of parsed.events) {
@@ -217,7 +234,9 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
     learnedPlans,
     unmapped,
     replaceProviderIds: rescan ? input.accounts.map((account) => account.id) : [],
-    complete,
+    // A rescan that finds no event changes nothing; saving its key would use it up, and files that
+    // return with their old size and modified time would then never be reread.
+    complete: complete && (!rescan || found > 0),
   };
 }
 

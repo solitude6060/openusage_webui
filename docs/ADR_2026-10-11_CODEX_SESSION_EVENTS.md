@@ -73,8 +73,9 @@ analysis, section 4.2. Per completed cycle there, the medians are 2.75M tokens p
   files and replaces the stored event rows for those accounts in one write. That
   replacement is kept only when every sessions directory listing and session file read
   succeeded. A failed reread leaves the stored events, file cursors, and mapping key in
-  place, so the next refresh rereads the history. An empty sessions directory that can be
-  read still clears the stored events. An event the new mapping cannot assign is removed.
+  place, so the next refresh rereads the history. Superseded on 2026-11-08 (see "Update
+  2026-11-08: Attribution By Session Creator" below): an empty sessions directory that can be
+  read keeps the stored events, and an event the new mapping cannot assign keeps its account.
   The unique key still ignores a duplicate insert of the same account, time, and
   cumulative total.
 
@@ -100,16 +101,23 @@ not identify who consumed the tokens" and "The scanner never reads `creator_acco
   and cumulative total) and the new mapping assigns it to an account. Every other stored
   event keeps its account: events whose files are gone, and events the new mapping cannot
   assign. (Revised after review R1-1; the first version replaced every event after the
-  earliest file event.) An empty sessions directory that can be read therefore keeps the
-  stored events. A failed reread still changes nothing.
+  earliest file event.) A failed reread still changes nothing.
+- A reread that finds no event (for example an empty sessions directory that can be read)
+  counts as failed: the stored events, file cursors and mapping key stay, so the next refresh
+  rereads again. Saving the key would use the reread up, and files that come back with their
+  old size and modified time would never be read again. (Review G-R1-1.)
+- A missing sessions directory counts as a failed read when the stored file cursors show it
+  held session files before. A home that never had one is skipped and does not block the
+  other home. (Review G-R1-2.)
 - A missing `auth.json`, as after a logout, removes that home's hash and rereads the files.
   That home's sessions then fall back to the shape and plan rule. When that rule cannot
   pick an account, as with two Plus accounts, the stored events keep their account. When it
   can pick one, the events move to it.
 - If an `auth.json` exists but cannot be read or parsed, that refresh skips the event scan:
   no events, cursors, or mapping key change. A missing `auth.json` means no hash.
-- If a session file's first line cannot be read, none of that file's new events are stored,
-  its cursor stays, and the scan counts as incomplete, so the next refresh retries it.
+- If a session file's first line cannot be read, or is longer than 4 MiB, none of that file's
+  new events are stored, its cursor stays, and the scan counts as incomplete, so the next
+  refresh retries it.
 
 Known limits:
 
