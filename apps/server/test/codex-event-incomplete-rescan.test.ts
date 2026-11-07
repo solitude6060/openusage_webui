@@ -254,3 +254,47 @@ test("a crash after the replace leaves the map key marked pending", async () => 
     storage.close();
   }
 });
+
+test("a rescan that assigns an ambiguous stored identity to a third account adds no row", async () => {
+  fixture();
+  const storage = new SqliteStorage();
+  await storage.init();
+  const stored = (providerId: string, tokens: number) => ({
+    providerId,
+    observedAt: "2026-10-09T12:00:00.000Z",
+    tokens,
+    input: tokens,
+    cachedInput: 0,
+    output: 0,
+    planType: "plus",
+    weeklyUsedPercent: 12,
+    weeklyResetsAt: null,
+    totalTokens: 1000,
+  });
+  try {
+    // Two different events of two sessions with an equal time and cumulative total.
+    await storage.upsertCodexTokenEvents([stored("codex:codex", 100), stored("codex:family", 200)]);
+    const ids = ["codex:codex", "codex:family", "codex:third"];
+    // The rescan reads one of them and assigns it to a third account.
+    const result = (complete: boolean): CodexEventScanResult => ({
+      events: [{ ...stored("codex:third", 100) }],
+      cursors: [],
+      filesRead: 1,
+      mapKey: '[["codex:third"]]',
+      learnedPlans: [],
+      unmapped: 0,
+      replaceProviderIds: ids,
+      complete,
+      readComplete: complete,
+    });
+    for (const complete of [false, false, true]) {
+      await save(storage, result(complete));
+      expect(await ownedTokens(storage)).toEqual([
+        { providerId: "codex:codex", tokens: 100 },
+        { providerId: "codex:family", tokens: 200 },
+      ]);
+    }
+  } finally {
+    storage.close();
+  }
+});
