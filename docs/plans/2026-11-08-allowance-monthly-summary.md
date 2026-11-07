@@ -85,6 +85,11 @@ Files: `apps/web/src/pages/allowance-page.tsx`, page styles and tests. Data: the
   2026-11-08 answer names tokens and API dollars as the monthly figures.
 - Check whether redeemed Codex reset credits ("Rate Limit Resets", "Reset Credit") explain the 1 to 4 day
   Codex cycles; record the result.
+  - Result (database copy, script `s2/codex-reset-credit-check.ts` in the artifacts folder): of the cycle
+    boundaries that end a cycle shorter than 6.9 days, a drop in "Rate Limit Resets: N available" within
+    2 hours appears at 2 of 15 for `codex:codex` and 3 of 14 for `codex:family`. None of the October
+    boundaries (10-04 to 10-28) has one. Cause of the other short cycles not determined. Limit: snapshots
+    are about 20 minutes apart, so a grant and a redemption inside one interval are not visible.
 - Cycle table: a cycle with segments lists each segment's climb ("96% + 89%, meter reset mid-week") instead
   of the sum.
 
