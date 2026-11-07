@@ -285,7 +285,10 @@ async function expectKeptUntilReadable(
       cursors,
       storedMapKey,
     }, errors);
-    await saveCodexEventScan(storage, blocked);
+    const logs = await saveLogged(storage, blocked);
+    // A read failure is incomplete, never the harmless "no events" case.
+    expect(logs).toContain("codex_event_rescan_incomplete");
+    expect(logs).not.toContain("codex_event_rescan_no_events");
     expect(await ownedTokens(storage)).toEqual(blockedTokens);
     expect(await storage.getAppMeta(MAP_KEY)).toBe(PENDING);
     expect(await storage.getAppMeta(PLAN_KEY)).toBe(plans);
