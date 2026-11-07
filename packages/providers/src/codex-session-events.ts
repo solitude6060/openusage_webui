@@ -1,6 +1,7 @@
-import { closeSync, lstatSync, openSync, readdirSync, readSync, realpathSync, statSync } from "node:fs";
+import { lstatSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { observationsFromLines } from "./quota-observations";
+import { errorCode, listJsonl, logReadFailure, readNewText, sessionCreatorHash } from "./codex-session-files";
 
 export type CodexMeterShape = "weekly-primary" | "five-hour-primary";
 
@@ -9,6 +10,8 @@ export interface CodexEventAccount {
   homePath: string;
   shape: CodexMeterShape | null;
   planType: string | null;
+  /** SHA-256 of `tokens.account_id` from the home's auth.json; never the raw id. */
+  accountIdHash?: string | null;
 }
 
 export interface CodexEventCursor {
@@ -45,6 +48,8 @@ export interface CodexEventScanResult {
   learnedPlans: Array<{ providerId: string; planType: string }>;
   unmapped: number;
   replaceProviderIds: string[];
+  /** On a rescan, stored events at or after this time are replaced; older ones stay. */
+  replaceFrom: string | null;
   complete: boolean;
 }
 
@@ -135,6 +140,7 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
   const learned = new Map<string, Set<string>>();
   let filesRead = 0;
   let unmapped = 0;
+  let earliest: string | null = null;
   const discovered = sessionScanRoots(input.accounts);
   let complete = discovered.complete;
 
@@ -155,7 +161,13 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
       filesRead += 1;
       const parsed = parseTokenCounts(read.slice.text, read.slice.previousTotal);
       unmapped += parsed.unmapped;
+      const creator = parsed.events.length > 0 ? creatorAccount(sessionCreatorHash(path), input.accounts) : null;
       for (const event of parsed.events) {
+        if (earliest == null || event.draft.observedAt < earliest) earliest = event.draft.observedAt;
+        if (creator) {
+          events.push({ ...event.draft, providerId: creator });
+          continue;
+        }
         const providerId = assignAccount(event.shape, event.planType, input.accounts);
         if (!providerId) {
           pending.push(event);
@@ -201,6 +213,7 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
     learnedPlans,
     unmapped,
     replaceProviderIds: rescan ? input.accounts.map((account) => account.id) : [],
+    replaceFrom: rescan ? earliest : null,
     complete,
   };
 }
@@ -208,7 +221,7 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
 function codexEventMapKey(accounts: CodexEventAccount[]): string {
   return JSON.stringify(
     accounts
-      .map((account) => [account.id, account.shape, account.planType] as const)
+      .map((account) => [account.id, account.shape, account.planType, account.accountIdHash ?? null] as const)
       .sort((left, right) => left[0].localeCompare(right[0])),
   );
 }
@@ -221,6 +234,12 @@ function effectivePeriod(row: CodexShapeObservation | null): number | null {
     if (Number.isFinite(horizon) && horizon >= DAY_MS) return horizon;
   }
   return row.periodMs;
+}
+
+function creatorAccount(creatorHash: string | null, accounts: CodexEventAccount[]): string | null {
+  if (!creatorHash) return null;
+  const matches = accounts.filter((account) => account.accountIdHash === creatorHash);
+  return matches.length === 1 ? matches[0]!.id : null;
 }
 
 function assignAccount(
@@ -237,93 +256,6 @@ function assignAccount(
     if (matches.length === 1) return matches[0]!.id;
   }
   return null;
-}
-
-interface ReadSlice {
-  text: string;
-  nextOffset: number;
-  mtimeMs: number;
-  previousTotal: number | null;
-}
-
-function readNewText(
-  path: string,
-  cursor: CodexEventCursor | null,
-  rescan: boolean,
-): { failed: true } | { failed: false; slice: ReadSlice | null } {
-  let stat;
-  try {
-    stat = statSync(path);
-  } catch (error) {
-    logReadFailure(error);
-    return { failed: true };
-  }
-  const mtimeMs = Math.trunc(stat.mtimeMs);
-  const size = stat.size;
-  if (!rescan && cursor && cursor.offset === size && cursor.mtimeMs === mtimeMs) return { failed: false, slice: null };
-  const start = !rescan && cursor && size >= cursor.offset ? cursor.offset : 0;
-  const previousTotal = start === 0 ? null : cursor?.lastTotalTokens ?? null;
-  let fd: number | null = null;
-  try {
-    fd = openSync(path, "r");
-    const length = size - start;
-    if (length <= 0) return { failed: false, slice: { text: "", nextOffset: start, mtimeMs, previousTotal } };
-    const buffer = Buffer.alloc(length);
-    const read = readSync(fd, buffer, 0, length, start);
-    const slice = buffer.subarray(0, read);
-    let end = slice.length;
-    if (end === 0 || slice[end - 1] !== 0x0a) {
-      const newline = slice.lastIndexOf(0x0a);
-      if (newline < 0) return { failed: false, slice: { text: "", nextOffset: start, mtimeMs, previousTotal } };
-      end = newline + 1;
-    }
-    return {
-      failed: false,
-      slice: { text: slice.subarray(0, end).toString("utf8"), nextOffset: start + end, mtimeMs, previousTotal },
-    };
-  } catch (error) {
-    logReadFailure(error);
-    return { failed: true };
-  } finally {
-    if (fd != null) closeSync(fd);
-  }
-}
-
-function listJsonl(root: string): { files: string[]; complete: boolean } {
-  const files: string[] = [];
-  const stack = [root];
-  let complete = true;
-  while (stack.length > 0) {
-    const dir = stack.pop()!;
-    let names: string[];
-    try {
-      names = readdirSync(dir);
-    } catch (error) {
-      complete = false;
-      logReadFailure(error);
-      continue;
-    }
-    for (const name of names) {
-      const path = join(dir, name);
-      let stat;
-      try {
-        stat = lstatSync(path);
-      } catch (error) {
-        complete = false;
-        logReadFailure(error);
-        continue;
-      }
-      if (stat.isSymbolicLink()) continue;
-      if (stat.isDirectory()) stack.push(path);
-      else if (stat.isFile() && name.endsWith(".jsonl")) files.push(path);
-    }
-  }
-  files.sort();
-  return { files, complete };
-}
-
-function logReadFailure(error: unknown): void {
-  console.error(JSON.stringify({ event: "codex_session_read_failed", code: errorCode(error) }));
 }
 
 interface ParsedEvent {
@@ -478,10 +410,4 @@ function intField(record: Record<string, unknown>, ...keys: string[]): number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function errorCode(error: unknown): string {
-  return error && typeof error === "object" && "code" in error && typeof error.code === "string"
-    ? error.code
-    : "UNKNOWN";
 }

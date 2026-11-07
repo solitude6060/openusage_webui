@@ -5,6 +5,7 @@ import {
   type CodexEventScanResult,
   type CodexMeterShape,
 } from "../../../packages/providers/src/codex-session-events";
+import { codexAccountIdHash } from "../../../packages/providers/src/codex-session-files";
 import { aliasCodexSevenDaySessions, collapseQuotaWindows } from "../../../packages/providers/src/quota-observations";
 
 const PLAN_TYPES_KEY = "codex_event_plan_types";
@@ -31,6 +32,7 @@ export async function attachCodexEventScan(
       homePath: account.homePath,
       shape: shapeFor(observations, account.id),
       planType: plans[account.id] ?? null,
+      accountIdHash: codexAccountIdHash(account.homePath),
     })),
     cursors: await storage.listCodexEventCursors(),
     storedMapKey: await storage.getAppMeta(MAP_KEY),
@@ -46,7 +48,7 @@ export async function saveCodexEventScan(
     return;
   }
   if (result.replaceProviderIds.length > 0) {
-    await storage.replaceCodexTokenEvents(result.replaceProviderIds, result.events);
+    await storage.replaceCodexTokenEvents(result.replaceProviderIds, result.events, result.replaceFrom);
   } else {
     await storage.upsertCodexTokenEvents(result.events);
   }
