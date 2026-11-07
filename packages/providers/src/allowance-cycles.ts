@@ -323,6 +323,8 @@ function usableSummary(
   summary: AllowanceCycleSummary,
   points: Array<{ usedPercent: number }>,
 ): boolean {
+  // The monthly summary needs an account that used tokens this billing month, whatever its meter shows.
+  if ((summary.billing?.months.find((month) => month.current)?.tokens ?? 0) > 0) return true;
   const included = summary.cycles.some((cycle) => cycle.included);
   if (summary.current == null && !included) return false;
   if ((summary.current?.tokens ?? 0) > 0) return true;
