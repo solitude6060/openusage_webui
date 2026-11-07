@@ -94,6 +94,25 @@ Files: `apps/web/src/pages/allowance-page.tsx`, page styles and tests. Data: the
   reset time, so this span is not used for estimates."
 - A card headline shows a reason only when the span has no estimate.
 
+### S5 Codex API value per account (added 2026-11-08 after S1 and S2)
+
+- Evidence (database copy): Codex event rows enter Allowance as model "All Models" with `costUsd` null
+  (`listAllowanceRows`, `packages/storage/src/allowance-tokens.ts`), and they replace the ccusage rows of the
+  same day for every account in the session group. The priced ccusage daily rows of the shared log exist only
+  under `codex:codex` (2026-11: 17 rows, 123,733,078 tokens, $140.99). The summary therefore shows API value
+  "—" for both Codex accounts.
+- Change: for each session group and local day, take the priced ccusage cost of the shared log and split it
+  over the group's event hours in proportion to event tokens. Each account's day cost is that cost times its
+  share of the day's event tokens. If any ccusage row of that day lacks a price, the day stays unpriced.
+- Check: on the database copy, the per-day sum of both accounts' allocated cost equals the ccusage cost of
+  that day.
+
+### S2 follow-ups (added 2026-11-08 after the S2 report)
+
+- "Projected End" above 100% in Details reads "Runs Out Before Reset At This Pace" instead of the number.
+- Range-tab cards whose estimate is marked rough do not show allowance or API value as the large headline.
+- Remove the changelog sentence about the removed column from the user guide.
+
 ## Delivery
 
 - Owner decision 2026-11-08: Claude Opus 5.5 implements every item; the reviewers are Grok Build `grok-4.7`
