@@ -49,6 +49,8 @@ export interface CodexEventScanResult {
   unmapped: number;
   replaceProviderIds: string[];
   complete: boolean;
+  /** Every listing and file read succeeded; `complete` also requires a rescan to find an event. */
+  readComplete: boolean;
 }
 
 export interface CodexShapeObservation {
@@ -237,6 +239,7 @@ export function scanCodexSessionEvents(input: CodexEventScanInput): CodexEventSc
     // A rescan that finds no event changes nothing; saving its key would use it up, and files that
     // return with their old size and modified time would then never be reread.
     complete: complete && (!rescan || found > 0),
+    readComplete: complete,
   };
 }
 

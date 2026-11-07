@@ -69,7 +69,7 @@ export async function saveCodexEventScan(
   if (rescan && !result.complete) {
     // The saved cursors and moved events no longer match the old key, so mark the rescan pending.
     await storage.setAppMeta(MAP_KEY, RESCAN_PENDING);
-    if (result.events.length === 0 && result.unmapped === 0) {
+    if (result.readComplete) {
       console.log(JSON.stringify({ event: "codex_event_rescan_no_events" }));
     } else {
       console.error(JSON.stringify({ event: "codex_event_rescan_incomplete" }));
