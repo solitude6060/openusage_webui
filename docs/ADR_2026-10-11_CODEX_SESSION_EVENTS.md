@@ -118,9 +118,10 @@ not identify who consumed the tokens" and "The scanner never reads `creator_acco
   directory are kept on purpose: they are what keeps a temporarily unmounted directory from
   being read as empty, so a deleted home costs a full reread on each refresh (review R3-2).
   While the reread stays pending, learned plans are not saved, and new events that only a
-  newly learned plan could assign are not stored; they wait for the first complete reread,
-  which reads every file from the start. Each pending reread logs their number as
-  `codex_events_unmapped` (a count only). The marker is written before any event moves, so a
+  newly learned plan could assign are not stored; the first complete reread, which reads every
+  file from the start, adds those that its plan names can assign. Each pending reread logs the
+  number of events it read but left unassigned, stored or new, as `codex_events_unmapped` (a
+  count only). The marker is written before any event moves, so a
   stop between the writes also leaves the reread pending (review R4-1, R4-2).
 - A reread that finds no event (for example an empty sessions directory that can be read)
   counts as incomplete, so the mapping key is marked pending and the next refresh rereads
