@@ -7,6 +7,7 @@ import { attachCodexEventScan, saveCodexEventScan } from "../src/codex-event-ref
 import {
   scanCodexSessionEvents,
   type CodexEventAccount,
+  type CodexEventCursor,
   type CodexEventScanInput,
 } from "../../../packages/providers/src/codex-session-events";
 import type { OpenUsagePluginProvider } from "../../../packages/providers/src/index";
@@ -162,3 +163,62 @@ test("each Codex account in the scan input carries the SHA-256 of its auth.json 
     storage.close();
   }
 });
+
+test("an auth.json that cannot be parsed leaves events, cursors and the mapping key unchanged", async () => {
+  const { codexHome, familyHome, sessions } = fixture();
+  writeFileSync(join(codexHome, "auth.json"), JSON.stringify({ tokens: { account_id: MAIN_ID } }));
+  writeFileSync(join(familyHome, "auth.json"), JSON.stringify({ tokens: { account_id: FAMILY_ID } }));
+  writeFileSync(join(sessions, "a.jsonl"), sessionFile(FAMILY_ID, "2026-10-09T12:30:00.000Z", 100));
+  const storage = new SqliteStorage();
+  await storage.init();
+  const errors: string[] = [];
+  const original = console.error;
+  try {
+    await storage.upsertProviderAccount({
+      id: "codex:codex", providerId: "codex", label: "Codex", homePath: codexHome, enabled: true, sortOrder: 0,
+    });
+    await storage.upsertProviderAccount({
+      id: "codex:family", providerId: "codex", label: "Family", homePath: familyHome, enabled: true, sortOrder: 1,
+    });
+    let captured: CodexEventScanInput | null = null;
+    const provider = {
+      id: "codex:codex",
+      codexHomePath: () => codexHome,
+      setCodexEventScan: (input: CodexEventScanInput | null) => {
+        captured = input;
+      },
+    } as unknown as OpenUsagePluginProvider;
+    const refresh = async () => {
+      captured = null;
+      await attachCodexEventScan(storage, provider);
+      const input = captured as CodexEventScanInput | null;
+      if (input) await saveCodexEventScan(storage, scanCodexSessionEvents(input));
+    };
+    await refresh();
+    expect(await ownedTokens(storage)).toEqual([{ providerId: "codex:family", tokens: 100 }]);
+    const mapKey = await storage.getAppMeta("codex_event_map_key");
+    const cursors = cursorSnapshot(await storage.listCodexEventCursors());
+
+    // A truncated write, as when Codex rewrites auth.json during a token refresh.
+    writeFileSync(join(familyHome, "auth.json"), `{"tokens": {"account_id": "${FAMILY_ID.slice(0, 8)}`);
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map((arg) => String(arg)).join(" "));
+    };
+    await refresh();
+    console.error = original;
+    expect(await ownedTokens(storage)).toEqual([{ providerId: "codex:family", tokens: 100 }]);
+    expect(await storage.getAppMeta("codex_event_map_key")).toBe(mapKey);
+    expect(cursorSnapshot(await storage.listCodexEventCursors())).toEqual(cursors);
+    expect(errors.join("\n")).toContain("codex_account_id_unreadable");
+    expect(errors.join("\n")).not.toContain(FAMILY_ID.slice(0, 8));
+  } finally {
+    console.error = original;
+    storage.close();
+  }
+});
+
+function cursorSnapshot(cursors: CodexEventCursor[]): CodexEventCursor[] {
+  return cursors
+    .map((cursor) => ({ ...cursor }))
+    .sort((left, right) => left.path.localeCompare(right.path));
+}

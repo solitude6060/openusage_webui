@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { scanCodexSessionEvents, type CodexEventAccount } from "../src/codex-session-events";
+import * as sessionFiles from "../src/codex-session-files";
 
 // Fake ids only. Real account ids never belong in fixtures.
 const MAIN_ID = "acct-fake-main-0001";
@@ -156,5 +157,34 @@ describe("Codex event attribution by session creator", () => {
     const second = scanCodexSessionEvents({ accounts, cursors: first.cursors, storedMapKey: first.mapKey });
     expect(second.replaceProviderIds).toEqual([]);
     expect(owners(second.events)).toEqual([{ providerId: "codex:family", tokens: 60 }]);
+  });
+
+  test("a first line that cannot be read stores none of the file's events and keeps its cursor", () => {
+    const { sessions, codexHome, familyHome } = sharedHomes();
+    const path = join(sessions, "a.jsonl");
+    writeFileSync(path, file(metaLine(FAMILY_ID), eventLine({ timestamp: "2026-10-09T12:30:00.000Z", total: 100, last: 100 })));
+    // Without the creator, the shape rule would pick codex:codex.
+    const accounts: CodexEventAccount[] = [
+      { id: "codex:codex", homePath: codexHome, shape: "five-hour-primary", planType: null, accountIdHash: sha256(MAIN_ID) },
+      { id: "codex:family", homePath: familyHome, shape: null, planType: null, accountIdHash: sha256(FAMILY_ID) },
+    ];
+    const first = scanCodexSessionEvents({ accounts, cursors: [], storedMapKey: null });
+    expect(owners(first.events)).toEqual([{ providerId: "codex:family", tokens: 100 }]);
+    appendFileSync(path, file(eventLine({ timestamp: "2026-10-09T12:45:00.000Z", total: 160, last: 60 })));
+
+    const failing = spyOn(sessionFiles, "sessionCreatorHash").mockImplementation(() => ({ failed: true }) as never);
+    let blocked;
+    try {
+      blocked = scanCodexSessionEvents({ accounts, cursors: first.cursors, storedMapKey: first.mapKey });
+    } finally {
+      failing.mockRestore();
+    }
+    expect(blocked.events).toEqual([]);
+    expect(blocked.complete).toBe(false);
+    expect(blocked.cursors).toEqual(first.cursors);
+
+    const retried = scanCodexSessionEvents({ accounts, cursors: blocked.cursors, storedMapKey: blocked.mapKey });
+    expect(retried.complete).toBe(true);
+    expect(owners(retried.events)).toEqual([{ providerId: "codex:family", tokens: 60 }]);
   });
 });
