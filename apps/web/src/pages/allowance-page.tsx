@@ -12,7 +12,7 @@ import {
 import { formatApiMoney, formatDate, formatMoney, formatNumber, formatPercent } from "../lib/format";
 import { providerLabel } from "../provider-ui";
 import { BillingMonths } from "./allowance-billing";
-import { FieldRows, MonthlySummary } from "./allowance-summary";
+import { FieldRows, meterPercent, MonthlySummary } from "./allowance-summary";
 import { formatCompactTokenCount } from "./tokens-page";
 
 const NARROW_LAYOUT = "(max-width: 640px)";
@@ -230,7 +230,7 @@ function AllowanceCycle({ cycle }: { cycle: AllowanceEstimate }) {
       <p className="allowance-meta">
         {formatDate(cycle.from)} – {formatDate(cycle.to)}
         {cycle.percentStart != null && cycle.percentEnd != null
-          ? ` · ${formatPercent(cycle.percentStart)} → ${formatPercent(cycle.percentEnd)}`
+          ? ` · ${meterPercent(cycle.percentStart)} → ${meterPercent(cycle.percentEnd)}`
           : ""}
       </p>
       {allowance != null && cycle.coarse ? (
@@ -376,8 +376,8 @@ function CurrentCycle({ current }: { current: NonNullable<AllowanceCycleSummary[
         {formatDate(current.start)} – {formatDate(current.end)} · {formatCycleLength(current.lengthMs)}
       </p>
       <p className="allowance-figure">
-        {current.usedPercent == null ? "—" : formatPercent(current.usedPercent)}
-        <span className="allowance-unit"> used</span>
+        {current.usedPercent == null ? "—" : meterPercent(current.usedPercent)}
+        {current.usedPercent != null && current.usedPercent > 100 ? null : <span className="allowance-unit"> used</span>}
       </p>
       {current.meterFell ? (
         <p className="allowance-meta">
@@ -423,7 +423,7 @@ function completedFields(cycle: AllowanceCompletedCycle, windowKey: string): Arr
 
 // Each segment climbs at most 100 points; their sum can pass 100, so the climbs are listed instead.
 function consumedLabel(cycle: AllowanceCompletedCycle, windowKey: string): string {
-  if (cycle.segments.length <= 1) return formatPercent(cycle.consumedPercent);
+  if (cycle.segments.length <= 1) return meterPercent(cycle.consumedPercent);
   const climbs = cycle.segments.map((segment) => formatPercent(segment.endPercent - segment.startPercent)).join(" + ");
   return `${climbs} · Meter Reset Mid-${windowKey === "weekly" ? "Week" : "Cycle"}`;
 }
