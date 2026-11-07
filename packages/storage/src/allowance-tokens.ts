@@ -79,6 +79,8 @@ export type AllowanceTokenRow = {
   tokens: number;
   costUsd: number | null;
   bucketEnd?: string;
+  // The cost is a token share of a day's ccusage cost, not a price measured for this row.
+  costAllocated?: true;
 };
 
 type DailyTokenRow = AllowanceTokenRow & { tool: string | null; day: string };
@@ -225,11 +227,13 @@ export function listAllowanceRows(
       }
     }
     const groupTokens = groupDayTokens.get(JSON.stringify([members, hour.day])) ?? 0;
+    const costUsd = dayCost == null || groupTokens <= 0 ? null : dayCost * hour.tokens / groupTokens;
     rows.push({
       providerId: hour.providerId,
       model: "All Models",
       tokens: hour.tokens,
-      costUsd: dayCost == null || groupTokens <= 0 ? null : dayCost * hour.tokens / groupTokens,
+      costUsd,
+      ...(costUsd == null ? {} : { costAllocated: true as const }),
       startedAt: hour.startedAt,
       bucketEnd: new Date(Date.parse(hour.startedAt) + HOUR_MS).toISOString(),
     });

@@ -134,4 +134,7 @@ consequence that Allowance "does not add an API dollar figure" from event rows.
   member has them for the day, otherwise its daily rows.
 - If the group has no ccusage row that day, or any of those rows has no price, the day's event
   hours stay unpriced.
+- These prices are marked as allocated. Billing months and cycle dollars count them, but the
+  regime change and upgrade checks treat a segment with allocated dollars as unpriced: a
+  token share of a day's cost cannot show a change in dollars per percent. (Review R1-3.)
 
