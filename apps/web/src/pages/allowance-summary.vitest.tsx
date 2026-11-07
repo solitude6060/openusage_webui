@@ -419,3 +419,43 @@ describe("S2 follow-ups", () => {
     expect(screen.queryByText(/Rough Estimate/)).not.toBeInTheDocument();
   });
 });
+
+describe("Review round 1 follow-ups", () => {
+  beforeEach(() => {
+    vi.mocked(getAllowance).mockReset();
+    wideViewport();
+  });
+
+  test("a short non-weekly window is not shown as a billing month", async () => {
+    serve([summary({
+      providerId: "kimi",
+      windowKey: "daily",
+      windowLabel: "Daily",
+      current: current({ lengthMs: DAY_MS, tokens: 5_000_000, apiCost: 12, elapsedFraction: 0.5, projectionReliable: true }),
+    })]);
+    render(<AllowancePage providers={[]} refreshToken={0} />);
+
+    const [row] = await summaryRows();
+    expect(row![1]).toBe("—Daily window, not a billing month");
+    expect(row![3]).toBe("—");
+    expect(row![4]).toBe("—");
+  });
+
+  test("a meter above 100 reads as over included usage", async () => {
+    serve([summary({
+      providerId: "cursor",
+      windowKey: "cursor:total-usage",
+      windowLabel: "Total usage",
+      current: current({ lengthMs: 31 * DAY_MS, usedPercent: 134, tokens: 10, apiCost: 1 }),
+    })]);
+    render(<AllowancePage providers={[]} refreshToken={0} />);
+
+    const [row] = await summaryRows();
+    expect(row![1]).toContain("Provider Monthly Window");
+    expect(row![5]).toBe("Over Included Usage Total usage");
+    fireEvent.click(screen.getByRole("button", { name: "Subscription Period" }));
+    const block = (await screen.findByRole("heading", { name: "Current Cycle" })).closest("section")!;
+    expect(block.querySelector(".allowance-figure")).toHaveTextContent("Over Included Usage");
+    expect(screen.queryByText(/134/)).not.toBeInTheDocument();
+  });
+});
