@@ -98,7 +98,8 @@ test("a Codex shape swap keeps the event on the new account only", async () => {
     storedMapKey: second.mapKey,
   });
   await saveCodexEventScan(storage, third);
-  expect(await eventRows(storage)).toEqual([]);
+  // An event the new mapping cannot assign keeps its stored account.
+  expect(await eventRows(storage)).toEqual([{ providerId: "codex:family", tokens: 100 }]);
   storage.close();
 });
 
