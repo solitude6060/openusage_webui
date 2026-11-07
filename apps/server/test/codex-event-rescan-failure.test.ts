@@ -15,6 +15,8 @@ const FROM = "2026-10-01T00:00:00.000Z";
 const RESETS_AT = Math.floor(Date.parse("2026-10-16T00:00:00.000Z") / 1000);
 const MAP_KEY = "codex_event_map_key";
 const PLAN_KEY = "codex_event_plan_types";
+// Stored after an incomplete rescan; no real mapping key (a JSON array) can equal it.
+const PENDING = "rescan-pending";
 
 let dataDir = "";
 let homeRoot = "";
@@ -72,8 +74,8 @@ test("an empty readable Codex sessions directory leaves the rescan pending until
     expect(logs).not.toContain("codex_event_rescan_incomplete");
     // No file reproduces a stored event, so every stored event keeps its account.
     expect(await ownedTokens(storage)).toEqual([{ providerId: "codex:codex", tokens: 300 }]);
-    // A rescan that finds no event is not used up: the key and cursors stay.
-    expect(await storage.getAppMeta(MAP_KEY)).toBe(storedMapKey);
+    // A rescan that finds no event is not used up: the key marks the rescan pending and cursors stay.
+    expect(await storage.getAppMeta(MAP_KEY)).toBe(PENDING);
     expect(cursorSnapshot(await storage.listCodexEventCursors())).toEqual(cursorSnapshot(cursors));
 
     // The file comes back with the size and modified time its cursor recorded.
@@ -134,7 +136,7 @@ test("a rescan with one of two separate sessions directories missing changes not
       { providerId: "codex:codex", tokens: 100 },
       { providerId: "codex:family", tokens: 200 },
     ]);
-    expect(await storage.getAppMeta(MAP_KEY)).toBe(storedMapKey);
+    expect(await storage.getAppMeta(MAP_KEY)).toBe(PENDING);
     expect(cursorSnapshot(await storage.listCodexEventCursors())).toEqual(cursorSnapshot(cursors));
   } finally {
     storage.close();
@@ -171,8 +173,8 @@ test("a removed home with stored cursors does not stop the other home's new even
       { providerId: "codex:codex", tokens: 150 },
       { providerId: "codex:family", tokens: 200 },
     ]);
-    // The key is not saved, so the next refresh tries the full reread again.
-    expect(await storage.getAppMeta(MAP_KEY)).toBe(storedMapKey);
+    // The key marks the rescan pending, so the next refresh tries the full reread again.
+    expect(await storage.getAppMeta(MAP_KEY)).toBe(PENDING);
   } finally {
     storage.close();
   }
@@ -200,7 +202,52 @@ test("a file whose first line is too long does not stop the other files' events 
     expect(rescan.complete).toBe(false);
     await saveLogged(storage, rescan);
     expect(await ownedTokens(storage)).toEqual([{ providerId: "codex:codex", tokens: 150 }]);
-    expect(await storage.getAppMeta(MAP_KEY)).toBe(storedMapKey);
+    expect(await storage.getAppMeta(MAP_KEY)).toBe(PENDING);
+  } finally {
+    storage.close();
+  }
+});
+
+test("after an incomplete rescan, a key that returns to the stored one still rescans and restores attribution", async () => {
+  const sessions = openFixture();
+  const readable = join(sessions, "readable.jsonl");
+  const blocked = join(sessions, "blocked.jsonl");
+  writeFileSync(readable, weeklyLine("2026-10-09T12:30:00.000Z", 100));
+  writeFileSync(blocked, weeklyLine("2026-10-09T13:30:00.000Z", 200));
+  const storage = new SqliteStorage();
+  await storage.init();
+  try {
+    // K1: weekly events belong to codex:codex.
+    const { swapped, storedMapKey: k1 } = await storeInitialScan(storage);
+    // The K1 input: the original shapes plus the plan the first scan recorded.
+    const original: CodexEventAccount[] = [
+      { ...swapped[0]!, shape: "weekly-primary", planType: "prolite" },
+      { ...swapped[1]!, shape: "five-hour-primary" },
+    ];
+    chmodSync(blocked, 0);
+    try {
+      // K2 (swapped shapes) with one file unreadable: incomplete, the readable event moves to family.
+      const incomplete = scanQuietly({ accounts: swapped, cursors: await storage.listCodexEventCursors(), storedMapKey: k1 });
+      await saveLogged(storage, incomplete);
+      expect(incomplete.complete).toBe(false);
+      expect(await ownedTokens(storage)).toEqual([
+        { providerId: "codex:codex", tokens: 200 },
+        { providerId: "codex:family", tokens: 100 },
+      ]);
+
+      // The probe shows the old shapes again, so the input key equals K1 again.
+      const back = scanQuietly({
+        accounts: original,
+        cursors: await storage.listCodexEventCursors(),
+        storedMapKey: await storage.getAppMeta(MAP_KEY),
+      });
+      expect(back.mapKey).toBe(k1);
+      expect(back.replaceProviderIds).toEqual(["codex:codex", "codex:family"]);
+      await saveLogged(storage, back);
+      expect(await ownedTokens(storage)).toEqual([{ providerId: "codex:codex", tokens: 300 }]);
+    } finally {
+      chmodSync(blocked, 0o644);
+    }
   } finally {
     storage.close();
   }
@@ -240,7 +287,7 @@ async function expectKeptUntilReadable(
     }, errors);
     await saveCodexEventScan(storage, blocked);
     expect(await ownedTokens(storage)).toEqual(blockedTokens);
-    expect(await storage.getAppMeta(MAP_KEY)).toBe(storedMapKey);
+    expect(await storage.getAppMeta(MAP_KEY)).toBe(PENDING);
     expect(await storage.getAppMeta(PLAN_KEY)).toBe(plans);
     expect(cursorSnapshot(await storage.listCodexEventCursors())).toEqual(cursorSnapshot(cursors));
     expect(blocked.complete).toBe(false);
