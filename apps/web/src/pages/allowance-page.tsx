@@ -12,6 +12,7 @@ import {
 import { formatApiMoney, formatDate, formatMoney, formatNumber, formatPercent } from "../lib/format";
 import { providerLabel } from "../provider-ui";
 import { BillingMonths } from "./allowance-billing";
+import { FieldRows, MonthlySummary } from "./allowance-summary";
 import { formatCompactTokenCount } from "./tokens-page";
 
 const NARROW_LAYOUT = "(max-width: 640px)";
@@ -40,6 +41,8 @@ export function AllowancePage({
   const [summaries, setSummaries] = useState<AllowanceCycleSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [cyclesError, setCyclesError] = useState<string | null>(null);
+  const [cyclesLoading, setCyclesLoading] = useState(true);
   const [reloads, setReloads] = useState(0);
   const narrow = useNarrowLayout();
   const names = useMemo(
@@ -48,20 +51,42 @@ export function AllowancePage({
   );
   const groups = useMemo(() => groupEstimates(estimates), [estimates]);
 
+  // The monthly summary and the Subscription Period tab share one span=cycles load.
   useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setCyclesLoading(true);
+      try {
+        const next = await getAllowance("cycles");
+        if (!cancelled) {
+          setSummaries("summaries" in next ? next.summaries : []);
+          setCyclesError(null);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          console.error("Allowance cycles load failed:", loadError);
+          setCyclesError(loadError instanceof Error ? loadError.message : "Failed to load allowance");
+          setSummaries([]);
+        }
+      } finally {
+        if (!cancelled) setCyclesLoading(false);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshToken, reloads]);
+
+  useEffect(() => {
+    if (range === "cycles") return;
     let cancelled = false;
     async function load() {
       setLoading(true);
       try {
         const next = await getAllowance(range);
         if (!cancelled) {
-          if ("summaries" in next) {
-            setSummaries(next.summaries);
-            setEstimates([]);
-          } else {
-            setEstimates(next.estimates);
-            setSummaries([]);
-          }
+          setEstimates("estimates" in next ? next.estimates : []);
           setError(null);
         }
       } catch (loadError) {
@@ -69,7 +94,6 @@ export function AllowancePage({
           console.error("Allowance load failed:", loadError);
           setError(loadError instanceof Error ? loadError.message : "Failed to load allowance");
           setEstimates([]);
-          setSummaries([]);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -81,85 +105,97 @@ export function AllowancePage({
     };
   }, [range, refreshToken, reloads]);
 
+  const cycles = range === "cycles";
+  const shownLoading = cycles ? cyclesLoading : loading;
+  const shownError = cycles ? cyclesError : error;
+
   return (
     <section className="page-grid">
       <section className="panel">
         <div className="panel-header">
           <h3>Allowance</h3>
-          <span>{loading ? "—" : `${range === "cycles" ? summaries.length : estimates.length} Windows`}</span>
-        </div>
-        <div className="token-range-bar allowance-range-bar">
-          <div className="chip-list" role="group" aria-label="Time Range">
-            {RANGE_OPTIONS.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                className={range === option.id ? "value-chip token-range-active" : "value-chip"}
-                onClick={() => setRange(option.id)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+          <span>{cyclesLoading ? "—" : `${summaries.length} Providers`}</span>
         </div>
         <div className="panel-body">
-          <details className="allowance-explanation" open={!narrow}>
-            <summary>How This Is Calculated</summary>
-            {range === "cycles" ? (
-              <>
-                <p className="settings-help muted">
-                  A subscription period runs from one reset to the next. The baseline is the median of the last four included periods. That median uses only the usage fully inside each period. The lowest, the highest, and how many periods that median used sit beside it, for tokens and for API dollars.
-                </p>
-                <p className="settings-help muted">
-                  When the meter falls by 5 points or more while its stated reset stays put, the period was reset in place. Each stretch between resets is measured alone, and the period's consumed percent is the sum of their climbs, so it can pass 100. Allowance and dollars per percent divide only by the climbs of stretches that have tokens or a known API cost. A stretch that climbs 5 points or more with no tokens inside it leaves the period out as Segment Unmeasured. When dollars per percent on the two sides of a reset differ by more than 30 percent, the baseline keeps only the newer side.
-                </p>
-                <p className="settings-help muted">
-                  The current period shows the latest meter reading, the tokens and API dollars fully inside it so far, and what remains of the baseline. The projected end percent is that reading divided by how much of the period has passed. Unreliable means the period is less than a day old, the meter fell during this period, or one of the last four periods ended more than an hour before its stated reset.
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="settings-help muted">
-                  Estimated allowance divides the tokens used while the meter moved by how far that meter moved. API Value applies that same ratio to the API price recorded on those tokens. This Period is the current reset cycle, and Previous Period is the cycle before it. This Month uses this computer's calendar.
-                </p>
-                <p className="settings-help muted">
-                  Daily totals cannot be split inside a day. A day boundary counts when the meter readings on both sides are equal, and each end can then be off by one percentage point. Spans that cannot find two such times show Daily Usage Cannot Align and have no allowance estimate. Token totals below include only fully covered records.
-                </p>
-              </>
-            )}
-          </details>
-          {error ? <div className="alert error">{error}</div> : null}
-          {loading ? <div className="loading-indicator">Loading...</div> : null}
-          {!loading && !error && (range === "cycles" ? summaries.length : groups.length) === 0 ? (
-            <p className="settings-help muted">No Allowance Estimate In This Range</p>
-          ) : null}
-          {!loading && range === "cycles" && summaries.length > 0 ? (
-            <div className="allowance-list">
-              {summaries.map((summary) => (
-                <AllowancePeriod
-                  key={`${summary.providerId}:${summary.windowKey}`}
-                  summary={summary}
-                  providerName={names.get(summary.providerId)}
-                  onBillingSaved={() => setReloads((count) => count + 1)}
-                />
-              ))}
+          {cyclesError ? <div className="alert error">{cyclesError}</div> : null}
+          {cyclesLoading ? <div className="loading-indicator">Loading...</div> : null}
+          {!cyclesLoading ? <MonthlySummary summaries={summaries} names={names} /> : null}
+          <details className="allowance-details">
+            <summary>Details</summary>
+            <div className="token-range-bar allowance-range-bar">
+              <div className="chip-list" role="group" aria-label="Time Range">
+                {RANGE_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={range === option.id ? "value-chip token-range-active" : "value-chip"}
+                    onClick={() => setRange(option.id)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          ) : null}
-          {!loading && range !== "cycles" && groups.length > 0 ? (
-            <div className="allowance-list">
-              {groups.map((group) => (
-                <article className="allowance-account" key={`${group.providerId}:${group.windowKey}`}>
-                  <div className="allowance-account-header">
-                    <h4>{providerLabel(group.providerId, names.get(group.providerId))}</h4>
-                    <span>{group.windowLabel}</span>
-                  </div>
-                  {group.cycles.map((cycle) => (
-                    <AllowanceCycle key={`${cycle.from}:${cycle.resetsAt ?? ""}`} cycle={cycle} />
+            <div className="allowance-details-body">
+              <details className="allowance-explanation" open={!narrow}>
+                <summary>How This Is Calculated</summary>
+                {range === "cycles" ? (
+                  <>
+                    <p className="settings-help muted">
+                      A subscription period runs from one reset to the next. The baseline is the median of the last four included periods. That median uses only the usage fully inside each period. The lowest, the highest, and how many periods that median used sit beside it, for tokens and for API dollars.
+                    </p>
+                    <p className="settings-help muted">
+                      When the meter falls by 5 points or more while its stated reset stays put, the period was reset in place. Each stretch between resets is measured alone, and each climb is listed on its own, for example 96% + 89%. Allowance and dollars per percent divide only by the climbs of stretches that have tokens or a known API cost. A stretch that climbs 5 points or more with no tokens inside it leaves the period out of the baseline. When dollars per percent on the two sides of a reset differ by more than 30 percent, the baseline keeps only the newer side.
+                    </p>
+                    <p className="settings-help muted">
+                      The current period shows the latest meter reading, the tokens and API dollars fully inside it so far, and what remains of the baseline. The projected end percent is that reading divided by how much of the period has passed. Unreliable means the period is less than a day old, the meter fell during this period, or one of the last four periods ended more than an hour before its stated reset.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="settings-help muted">
+                      Estimated allowance divides the tokens used while the meter moved by how far that meter moved. API Value applies that same ratio to the API price recorded on those tokens. This Period is the current reset cycle, and Previous Period is the cycle before it. This Month uses this computer's calendar.
+                    </p>
+                    <p className="settings-help muted">
+                      Daily totals cannot be split inside a day. A day boundary counts when the meter readings on both sides are equal, and each end can then be off by one percentage point. Spans that cannot find two such times have no allowance estimate and say why. Token totals below include only fully covered records.
+                    </p>
+                  </>
+                )}
+              </details>
+              {cycles ? null : error ? <div className="alert error">{error}</div> : null}
+              {!cycles && loading ? <div className="loading-indicator">Loading...</div> : null}
+              {!shownLoading && !shownError && (cycles ? summaries.length : groups.length) === 0 ? (
+                <p className="settings-help muted">No Allowance Estimate In This Range</p>
+              ) : null}
+              {!cyclesLoading && cycles && summaries.length > 0 ? (
+                <div className="allowance-list">
+                  {summaries.map((summary) => (
+                    <AllowancePeriod
+                      key={`${summary.providerId}:${summary.windowKey}`}
+                      summary={summary}
+                      providerName={names.get(summary.providerId)}
+                      onBillingSaved={() => setReloads((count) => count + 1)}
+                    />
                   ))}
-                </article>
-              ))}
+                </div>
+              ) : null}
+              {!loading && !cycles && groups.length > 0 ? (
+                <div className="allowance-list">
+                  {groups.map((group) => (
+                    <article className="allowance-account" key={`${group.providerId}:${group.windowKey}`}>
+                      <div className="allowance-account-header">
+                        <h4>{providerLabel(group.providerId, names.get(group.providerId))}</h4>
+                        <span>{group.windowLabel}</span>
+                      </div>
+                      {group.cycles.map((cycle) => (
+                        <AllowanceCycle key={`${cycle.from}:${cycle.resetsAt ?? ""}`} cycle={cycle} />
+                      ))}
+                    </article>
+                  ))}
+                </div>
+              ) : null}
             </div>
-          ) : null}
+          </details>
         </div>
       </section>
     </section>
@@ -272,12 +308,14 @@ function formatLimit(cycle: AllowanceEstimate): string {
   return formatNumber(cycle.statedLimit);
 }
 
+const NOT_USED = "so this span is not used for estimates.";
+
 function reasonLabel(reason: AllowanceEstimate["reason"]): string {
-  if (reason === "unaligned") return "Daily Usage Cannot Align";
-  if (reason === "shared-log") return "Shared Session Log";
-  if (reason === "meter-fell") return "Meter Fell";
-  if (reason === "no-tokens") return "No Tokens In This Range";
-  return "Meter Did Not Move";
+  if (reason === "unaligned") return "Daily usage totals cannot be lined up with the meter readings in this span, so it has no estimate.";
+  if (reason === "shared-log") return "This account shares its session log with another account, so its tokens cannot be told apart and this span is not used for estimates.";
+  if (reason === "meter-fell") return `The meter dropped before its stated reset time, ${NOT_USED}`;
+  if (reason === "no-tokens") return "No token records fall inside this span, so it is not used for estimates.";
+  return "The meter did not move in this span, so there is nothing to divide the tokens by.";
 }
 
 function AllowancePeriod({
@@ -319,7 +357,7 @@ function AllowancePeriod({
         <h5>Current Cycle</h5>
         {summary.current ? <CurrentCycle current={summary.current} /> : <p className="allowance-reason">No Open Cycle</p>}
       </section>
-      <CompletedCycles cycles={summary.cycles} />
+      <CompletedCycles cycles={summary.cycles} windowKey={summary.windowKey} />
       {summary.billing ? (
         <BillingMonths providerId={summary.providerId} billing={summary.billing} onSaved={onBillingSaved} />
       ) : null}
@@ -336,8 +374,12 @@ function CurrentCycle({ current }: { current: NonNullable<AllowanceCycleSummary[
       <p className="allowance-figure">
         {current.usedPercent == null ? "—" : formatPercent(current.usedPercent)}
         <span className="allowance-unit"> used</span>
-        {current.meterFell ? <> · <span>Meter Fell</span></> : null}
       </p>
+      {current.meterFell ? (
+        <p className="allowance-meta">
+          The meter dropped during this cycle before its stated reset time, so the projection is unreliable.
+        </p>
+      ) : null}
       <p className="allowance-meta">
         So Far {formatCompactTokenCount(current.tokens)} tokens
         {current.apiCost == null ? "" : ` · API Dollars ${formatApiMoney(current.apiCost)}`}
@@ -354,55 +396,20 @@ function CurrentCycle({ current }: { current: NonNullable<AllowanceCycleSummary[
   );
 }
 
-function CompletedCycles({ cycles }: { cycles: AllowanceCompletedCycle[] }) {
-  if (cycles.length === 0) return null;
-  const rows = cycles.map((cycle) => ({
-    key: `${cycle.start}:${cycle.end}`,
-    fields: completedFields(cycle),
-  }));
+function CompletedCycles({ cycles, windowKey }: { cycles: AllowanceCompletedCycle[]; windowKey: string }) {
   return (
-    <>
-      <div className="table-scroll allowance-cycle-table">
-        <table>
-          <thead>
-            <tr>
-              {rows[0]!.fields.map((field) => (
-                <th key={field.label}>{field.label}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.key}>
-                {row.fields.map((field) => (
-                  <td key={field.label}>{field.value}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <ul className="allowance-cycle-cards" aria-label="Completed Cycles">
-        {rows.map((row) => (
-          <li className="allowance-cycle-card" key={row.key}>
-            {row.fields.map((field) => (
-              <div key={field.label}>
-                <span>{field.label}</span>
-                <strong>{field.value}</strong>
-              </div>
-            ))}
-          </li>
-        ))}
-      </ul>
-    </>
+    <FieldRows
+      label="Completed Cycles"
+      rows={cycles.map((cycle) => ({ key: `${cycle.start}:${cycle.end}`, fields: completedFields(cycle, windowKey) }))}
+    />
   );
 }
 
-function completedFields(cycle: AllowanceCompletedCycle): Array<{ label: string; value: string }> {
+function completedFields(cycle: AllowanceCompletedCycle, windowKey: string): Array<{ label: string; value: string }> {
   return [
     { label: "Period", value: `${formatDate(cycle.start)} – ${formatDate(cycle.end)}` },
     { label: "Length", value: formatCycleLength(cycle.lengthMs) },
-    { label: "Consumed", value: consumedLabel(cycle) },
+    { label: "Consumed", value: consumedLabel(cycle, windowKey) },
     { label: "Tokens", value: formatTokenSpan(cycle.tokensLow, cycle.tokensHigh) },
     { label: "Allowance", value: formatTokenSpan(cycle.allowanceLow, cycle.allowanceHigh) },
     { label: "API Dollars", value: formatMoneySpan(cycle.apiDollarsLow, cycle.apiDollarsHigh) },
@@ -410,9 +417,11 @@ function completedFields(cycle: AllowanceCompletedCycle): Array<{ label: string;
   ];
 }
 
-function consumedLabel(cycle: AllowanceCompletedCycle): string {
-  const percent = formatPercent(cycle.consumedPercent);
-  return cycle.segments.length > 1 ? `${percent} · ${cycle.segments.length} Segments` : percent;
+// Each segment climbs at most 100 points; their sum can pass 100, so the climbs are listed instead.
+function consumedLabel(cycle: AllowanceCompletedCycle, windowKey: string): string {
+  if (cycle.segments.length <= 1) return formatPercent(cycle.consumedPercent);
+  const climbs = cycle.segments.map((segment) => formatPercent(segment.endPercent - segment.startPercent)).join(" + ");
+  return `${climbs} · Meter Reset Mid-${windowKey === "weekly" ? "Week" : "Cycle"}`;
 }
 
 function statRange(stat: AllowanceCycleStat, format: (value: number) => string): string {
@@ -442,13 +451,11 @@ function formatSpan(low: number | null, high: number | null, format: (value: num
 }
 
 function cycleReasonLabel(reason: AllowanceCycleExclusion | null): string {
-  if (reason === "meter-fell") return "Meter Fell";
-  if (reason === "shared-log") return "Shared Session Log";
-  if (reason === "history-truncated") return "History Truncated";
-  if (reason === "no-tokens") return "No Tokens";
-  if (reason === "below-min-percent") return "Below 10 Percent";
-  if (reason === "edge-uncertain") return "Edge Uncertain";
-  if (reason === "observation-gap") return "Observation Gap";
-  if (reason === "segment-unmeasured") return "Segment Unmeasured";
+  if (reason === "meter-fell" || reason === "shared-log" || reason === "no-tokens") return reasonLabel(reason);
+  if (reason === "history-truncated") return "This span starts before the oldest stored record, so part of its usage is missing and it is not used for estimates.";
+  if (reason === "below-min-percent") return `The meter climbed less than 10 points, too little to measure, ${NOT_USED}`;
+  if (reason === "edge-uncertain") return "More than a quarter of the usage crosses this span's start or end, so it is not used for estimates.";
+  if (reason === "observation-gap") return "No meter reading arrived in the last day before this span ended, so it is not used for estimates.";
+  if (reason === "segment-unmeasured") return "Part of this span climbed 5 points or more with no tokens recorded, so it is not used for estimates.";
   return "Included";
 }
