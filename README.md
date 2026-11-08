@@ -100,7 +100,7 @@ All original OpenUsage plugins run unmodified via a `node:vm` sandbox with Linux
 
 ---
 
-> **Upstream README (kept for reference).** The sections below come from the official [OpenUsage](https://github.com/robinebers/openusage) README by Robin Ebers and describe the original macOS app, its download, community and sponsors. Only **WebUI Fork Status** describes this fork (aisubdash).
+> **Adapted from the upstream README.** The sections below are adapted from the official [OpenUsage](https://github.com/robinebers/openusage) README by Robin Ebers. The introduction, **Download**, **What It Does**, community, **Sponsors** and **Credits** describe the original macOS app. **Supported Providers** has been updated for this fork: entries that mention the WebUI, Pi sessions, the Tokens page or Ollama describe aisubdash only. **WebUI Fork Status** describes this fork only.
 
 # Track all your AI coding subscriptions in one place
 

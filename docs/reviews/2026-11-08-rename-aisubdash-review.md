@@ -20,7 +20,19 @@ Raw outputs: `docs/reviews/2026-11-08-rename-aisubdash.local/r1/` (gitignored).
 | User guide lacks the fork statement | Grok 2, Opus 4 | MEDIUM / LOW | `docs/USER_GUIDE_WEBUI.zh-TW.md` had no fork line | Fixed: statement added under the title |
 | zh-TW fork sentence negation is ambiguous | Grok 3, Opus 5 | LOW | `README_WEBUI.zh-TW.md:3` | Fixed: reworded in both zh-TW files |
 | `docs/providers/ollama.md:20` calls the app OpenUsage | Gemini | LOW | Line 20 refers to this app | Fixed |
-| `.github` issue templates and CODEOWNERS are upstream's | Opus 3 | LOW | `.github/ISSUE_TEMPLATE/*.yml`, `.github/CODEOWNERS:2` | Deferred: GitHub-side files, outside the frozen plan scope; follow-up PR |
+| `.github` issue templates and CODEOWNERS are upstream's | Opus 3 | LOW | `.github/ISSUE_TEMPLATE/*.yml`, `.github/CODEOWNERS:2` | Deferred: in-repo \`.github\` files, not listed in the plan scope; tracked in the project \`tracker.md\` (2026-11-08 rename follow-up) |
 | `ou-status` alias may read as OpenUsage | Opus 6 | LOW | `README.md:74-86` suggested alias only | Deferred: plan excludes a CLI command |
 
 No reviewer found a broken test, string comparison or deployment identifier.
+
+## Round 2
+
+Head \`$(cat docs/reviews/2026-11-08-rename-aisubdash.local/r2/head_sha)\`. Raw outputs: \`.local/r2/\`.
+
+| Lane | Verdict | Findings |
+| --- | --- | --- |
+| Grok Build \`grok-4.7\` xhigh | REQUEST_CHANGES | LOW: upstream note mislabels fork-edited Supported Providers entries (\`README.md:133,134,138,143\`) |
+| AGY \`gemini-3.8-flash-high\` | APPROVE | none |
+| Claude Code \`claude-opus-5-5\` high | REQUEST_CHANGES | MEDIUM: same as Grok; LOW: \`.github\` deferral reason wrong and untracked |
+
+Both verified against \`README.md:133-143\` and accepted. Fixed: the note now says the sections are adapted, and that WebUI, Pi, Tokens-page and Ollama entries describe aisubdash only. Deferral reason corrected and tracked in \`tracker.md\`.
