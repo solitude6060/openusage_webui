@@ -20,7 +20,7 @@ Raw outputs: `docs/reviews/2026-11-08-rename-aisubdash.local/r1/` (gitignored).
 | User guide lacks the fork statement | Grok 2, Opus 4 | MEDIUM / LOW | `docs/USER_GUIDE_WEBUI.zh-TW.md` had no fork line | Fixed: statement added under the title |
 | zh-TW fork sentence negation is ambiguous | Grok 3, Opus 5 | LOW | `README_WEBUI.zh-TW.md:3` | Fixed: reworded in both zh-TW files |
 | `docs/providers/ollama.md:20` calls the app OpenUsage | Gemini | LOW | Line 20 refers to this app | Fixed |
-| `.github` issue templates and CODEOWNERS are upstream's | Opus 3 | LOW | `.github/ISSUE_TEMPLATE/*.yml`, `.github/CODEOWNERS:2` | Deferred: in-repo `.github` files, not listed in the plan scope; tracked in the project `tracker.md` (2026-11-08 rename follow-up) |
+| `.github` issue templates and CODEOWNERS are upstream's | Opus 3 | LOW | `.github/ISSUE_TEMPLATE/*.yml`, `.github/CODEOWNERS:2` | Deferred: in-repo `.github` files, not listed in the plan scope; tracked in the project `tracker.md` (local, gitignored) (2026-11-08 rename follow-up) |
 | `ou-status` alias may read as OpenUsage | Opus 6 | LOW | `README.md:74-86` suggested alias only | Deferred: plan excludes a CLI command |
 
 No reviewer found a broken test, string comparison or deployment identifier.
@@ -35,4 +35,18 @@ Head `2d8cc00e1eb8abe44a187a219bceee14cd91cadc`. Raw outputs: `docs/reviews/2026
 | AGY `gemini-3.8-flash-high` | APPROVE | none |
 | Claude Code `claude-opus-5-5` high | REQUEST_CHANGES | MEDIUM: same as Grok; LOW: `.github` deferral reason wrong and untracked |
 
-Both verified against `README.md:133-143` and accepted. Fixed: the note now says the sections are adapted, and that WebUI, Pi, Tokens-page and Ollama entries describe aisubdash only. Deferral reason corrected and tracked in `tracker.md`.
+The README finding was verified against `README.md:133-143`; both findings accepted. Fixed: the note now says the sections are adapted, and that WebUI, Pi, Tokens-page and Ollama entries describe aisubdash only. Deferral reason corrected and tracked in `tracker.md`.
+
+## Round 3
+
+Head `aeb975775620ca82ce6c256f29420465105f6788`. Raw outputs: `docs/reviews/2026-11-08-rename-aisubdash.local/r3/` (gitignored). Same three lanes and models as round 1.
+
+| Lane | Verdict | Findings |
+| --- | --- | --- |
+| Grok Build `grok-4.7` xhigh | REQUEST_CHANGES | MEDIUM: note labels whole provider entries as fork-only although they list upstream quota fields; LOW: "Built Entirely with AI" not covered; LOW: fix-log table broken |
+| AGY `gemini-3.8-flash-high` | APPROVE | none |
+| Claude Code `claude-opus-5-5` high | REQUEST_CHANGES | LOW: fix-log table broken; LOW: `.github` fix has no row; LOW: sections not covered; LOW: whole-entry attribution; NIT: review wording |
+
+All findings verified against `README.md:133-143` and `:235-260` and the fix log, and fixed: the note now treats every section as upstream unless listed, and lists fork additions by fragment.
+
+Gate decision: no round produced a CRITICAL or HIGH finding, and no finding concerned code, tests or deployment identifiers. Round 3 findings are README and record wording; `README.md` defines no experiment validity, so under the documentation review termination rule (CORE_PROCESS section 5: MEDIUM/LOW recorded, budget of one remediation re-review exhausted) the PR merges after these fixes without a fourth round.
