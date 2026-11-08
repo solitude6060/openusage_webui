@@ -138,7 +138,7 @@ export function App() {
         <div className="brand-row">
           <div>
             <p className="eyebrow">Local Usage</p>
-            <h1>OpenUsage WebUI</h1>
+            <h1>aisubdash</h1>
           </div>
           <button className="primary-button sidebar-refresh" onClick={() => void refreshAll()} type="button">
             Refresh All

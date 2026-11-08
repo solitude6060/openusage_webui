@@ -17,7 +17,7 @@ Ported from the upstream Swift provider (`robinebers/openusage`, commit `bb7de17
 2. Run `ollama signin`. It links `~/.ollama/id_ed25519` to your ollama.com account.
 3. Open the Providers page and switch **Ollama** to Enabled.
 
-Ollama never enables itself. The key file exists as soon as Ollama has run once, signed in or not, so OpenUsage
+Ollama never enables itself. The key file exists as soon as Ollama has run once, signed in or not, so aisubdash
 cannot tell that Cloud is set up. Enabling is the existing per-provider toggle; the choice is kept across restarts.
 
 ## Authentication
@@ -103,7 +103,7 @@ an account with an empty plan shows no badge and no notice.
 
 | Condition | Message |
 |-----------|---------|
-| Not the WebUI host | "Ollama needs the OpenUsage WebUI: this host can't sign requests with an Ed25519 key." |
+| Not the WebUI host | "Ollama needs the aisubdash WebUI server: this host can't sign requests with an Ed25519 key." |
 | No key file | "No Ollama key found. Install Ollama and run `ollama signin` to track cloud usage." |
 | Key file not readable | "Couldn't read ~/.ollama/id_ed25519. Check the file's permissions." |
 | Key file not a usable key | "~/.ollama/id_ed25519 isn't a usable Ollama signing key." |

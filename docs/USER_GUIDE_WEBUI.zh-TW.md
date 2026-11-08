@@ -1,4 +1,6 @@
-# OpenUsage WebUI 使用手冊
+# aisubdash 使用手冊
+
+> 本專案 fork 自 Robin Ebers 的 [OpenUsage](https://github.com/robinebers/openusage)，不是官方 OpenUsage，未獲原作者背書，也與原作者沒有關聯。
 
 ## 1. 適用對象
 
@@ -30,7 +32,7 @@
 
 ## 2. 基本概念
 
-OpenUsage WebUI 採 local-first 設計：
+aisubdash 採 local-first 設計：
 
 - 使用瀏覽器開本機 dashboard
 - API server 預設只綁定 `127.0.0.1`

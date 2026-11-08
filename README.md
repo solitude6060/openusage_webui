@@ -1,6 +1,6 @@
-# OpenUsage WebUI — Linux CLI & Web Dashboard
+# AI Subscription Dashboard (aisubdash) — Linux CLI & Web Dashboard
 
-> **Fork note:** This is a Linux-compatible fork of [OpenUsage](https://github.com/robinebers/openusage). The original is a macOS Tauri menu bar app. This fork replaces the Tauri shell with a **Bun server + React WebUI** and a **CLI status tool**, so it runs on Ubuntu/Linux without Tauri or macOS-specific dependencies.
+> **Fork note:** This is a Linux-compatible fork of [OpenUsage](https://github.com/robinebers/openusage). The original is a macOS Tauri menu bar app. This fork replaces the Tauri shell with a **Bun server + React WebUI** and a **CLI status tool**, so it runs on Ubuntu/Linux without Tauri or macOS-specific dependencies. It is not the official OpenUsage and is not endorsed by or affiliated with its author.
 
 ### What's New
 
@@ -47,7 +47,7 @@
 
 **Web Dashboard** — every provider at a glance, with progress bars and reset timers:
 
-![OpenUsage WebUI dashboard](docs/screenshots/webui-dashboard.png)
+![aisubdash dashboard](docs/screenshots/webui-dashboard.png)
 
 **Terminal Status** — `ou-status` in your shell, with colored usage bars and Codex reset-credit expiry (live countdown + exact date, matching the dashboard):
 
@@ -99,6 +99,8 @@ and `ou-status-refresh` fetches fresh data from every provider before printing.
 All original OpenUsage plugins run unmodified via a `node:vm` sandbox with Linux host shims for HTTP (curl), SQLite, keychain, and filesystem APIs.
 
 ---
+
+> **Adapted from the upstream README.** Unless listed here, the sections that follow come from the official [OpenUsage](https://github.com/robinebers/openusage) README by Robin Ebers and describe the original macOS app, written in its author's voice. This fork (aisubdash) added only: the **WebUI Fork Status** section; in **Supported Providers**, the Pi-session details for Claude and Codex, Grok's local spend and Tokens-page transcripts, and the Ollama and OpenRouter entries, which are WebUI ports of upstream Swift providers.
 
 # Track all your AI coding subscriptions in one place
 

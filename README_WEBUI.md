@@ -1,4 +1,6 @@
-# OpenUsage WebUI Fork
+# AI Subscription Dashboard (aisubdash)
+
+> Fork of [OpenUsage](https://github.com/robinebers/openusage) by Robin Ebers. This is not the official OpenUsage and is not endorsed by or affiliated with its author.
 
 ## What This Is
 

@@ -1,8 +1,10 @@
-# OpenUsage WebUI Fork
+# AI Subscription Dashboard (aisubdash)
+
+> 本專案 fork 自 Robin Ebers 的 [OpenUsage](https://github.com/robinebers/openusage)，不是官方 OpenUsage，未獲原作者背書，也與原作者沒有關聯。
 
 ## 這是什麼
 
-OpenUsage WebUI 是一個 local-first 的 AI coding usage 儀表板，目標是在 Ubuntu/Linux 上用瀏覽器查看本機 AI 工具使用狀態。
+aisubdash 是一個 local-first 的 AI coding usage 儀表板，目標是在 Ubuntu/Linux 上用瀏覽器查看本機 AI 工具使用狀態。
 
 預設入口：
 
