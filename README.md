@@ -100,7 +100,7 @@ All original OpenUsage plugins run unmodified via a `node:vm` sandbox with Linux
 
 ---
 
-> **Adapted from the upstream README.** Unless marked below, the sections that follow come from the official [OpenUsage](https://github.com/robinebers/openusage) README by Robin Ebers and describe the original macOS app, written in its author's voice. This fork (aisubdash) added only: the **WebUI Fork Status** section; in **Supported Providers**, the Pi-session details for Claude and Codex, Grok's local spend and Tokens-page transcripts, and the Ollama entry, which is a WebUI port of an upstream Swift provider.
+> **Adapted from the upstream README.** Unless listed here, the sections that follow come from the official [OpenUsage](https://github.com/robinebers/openusage) README by Robin Ebers and describe the original macOS app, written in its author's voice. This fork (aisubdash) added only: the **WebUI Fork Status** section; in **Supported Providers**, the Pi-session details for Claude and Codex, Grok's local spend and Tokens-page transcripts, and the Ollama and OpenRouter entries, which are WebUI ports of upstream Swift providers.
 
 # Track all your AI coding subscriptions in one place
 
