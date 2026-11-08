@@ -60,8 +60,8 @@
 curl -fsSL https://bun.sh/install | bash
 
 # Clone and install
-git clone https://github.com/solitude6060/openusage_webui.git
-cd openusage_webui && bun install
+git clone https://github.com/solitude6060/ai-subscription-dashboard.git
+cd ai-subscription-dashboard && bun install
 
 # Start the WebUI (opens at http://127.0.0.1:6736)
 bun run dev:webui
