@@ -1,6 +1,6 @@
-# OpenUsage WebUI — Linux CLI & Web Dashboard
+# AI Subscription Dashboard (aisubdash) — Linux CLI & Web Dashboard
 
-> **Fork note:** This is a Linux-compatible fork of [OpenUsage](https://github.com/robinebers/openusage). The original is a macOS Tauri menu bar app. This fork replaces the Tauri shell with a **Bun server + React WebUI** and a **CLI status tool**, so it runs on Ubuntu/Linux without Tauri or macOS-specific dependencies.
+> **Fork note:** This is a Linux-compatible fork of [OpenUsage](https://github.com/robinebers/openusage). The original is a macOS Tauri menu bar app. This fork replaces the Tauri shell with a **Bun server + React WebUI** and a **CLI status tool**, so it runs on Ubuntu/Linux without Tauri or macOS-specific dependencies. It is not the official OpenUsage and is not endorsed by or affiliated with its author.
 
 ### What's New
 
@@ -47,7 +47,7 @@
 
 **Web Dashboard** — every provider at a glance, with progress bars and reset timers:
 
-![OpenUsage WebUI dashboard](docs/screenshots/webui-dashboard.png)
+![aisubdash dashboard](docs/screenshots/webui-dashboard.png)
 
 **Terminal Status** — `ou-status` in your shell, with colored usage bars and Codex reset-credit expiry (live countdown + exact date, matching the dashboard):
 

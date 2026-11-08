@@ -338,7 +338,7 @@ export function SettingsPage({
 
         {visibleAccounts.length === 0 ? (
           <p className="settings-help muted">
-            No custom accounts yet for this provider. OpenUsage keeps the single default card until
+            No custom accounts yet for this provider. aisubdash keeps the single default card until
             you add one.
           </p>
         ) : (

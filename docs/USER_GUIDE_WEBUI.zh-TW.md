@@ -1,4 +1,4 @@
-# OpenUsage WebUI 使用手冊
+# aisubdash 使用手冊
 
 ## 1. 適用對象
 
@@ -30,7 +30,7 @@
 
 ## 2. 基本概念
 
-OpenUsage WebUI 採 local-first 設計：
+aisubdash 採 local-first 設計：
 
 - 使用瀏覽器開本機 dashboard
 - API server 預設只綁定 `127.0.0.1`

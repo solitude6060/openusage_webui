@@ -11,7 +11,7 @@
   var SESSION_PERIOD_MS = 5 * 60 * 60 * 1000
   var WEEKLY_PERIOD_MS = 7 * 24 * 60 * 60 * 1000
 
-  var MSG_HOST = "Ollama needs the OpenUsage WebUI: this host can't sign requests with an Ed25519 key."
+  var MSG_HOST = "Ollama needs the aisubdash WebUI server: this host can't sign requests with an Ed25519 key."
   var MSG_MISSING = "No Ollama key found. Install Ollama and run `ollama signin` to track cloud usage."
   var MSG_UNREADABLE = "Couldn't read ~/.ollama/id_ed25519. Check the file's permissions."
   var MSG_INVALID_KEY = "~/.ollama/id_ed25519 isn't a usable Ollama signing key."
