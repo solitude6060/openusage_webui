@@ -1,6 +1,6 @@
 # AI Subscription Dashboard (aisubdash)
 
-> 本專案 fork 自 Robin Ebers 的 [OpenUsage](https://github.com/robinebers/openusage)，不是官方 OpenUsage，也未獲原作者背書或與其有關聯。
+> 本專案 fork 自 Robin Ebers 的 [OpenUsage](https://github.com/robinebers/openusage)，不是官方 OpenUsage，未獲原作者背書，也與原作者沒有關聯。
 
 ## 這是什麼
 

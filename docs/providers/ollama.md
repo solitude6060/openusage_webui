@@ -17,7 +17,7 @@ Ported from the upstream Swift provider (`robinebers/openusage`, commit `bb7de17
 2. Run `ollama signin`. It links `~/.ollama/id_ed25519` to your ollama.com account.
 3. Open the Providers page and switch **Ollama** to Enabled.
 
-Ollama never enables itself. The key file exists as soon as Ollama has run once, signed in or not, so OpenUsage
+Ollama never enables itself. The key file exists as soon as Ollama has run once, signed in or not, so aisubdash
 cannot tell that Cloud is set up. Enabling is the existing per-provider toggle; the choice is kept across restarts.
 
 ## Authentication

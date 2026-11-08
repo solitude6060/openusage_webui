@@ -1,5 +1,7 @@
 # aisubdash 使用手冊
 
+> 本專案 fork 自 Robin Ebers 的 [OpenUsage](https://github.com/robinebers/openusage)，不是官方 OpenUsage，未獲原作者背書，也與原作者沒有關聯。
+
 ## 1. 適用對象
 
 這份手冊給想在 Ubuntu/Linux 上本機追蹤 AI coding usage 的使用者。
